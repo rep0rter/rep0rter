@@ -1,0 +1,7 @@
+:80 {
+	root * /srv
+	file_server
+	encode gzip
+	header Cache-Control "public, max-age=300"
+	header /feed.xml Content-Type "application/rss+xml; charset=utf-8"
+}
