@@ -41,24 +41,8 @@ def normalized_body(text: str) -> str:
 
 
 def automation_event(event) -> bool:
-    if event.source == "slack":
-        meta = event.meta
-        if meta.get("is_bot") or meta.get("bot_id") or meta.get("app_id") or meta.get("subtype") == "bot_message":
-            return True
-        if event.author_name.casefold().strip() in {"github", "github actions", "github-actions", "dependabot", "renovate"}:
-            return True
-    if event.source != "github":
-        return False
-    meta = event.meta
-    if meta.get("is_bot") or meta.get("automation") or str(meta.get("author_type", "")).lower() == "bot":
-        return True
-    actor = meta.get("actor") or meta.get("author") or {}
-    if isinstance(actor, dict) and (actor.get("type") == "Bot" or actor.get("is_bot")):
-        return True
-    names = [event.author_name, event.author_id.split(":")[-1], meta.get("login", ""),
-             actor.get("login", "") if isinstance(actor, dict) else actor]
-    return any(isinstance(name, str) and (name.lower().endswith("[bot]") or name.lower() in
-               {"dependabot", "renovate", "github-actions", "github-actions-bot", "renovate-bot"}) for name in names)
+    from .sources import automated
+    return automated(event)
 
 
 def evaluate(event, container, cfg, now: float, replies_seen: int = 0) -> Decision:
