@@ -133,7 +133,7 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
                 if not _allowed(store, event=event):
                     continue
                 events.append(event)
-                if author:
+                if author and event.meta.get('content_status') != 'deleted':
                     authors.append(author)
             next_state.update(error=error, gap=not complete, fetched_at=time.time())
             high = max([Decimal(str(raw['ts'])) for raw in raws] + [Decimal(state.get('pending_high') or old_high or str(lower))])
