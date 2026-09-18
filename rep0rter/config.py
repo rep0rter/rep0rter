@@ -66,6 +66,11 @@ class Config:
     telegram_chat_id: str | None = _env("TELEGRAM_CHAT_ID")
     telegram_test_chat_id: str | None = _env("TELEGRAM_TEST_CHAT_ID")
     telegram_use_test_chat: bool = (_env("REP0RTER_TELEGRAM_TEST", "0") or "0").lower() in ("1", "true", "yes")
+    telegram_language: str = _env("REP0RTER_TELEGRAM_LANGUAGE", "zh-TW") or "zh-TW"
+
+    # Original-text cards (Noto CJK is installed in the Docker image).
+    card_font: str | None = _env("REP0RTER_CARD_FONT")
+    chrome_path: str | None = _env("REP0RTER_CHROME_PATH")
 
     # llm (OpenAI-compatible chat completions)
     ai_base_url: str | None = _env("AI_BASE_URL")
@@ -84,7 +89,7 @@ class Config:
     @property
     def telegram_target(self) -> str | None:
         if self.telegram_use_test_chat:
-            return self.telegram_test_chat_id or self.telegram_chat_id
+            return self.telegram_test_chat_id
         return self.telegram_chat_id
 
     @property

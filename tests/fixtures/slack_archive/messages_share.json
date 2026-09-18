@@ -1,0 +1,24 @@
+[
+  {
+    "ts": "1789571777.383129",
+    "text": "",
+    "user": {
+      "id": "USHARER",
+      "real_name": "Sharer",
+      "profile": {
+        "image_72": "https://example.test/avatar.png"
+      }
+    },
+    "attachments": [
+      {
+        "is_share": true,
+        "channel_id": "CPUBLIC",
+        "ts": "1789571767.493169",
+        "author_id": "UAUTHOR",
+        "author_name": "Original author",
+        "from_url": "https://example.slack.com/archives/CPUBLIC/p1789571767493169",
+        "text": "Published a public school district dataset."
+      }
+    ]
+  }
+]

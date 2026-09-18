@@ -10,9 +10,12 @@ import time
 from . import __version__
 from .collectors import slack_archive
 from .config import Config, load_config
+from .delivery import DeliveryOutbox, deliver_pending, prepare_posts
+from .i18n import LANGUAGES
+from .llm import LLM
 from .publishers import site as site_publisher
 from .publishers import telegram
-from .reporter import draft_posts
+from .reporter import draft_posts, translate_post
 from .store import Store
 
 log = logging.getLogger("rep0rter")
@@ -29,19 +32,15 @@ def cmd_report(cfg: Config, args) -> int:
     """Select + write + publish new items. Persists posts unless --dry-run."""
     with Store(cfg.db_path) as store:
         drafts = draft_posts(store, cfg, use_llm=not args.no_llm)
-        if not drafts:
-            log.info("nothing newsworthy this run")
-            return 0
         for c, p in drafts:
             log.info("selected %.1f %s | %s", c.score, c.event.url, p.headline)
-        ids = telegram.publish(cfg, drafts, dry_run=args.dry_run)
         if args.dry_run:
+            telegram.publish(cfg, drafts, dry_run=True)
             print(f"dry run: {len(drafts)} item(s) would be posted")
             return 0
-        for i, (c, p) in enumerate(drafts):
-            p.delivery = {"telegram": ids[0] if ids else None}
-            store.add_post(p)
+        prepare_posts(cfg, store, drafts)
         site_publisher.build(store, cfg)
+        deliver_pending(cfg, store)
     print(f"posted {len(drafts)} item(s)")
     return 0
 
@@ -53,6 +52,47 @@ def cmd_build_site(cfg: Config, args) -> int:
     return 0
 
 
+def cmd_translate(cfg: Config, args) -> int:
+    """Backfill missing editions without re-publishing to Telegram."""
+    if not cfg.llm_enabled:
+        print("translation requires AI_BASE_URL / AI_API_KEY / AI_MODEL", file=sys.stderr)
+        return 2
+    if args.limit < 1:
+        print("--limit must be positive", file=sys.stderr)
+        return 2
+    attempted = updated = incomplete = 0
+    with Store(cfg.db_path) as store:
+        llm = LLM(cfg)
+        languages = args.language or list(LANGUAGES)
+        for post, _, _ in store.recent_posts(limit=-1):
+            if all(language in post.translations for language in languages):
+                continue
+            if attempted >= args.limit:
+                break
+            attempted += 1
+            if translate_post(post, llm, languages=languages):
+                store.update_post_translations(post)
+                updated += 1
+            if not all(language in post.translations for language in languages):
+                incomplete += 1
+        site_publisher.build(store, cfg)
+    print(f"translation: attempted {attempted}, updated {updated}, incomplete {incomplete}")
+    return 1 if incomplete else 0
+
+
+def cmd_outbox(cfg: Config, args) -> int:
+    with Store(cfg.db_path) as store:
+        outbox = DeliveryOutbox(store)
+        outbox.recover()
+        if args.job is not None:
+            outbox.reconcile(args.job, message_id=args.message_id, retry=args.retry)
+        elif args.message_id is not None or args.retry:
+            raise ValueError("--message-id/--retry requires --job")
+        for row in store.conn.execute("SELECT id,post_id,target,status,message_id,error FROM delivery_jobs ORDER BY id"):
+            print(dict(row))
+    return 0
+
+
 def run_once(cfg: Config, dry_run: bool = False, no_llm: bool = False, days: int | None = None) -> tuple[int, int]:
     """One full cycle: collect -> report -> publish -> build site."""
     with Store(cfg.db_path) as store:
@@ -61,15 +101,13 @@ def run_once(cfg: Config, dry_run: bool = False, no_llm: bool = False, days: int
         try:
             collected = slack_archive.collect(store, days=days or cfg.collect_days)
             drafts = draft_posts(store, cfg, use_llm=not no_llm)
-            if drafts:
-                ids = telegram.publish(cfg, drafts, dry_run=dry_run)
-                if not dry_run:
-                    for c, p in drafts:
-                        p.delivery = {"telegram": ids[0] if ids else None}
-                        store.add_post(p)
-                    posted = len(drafts)
-            if not dry_run:
+            if dry_run:
+                telegram.publish(cfg, drafts, dry_run=True)
+            else:
+                prepare_posts(cfg, store, drafts)
+                posted = len(drafts)
                 site_publisher.build(store, cfg)
+                deliver_pending(cfg, store)
             store.finish_run(run_id, collected, posted)
         except Exception as exc:
             store.finish_run(run_id, collected, posted, error=repr(exc))
@@ -136,6 +174,18 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("build-site", help="regenerate the static site from the store")
     p.set_defaults(func=cmd_build_site)
+
+    p = sub.add_parser("translate", help="backfill missing languages and rebuild the site; never sends Telegram")
+    p.add_argument("--limit", type=int, default=300, help="maximum posts to translate")
+    p.add_argument("--language", action="append", choices=list(LANGUAGES), help="limit languages (repeatable)")
+    p.set_defaults(func=cmd_translate)
+
+    p = sub.add_parser("outbox", help="inspect Telegram delivery; explicitly reconcile failed/unknown jobs")
+    p.add_argument("--job", type=int)
+    action = p.add_mutually_exclusive_group()
+    action.add_argument("--message-id", type=int, help="record a delivery confirmed in Telegram")
+    action.add_argument("--retry", action="store_true", help="requeue only after confirming it was not delivered")
+    p.set_defaults(func=cmd_outbox)
 
     p = sub.add_parser("run", help="collect + report + build site, once")
     p.add_argument("--dry-run", action="store_true")

@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS posts (
     score         REAL NOT NULL,
     headline      TEXT NOT NULL,
     summary       TEXT NOT NULL,
+    translations TEXT DEFAULT '{}', -- language -> {headline, summary}
     reasons       TEXT DEFAULT '[]', -- json list of why it was selected
     delivery      TEXT DEFAULT '{}'  -- json: {"telegram": message_id, ...}
 );
@@ -121,6 +122,7 @@ class Post:
     reasons: list[str] = field(default_factory=list)
     delivery: dict[str, Any] = field(default_factory=dict)
     id: int | None = None
+    translations: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 class Store:
@@ -132,6 +134,10 @@ class Store:
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA foreign_keys=ON")
         self.conn.executescript(SCHEMA)
+        columns = {r["name"] for r in self.conn.execute("PRAGMA table_info(posts)")}
+        if "translations" not in columns:
+            self.conn.execute("ALTER TABLE posts ADD COLUMN translations TEXT DEFAULT '{}'")
+            self.conn.commit()
 
     # ---- generic ---------------------------------------------------------
     def close(self) -> None:
@@ -256,10 +262,11 @@ class Store:
     def add_post(self, post: Post) -> int:
         with self.conn:
             cur = self.conn.execute(
-                """INSERT INTO posts (event_id, published_at, score, headline, summary, reasons, delivery)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                """INSERT INTO posts (event_id, published_at, score, headline, summary, reasons, delivery, translations)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (post.event_id, post.published_at, post.score, post.headline, post.summary,
-                 json.dumps(post.reasons, ensure_ascii=False), json.dumps(post.delivery, ensure_ascii=False)),
+                 json.dumps(post.reasons, ensure_ascii=False), json.dumps(post.delivery, ensure_ascii=False),
+                 json.dumps(post.translations, ensure_ascii=False)),
             )
             return int(cur.lastrowid)
 
@@ -267,9 +274,18 @@ class Store:
         with self.conn:
             self.conn.execute("UPDATE posts SET delivery = ? WHERE id = ?", (json.dumps(delivery), post_id))
 
+    def update_post_translations(self, post: Post) -> None:
+        with self.conn:
+            self.conn.execute(
+                "UPDATE posts SET translations = ? WHERE id = ?",
+                (json.dumps(post.translations, ensure_ascii=False), post.id),
+            )
+
     def recent_posts(self, limit: int = 200) -> list[tuple[Post, Event, Container | None]]:
         rows = self.conn.execute(
-            """SELECT p.id AS post_id, p.*, e.* FROM posts p JOIN events e ON e.id = p.event_id
+            """SELECT p.id AS post_id, p.event_id, p.published_at, p.score,
+                      p.headline, p.summary, p.reasons, p.delivery, p.translations, e.*
+               FROM posts p JOIN events e ON e.id = p.event_id
                ORDER BY p.published_at DESC LIMIT ?""",
             (limit,),
         ).fetchall()
@@ -279,6 +295,7 @@ class Store:
                 id=r["post_id"], event_id=r["event_id"], published_at=r["published_at"], score=r["score"],
                 headline=r["headline"], summary=r["summary"], reasons=json.loads(r["reasons"] or "[]"),
                 delivery=json.loads(r["delivery"] or "{}"),
+                translations=json.loads(r["translations"] or "{}"),
             )
             event = self._row_to_event(r)
             result.append((post, event, self.get_container(event.container_id)))

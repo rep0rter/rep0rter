@@ -17,7 +17,12 @@ _SUBTEAM = re.compile(r"<!subteam\^[A-Z0-9]+(?:\|@?([^>]+))?>")
 def to_plain(text: str, user_names: dict[str, str] | None = None) -> str:
     """Convert Slack mrkdwn into readable plain text (keeps *bold* and links)."""
     user_names = user_names or {}
-    out = _LINK_WITH_LABEL.sub(lambda m: f"{m.group(2)} ({m.group(1)})", text)
+    def link_text(match):
+        url, label = match.group(1), match.group(2)
+        # Slack often uses the URL itself (with or without scheme) as its label.
+        normalize = lambda value: re.sub(r"^https?://", "", value).rstrip("/")
+        return url if normalize(url) == normalize(label) else f"{label} ({url})"
+    out = _LINK_WITH_LABEL.sub(link_text, text)
     out = _LINK_BARE.sub(r"\1", out)
     out = _MAILTO.sub(r"\1", out)
     out = _USER.sub(lambda m: "@" + user_names.get(m.group(1), "某人"), out)

@@ -13,6 +13,8 @@ Two endpoints are used:
 
 * ``GET /index/getmessage?channel=<id>&count=<1..100>&before=<ts>``
     JSON. Returns messages newest-first, strictly older than ``before``.
+    ``after`` is also supported upstream but overrides ``before``; the two
+    parameters cannot be combined to request a bounded interval.
     Messages that have a Slack ``subtype`` (channel_join, bot_message, ...)
     are silently dropped by the server, so a page can contain fewer than
     ``count`` items. Each message includes the resolved ``user`` object and
@@ -24,6 +26,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from decimal import Decimal, InvalidOperation
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Iterator
@@ -33,6 +36,7 @@ from bs4 import BeautifulSoup
 
 from ..slack_text import mention_names_from_html
 from ..store import Container, Event, Store
+from .slack_content import recover_content
 
 SOURCE = "slack"
 BASE_URL = "https://g0v-slack-archive.g0v.ronny.tw"
@@ -91,47 +95,98 @@ def fetch_channels(session: requests.Session) -> list[ChannelRow]:
         link = tr.select_one("a.channel")
         if link is None or not link.get("title"):
             continue
-        data = json.loads(link["title"])
-        if data.get("is_private"):
-            continue
-        cells = [td.get_text(" ", strip=True) for td in tr.find_all("td")]
-        # cells: topic, purpose, created, messages, members, last posted, last synced
-        rows.append(
-            ChannelRow(
+        try:
+            data = json.loads(link["title"])
+            if not isinstance(data, dict):
+                raise ValueError("channel metadata is not an object")
+            if data.get("is_private"):
+                continue
+            if not all(isinstance(data.get(k), str) and data[k].strip() for k in ("id", "name")):
+                raise ValueError("missing channel id/name")
+            cells = [td.get_text(" ", strip=True) for td in tr.find_all("td")]
+            if len(cells) < 7:
+                raise ValueError("channel table column layout changed")
+            last_posted = _parse_archive_datetime(cells[5])
+            if cells[5] and last_posted is None:
+                log.warning("degraded channel %s: invalid last-posted date %r", data["id"], cells[5])
+            rows.append(ChannelRow(
                 id=data["id"],
                 name=data["name"],
                 topic=(data.get("topic") or {}).get("value", ""),
                 purpose=(data.get("purpose") or {}).get("value", ""),
-                num_members=int(data.get("num_members") or 0),
-                total_messages=int(cells[3]) if len(cells) > 3 and cells[3].isdigit() else 0,
-                last_posted_at=_parse_archive_datetime(cells[5]) if len(cells) > 5 else None,
-            )
-        )
+                num_members=int(str(data.get("num_members") or 0).replace(",", "")),
+                total_messages=int(cells[3].replace(",", "") or 0),
+                last_posted_at=last_posted,
+            ))
+        except (ValueError, TypeError, KeyError, AttributeError) as exc:
+            log.warning("degraded channel listing: skipping malformed row (%s)", exc)
+    if not rows:
+        raise RuntimeError("archive homepage contains no valid public channels; layout or access may have changed")
     return rows
+
+
+def _timestamp(value) -> Decimal:
+    try:
+        stamp = Decimal(str(value))
+        if not stamp.is_finite() or stamp < 0:
+            raise ValueError("invalid timestamp")
+        return stamp
+    except (InvalidOperation, ValueError) as exc:
+        raise RuntimeError("archive returned an invalid message timestamp") from exc
+
+
+def _merge_duplicate(left: dict, right: dict) -> dict:
+    """Prefer explicit edit time, then richer snapshots; fill only missing fields.
+
+    Upstream has no observation time for duplicate rows. Counters remain those
+    of the selected snapshot, never an invented combination of maxima.
+    """
+    def rank(raw):
+        edited = raw.get("edited")
+        edited_ts = edited.get("ts", 0) if isinstance(edited, dict) else 0
+        serialized = json.dumps(raw, sort_keys=True, ensure_ascii=False)
+        return _timestamp(edited_ts), len(serialized), serialized
+    preferred, other = sorted((left, right), key=rank, reverse=True)
+    result = dict(other)
+    result.update(preferred)
+    return result
 
 
 def iter_messages(session: requests.Session, channel_id: str, since: datetime) -> Iterator[dict]:
     """Yield raw messages for a channel, newest first, until older than ``since``."""
     before: str | None = None
-    since_ts = since.timestamp()
+    since_ts = Decimal(str(since.timestamp()))
+    collected: dict[Decimal, dict] = {}
     while True:
         params = {"channel": channel_id, "count": PAGE_SIZE}
         if before:
             params["before"] = before
         payload = _get(session, BASE_URL + "/index/getmessage", **params).json()
-        if not isinstance(payload, dict):  # server returns 0 for unknown/private channels
-            return
-        page = payload.get("messages") or []
+        if not isinstance(payload, dict) or not isinstance(payload.get("messages"), list):
+            raise RuntimeError(f"archive channel {channel_id} is unavailable or returned an invalid page")
+        page = payload["messages"]
         if not page:
             # Either the start of the channel, or a whole page of subtype
             # messages the server filtered out. We cannot page past the latter
             # because the server never tells us their timestamps.
-            return
+            log.warning("channel %s ended at an ambiguous empty page; archive exposes no raw-page cursor", channel_id)
+            break
+        merged: dict[Decimal, dict] = {}
         for raw in page:
-            if float(raw["ts"]) < since_ts:
-                return
-            yield raw
-        before = min(page, key=lambda m: float(m["ts"]))["ts"]
+            if not isinstance(raw, dict) or "ts" not in raw:
+                raise RuntimeError(f"archive channel {channel_id} returned a malformed message")
+            stamp = _timestamp(raw["ts"])
+            merged[stamp] = _merge_duplicate(merged[stamp], raw) if stamp in merged else raw
+        oldest = min(merged)
+        if before is not None and oldest >= _timestamp(before):
+            raise RuntimeError(f"archive pagination made no progress for channel {channel_id}")
+        for stamp, raw in merged.items():
+            if stamp >= since_ts:
+                collected[stamp] = _merge_duplicate(collected[stamp], raw) if stamp in collected else raw
+        if oldest < since_ts:
+            break
+        before = str(merged[oldest]["ts"])
+    yield from (collected[stamp] for stamp in sorted(collected, reverse=True))
 
 
 def channel_url(channel_id: str) -> str:
@@ -147,18 +202,20 @@ def event_id(channel_id: str, ts: str) -> str:
     return f"{SOURCE}:{channel_id}:{ts}"
 
 
-def to_event(raw: dict, channel_id: str) -> tuple[Event, tuple[str, str, str] | None]:
+def to_event(raw: dict, channel_id: str, public_channel_ids: set[str] | None = None) -> tuple[Event, tuple[str, str, str] | None]:
     """Convert a raw archive message into an Event (+ the author for the users table)."""
     user = raw.get("user") or {}
     if not isinstance(user, dict):  # occasionally a bare user id string
         user = {"id": str(user)}
-    ts = raw["ts"]
-    thread_ts = raw.get("thread_ts")
+    ts = str(raw["ts"])
+    _timestamp(ts)
+    thread_ts = str(raw["thread_ts"]) if raw.get("thread_ts") else None
     is_reply = bool(thread_ts and thread_ts != ts)
-    profile = user.get("profile") or {}
+    profile = user.get("profile") if isinstance(user.get("profile"), dict) else {}
     display = user.get("real_name") or profile.get("display_name") or user.get("name") or ""
-    reactions = [{"name": r.get("name"), "count": int(r.get("count") or 0)} for r in raw.get("reactions") or []]
-    files = [{"name": f.get("name"), "title": f.get("title"), "mimetype": f.get("mimetype")} for f in raw.get("files") or []]
+    reactions = [{"name": r.get("name"), "count": int(r.get("count") or 0)} for r in raw.get("reactions") or [] if isinstance(r, dict)]
+    files = [{"name": f.get("name"), "title": f.get("title"), "mimetype": f.get("mimetype")} for f in raw.get("files") or [] if isinstance(f, dict)]
+    text, content_meta = recover_content(raw, public_channel_ids, permalink)
     event = Event(
         id=event_id(channel_id, ts),
         source=SOURCE,
@@ -167,13 +224,19 @@ def to_event(raw: dict, channel_id: str) -> tuple[Event, tuple[str, str, str] | 
         ts=float(ts),
         author_id=f"{SOURCE}:{user.get('id', '')}",
         author_name=display,
-        text=raw.get("text", "") or "",
-        html=raw.get("html_content", "") or "",
+        text=text,
+        html=(raw.get("html_content", "") or "") if not content_meta["withheld_reference_count"] and content_meta["content_status"] != "deleted" else "",
         url=permalink(channel_id, ts),
         parent_id=event_id(channel_id, thread_ts) if is_reply else None,
         reply_count=int(raw.get("reply_count") or 0),
         reaction_count=sum(r["count"] for r in reactions),
-        meta={"reactions": reactions, "files": files, "reply_users_count": raw.get("reply_users_count", 0)},
+        meta={
+            **content_meta,
+            "reactions": reactions, "files": files, "reply_users_count": raw.get("reply_users_count", 0),
+            "avatar_url": next((profile.get(k) for k in ("image_192", "image_72", "image_48", "image_24")
+                                if isinstance(profile.get(k), str) and profile[k].startswith("https://")), ""),
+            "source_name": "g0v Slack",
+        },
     )
     author = (f"{SOURCE}:{user['id']}", user.get("name", ""), display) if user.get("id") else None
     return event, author
@@ -191,13 +254,14 @@ def collect(store: Store, days: int = 2, max_channels: int | None = None, sessio
     # Skip channels that were quiet for the whole window, with a one-day margin
     # because "last posted" on the homepage is only as fresh as the last sync.
     margin = since - timedelta(days=1)
-    active = [c for c in channels if c.last_posted_at and c.last_posted_at >= margin]
+    active = [c for c in channels if c.last_posted_at is None or c.last_posted_at >= margin]
     active.sort(key=lambda c: c.last_posted_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
     if max_channels:
         active = active[:max_channels]
     log.info("%d channels posted within the last %d days", len(active), days)
 
     total = 0
+    public_channel_ids = {c.id for c in channels}
     for i, ch in enumerate(active, 1):
         store.upsert_container(Container(
             id=f"{SOURCE}:{ch.id}", source=SOURCE, name=ch.name, topic=ch.topic, purpose=ch.purpose,
@@ -205,7 +269,7 @@ def collect(store: Store, days: int = 2, max_channels: int | None = None, sessio
         ))
         events: list[Event] = []
         for raw in iter_messages(session, ch.id, since):
-            event, author = to_event(raw, ch.id)
+            event, author = to_event(raw, ch.id, public_channel_ids)
             events.append(event)
             if author:
                 store.upsert_user(*author)

@@ -1,20 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
 <channel>
-  <title>{{ cfg.site_title }} · g0v 社群動態</title>
-  <link>{{ cfg.site_url }}/</link>
-  <atom:link href="{{ cfg.site_url }}/feed.xml" rel="self" type="application/rss+xml"/>
-  <description>g0v 的虛擬記者，每小時整理社群協作場域裡值得知道的動態。</description>
-  <language>zh-tw</language>
+  <title>{{ cfg.site_title }} · {{ copy.title }}</title>
+  <link>{{ cfg.site_url.rstrip('/') }}/{{ page_name(language) }}</link>
+  <atom:link href="{{ cfg.site_url.rstrip('/') }}/{{ feed }}" rel="self" type="application/rss+xml"/>
+  <description>{{ copy.intro }}</description>
+  <language>{{ language }}</language>
   <lastBuildDate>{{ generated_rfc822 }}</lastBuildDate>
   {% for it in items[:100] %}
   <item>
-    <title>{{ it.post.headline }}</title>
-    <link>{{ it.event.url }}</link>
-    <guid isPermaLink="false">{{ it.event.id }}</guid>
+    <title>{{ it.headline }}</title>
+    <link>{{ cfg.site_url.rstrip('/') }}/{{ it.story_path }}</link>
+    <guid isPermaLink="false">{{ it.post.id }}</guid>
     <pubDate>{{ it.published_rfc822 }}</pubDate>
     <category>{{ it.channel }}</category>
-    <description>{{ it.post.summary }} （#{{ it.channel }} · {{ it.event.author_name }}）</description>
+    <description>{{ it.summary }} （#{{ it.channel }} · {{ it.event.author_name }}）{% if not it.translated %} {{ copy.missing }}{% endif %} {{ copy.source }}: {{ it.event.url }}</description>
+    <enclosure url="{{ cfg.site_url.rstrip('/') }}/{{ it.image }}" length="{{ it.image_size }}" type="image/png"/>
   </item>
   {% endfor %}
 </channel>

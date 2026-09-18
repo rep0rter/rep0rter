@@ -67,3 +67,15 @@ def test_upsert_keeps_max_engagement(tmp_path):
         e.reply_count = 1
         store.upsert_events([e])
         assert store.get_event("slack:C1:20").reply_count == 3
+
+
+def test_unverified_or_missing_source_text_cannot_be_reported_from_replies(tmp_path):
+    cfg = _cfg(tmp_path)
+    now = time.time()
+    with Store(cfg.db_path) as store:
+        store.upsert_events([
+            Event(id='empty', source='slack', kind='message', container_id='slack:C', ts=now, text='', reply_count=99),
+            Event(id='withheld', source='slack', kind='message', container_id='slack:C', ts=now,
+                  text='cannot verify original', reply_count=99, meta={'content_status':'unverified_reference'}),
+        ])
+        assert select_candidates(store, cfg, now) == []

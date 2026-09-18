@@ -1,0 +1,41 @@
+[
+  {
+    "messages": [
+      {
+        "ts": "1789571777.383129",
+        "text": "notice"
+      },
+      {
+        "ts": "1789571777.383129",
+        "text": "notice",
+        "user": {
+          "id": "UA"
+        },
+        "reply_count": 2
+      },
+      {
+        "ts": "1789571776.383129",
+        "text": "second"
+      }
+    ]
+  },
+  {
+    "messages": [
+      {
+        "ts": "1789571777.383129",
+        "text": "edited notice",
+        "edited": {
+          "ts": "1789571780.000001"
+        },
+        "reply_count": 1
+      },
+      {
+        "ts": "1789571775.383129",
+        "text": "third"
+      }
+    ]
+  },
+  {
+    "messages": []
+  }
+]

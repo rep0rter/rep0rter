@@ -1,0 +1,315 @@
+"""Cached original-text cards: HTML element screenshots, with a Pillow fallback.
+
+Inspired by chumei's render_source_covers.py. The browser renders our escaped
+template, never arbitrary remote pages. Identity images are embedded locally.
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import io
+import ipaddress
+import logging
+import re
+import socket
+import tempfile
+import ssl
+import time
+from datetime import datetime
+from pathlib import Path
+from urllib.parse import urljoin, urlsplit
+
+import certifi
+import urllib3
+from jinja2 import Environment, PackageLoader, select_autoescape
+from PIL import Image, ImageDraw, ImageFont, ImageOps
+
+from ..config import TAIPEI, Config
+from ..slack_text import to_plain
+from ..store import Container, Event
+
+log = logging.getLogger(__name__)
+SIZE = (1200, 630)
+MAX_IMAGE_BYTES = 3_000_000
+env = Environment(loader=PackageLoader("rep0rter", "templates"), autoescape=select_autoescape(["html"]))
+
+
+def _public_image_address(url: str) -> tuple[str, str] | None:
+    """Resolve once and return a public address plus its original TLS hostname."""
+    try:
+        parsed = urlsplit(url)
+        if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
+                or parsed.port not in (None, 443)):
+            return None
+        hostname = parsed.hostname.encode("idna").decode("ascii")
+        addresses = socket.getaddrinfo(hostname, 443, type=socket.SOCK_STREAM)
+        if addresses and all(ipaddress.ip_address(a[4][0]).is_global for a in addresses):
+            return hostname, addresses[0][4][0]
+    except (ValueError, OSError):
+        pass
+    return None
+
+
+def _public_image_url(url: str) -> bool:
+    return _public_image_address(url) is not None
+
+
+def _fetch_image(url: str) -> bytes | None:
+    """Pin each public DNS result, verify original TLS identity, and bound reads."""
+    deadline = time.monotonic() + 20
+    for _ in range(4):
+        address = _public_image_address(url)
+        remaining = deadline - time.monotonic()
+        if address is None or remaining <= 0:
+            return None
+        hostname, public_ip = address
+        parsed = urlsplit(url)
+        target = parsed.path or "/"
+        if parsed.query:
+            target += "?" + parsed.query
+        # A direct pool uses no environment proxies and never resolves the
+        # untrusted hostname again. TLS and HTTP still use the original host.
+        with urllib3.HTTPSConnectionPool(
+            public_ip, port=443, server_hostname=hostname, assert_hostname=hostname,
+            cert_reqs=ssl.CERT_REQUIRED, ca_certs=certifi.where(), retries=False,
+            timeout=urllib3.Timeout(total=remaining, connect=min(3, remaining), read=min(6, remaining)),
+        ) as pool:
+            response = pool.urlopen(
+                "GET", target, redirect=False, retries=False, preload_content=False,
+                decode_content=False,
+                headers={"Host": f"[{hostname}]" if ":" in hostname else hostname,
+                         "User-Agent": "rep0rter/0.2 public-source-card", "Accept-Encoding": "identity"},
+            )
+            try:
+                if response.status in (301, 302, 303, 307, 308):
+                    location = response.headers.get("Location")
+                    if not location:
+                        return None
+                    url = urljoin(url, location)
+                    continue
+                if response.status != 200 or response.headers.get("Content-Encoding", "identity").lower() != "identity":
+                    return None
+                data = bytearray()
+                while True:
+                    if time.monotonic() >= deadline:
+                        return None
+                    # read1 performs at most one underlying read, so a slow
+                    # trickle cannot hide inside a request for a complete chunk.
+                    chunk = response.read1(min(32_768, MAX_IMAGE_BYTES + 1 - len(data)), decode_content=False)
+                    if time.monotonic() >= deadline:
+                        return None
+                    if not chunk:
+                        break
+                    data.extend(chunk)
+                    if len(data) > MAX_IMAGE_BYTES:
+                        return None
+            finally:
+                response.close()
+            with Image.open(io.BytesIO(data)) as original:
+                if original.width * original.height > 16_000_000:
+                    return None
+                original.seek(0)
+                image = ImageOps.exif_transpose(original).convert("RGBA")
+                image.thumbnail((192, 192))
+                out = io.BytesIO()
+                image.save(out, "PNG")
+                return out.getvalue()
+    return None
+
+
+def identity_image(event: Event, cfg: Config) -> bytes | None:
+    """Cache avatars/logos, including failures for one hour to avoid retry storms."""
+    candidates = [event.meta.get("avatar_url"), event.meta.get("source_logo_url")]
+    if event.source != "slack":
+        parsed = urlsplit(event.url)
+        if parsed.scheme == "https" and parsed.hostname:
+            candidates.append(f"https://{parsed.netloc}/favicon.ico")
+    cache = cfg.data_dir / "image-cache"
+    for url in candidates:
+        if not isinstance(url, str) or not url:
+            continue
+        key = hashlib.sha256(url.encode()).hexdigest()
+        path, failure = cache / f"{key}.png", cache / f"{key}.failed"
+        if path.exists():
+            try:
+                data = path.read_bytes()
+                with Image.open(io.BytesIO(data)) as cached:
+                    cached.verify()
+                return data
+            except (OSError, ValueError):
+                path.unlink(missing_ok=True)
+        if failure.exists() and time.time() - failure.stat().st_mtime < 3600:
+            continue
+        try:
+            data = _fetch_image(url)
+            cache.mkdir(parents=True, exist_ok=True)
+            if data:
+                with tempfile.NamedTemporaryFile(dir=cache, suffix=".png", delete=False) as output:
+                    temporary = Path(output.name)
+                    output.write(data)
+                try:
+                    temporary.replace(path)
+                finally:
+                    temporary.unlink(missing_ok=True)
+                failure.unlink(missing_ok=True)
+                return data
+        except (urllib3.exceptions.HTTPError, OSError, ValueError, Image.DecompressionBombError):
+            log.info("identity image unavailable for event %s", event.id)
+        cache.mkdir(parents=True, exist_ok=True)
+        failure.touch()
+    return None
+
+
+def _font(cfg: Config, size: int):
+    candidates = [cfg.card_font,
+                  "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                  "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+                  "/System/Library/Fonts/PingFang.ttc"]
+    for path in candidates:
+        if path and Path(path).is_file():
+            return ImageFont.truetype(path, size=size)
+    raise RuntimeError("Card fonts missing: install fonts-noto-cjk or set REP0RTER_CARD_FONT to a CJK font file")
+
+
+def _wrap(text: str, font, width: int, max_lines: int) -> list[str]:
+    """Wrap CJK and long URLs; mark any omitted text with an ellipsis."""
+    lines, line = [], ""
+    tokens = re.findall(r"[\x21-\x7e]+|[^\x21-\x7e]", text)
+    for token in tokens:
+        if token == "\n":
+            lines.append(line)
+            line = ""
+            continue
+        if font.getlength(token) > width:
+            pieces = list(token)
+        else:
+            pieces = [token]
+        for part in pieces:
+            if line and font.getlength(line + part) > width:
+                lines.append(line.rstrip())
+                line = ""
+            line += part if line else part.lstrip()
+    if line:
+        lines.append(line.rstrip())
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        while lines[-1] and font.getlength(lines[-1] + "…") > width:
+            lines[-1] = lines[-1][:-1]
+        lines[-1] += "…"
+    return lines
+
+
+class CardRenderer:
+    """One lazily launched browser for a batch; cached cards need no browser."""
+
+    def __init__(self, cfg: Config):
+        self.cfg = cfg
+        self.browser = self.playwright = self.page = None
+        self.browser_failed = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        if self.browser:
+            self.browser.close()
+        if self.playwright:
+            self.playwright.stop()
+
+    def _page(self):
+        if self.browser_failed:
+            return None
+        if self.page is None:
+            try:
+                from playwright.sync_api import sync_playwright
+                self.playwright = sync_playwright().start()
+                options = {"headless": True, "args": ["--disable-background-networking"]}
+                if self.cfg.chrome_path:
+                    options["executable_path"] = self.cfg.chrome_path
+                self.browser = self.playwright.chromium.launch(**options)
+                self.page = self.browser.new_page(viewport={"width": 1200, "height": 630}, device_scale_factor=1)
+                self.page.route("**/*", lambda route: route.abort())
+            except Exception:
+                log.warning("Chromium unavailable; rendering original-text cards with Pillow")
+                self.browser_failed = True
+                return None
+        return self.page
+
+    def render(self, event: Event, container: Container | None, names: dict[str, str] | None = None) -> Path:
+        avatar = identity_image(event, self.cfg)
+        host = urlsplit(event.url).hostname or event.source
+        source = str(event.meta.get("source_name") or ("g0v Slack" if event.source == "slack" else host))
+        author = event.author_name or source
+        channel = container.name if container else event.container_id
+        original = to_plain(event.text, names) if event.source == "slack" else event.text.strip()
+        if not original:
+            original = "（來源訊息沒有可顯示的文字 / No source text available）"
+        ctx = {"author": author, "source": source, "channel": channel,
+               "original": original[:4000] + ("…" if len(original) > 4000 else ""),
+               "date": datetime.fromtimestamp(event.ts, TAIPEI).strftime("%Y.%m.%d · %H:%M UTC+8"),
+               "initial": author.strip()[:1].upper() or "r", "host": host,
+               "url": event.url,
+               "brand": self.cfg.site_title,
+               "avatar": "data:image/png;base64," + base64.b64encode(avatar).decode() if avatar else ""}
+        template = env.get_template("card.html")
+        rendered = template.render(ctx)
+        digest = hashlib.sha256(("card-v1" + rendered + str(self.cfg.card_font)).encode()).hexdigest()[:24]
+        path = self.cfg.site_dir / "cards" / f"{digest}.png"
+        if path.exists():
+            try:
+                with Image.open(path) as cached:
+                    cached.verify()
+                return path
+            except (OSError, ValueError):
+                path.unlink(missing_ok=True)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".png", delete=False) as output:
+            temporary = Path(output.name)
+        try:
+            page = self._page()
+            if page:
+                try:
+                    page.set_content(rendered, wait_until="load")
+                    page.evaluate("document.fonts.ready")
+                    page.locator(".card").screenshot(path=str(temporary), type="png", animations="disabled", timeout=10_000)
+                except Exception:
+                    log.warning("HTML card render failed for %s; using Pillow", event.id)
+                    self._fallback(temporary, ctx, avatar)
+            else:
+                self._fallback(temporary, ctx, avatar)
+            with Image.open(temporary) as complete:
+                complete.verify()
+            temporary.replace(path)
+        finally:
+            temporary.unlink(missing_ok=True)
+        return path
+
+    def _fallback(self, path: Path, ctx: dict, avatar: bytes | None):
+        image = Image.new("RGB", SIZE, "#f1f4ee")
+        draw = ImageDraw.Draw(image)
+        draw.rounded_rectangle((28, 28, 1172, 602), radius=24, fill="#ffffff")
+        draw.rounded_rectangle((60, 60, 142, 142), radius=24, fill="#dcebc7")
+        if avatar:
+            with Image.open(io.BytesIO(avatar)) as face:
+                face = ImageOps.fit(face.convert("RGBA"), (82, 82))
+                mask = Image.new("L", (82, 82))
+                ImageDraw.Draw(mask).rounded_rectangle((0, 0, 81, 81), radius=24, fill=255)
+                image.paste(face, (60, 60), mask)
+        else:
+            draw.text((85, 72), ctx["initial"], font=_font(self.cfg, 40), fill="#253a2d")
+        for line in _wrap(ctx["author"], _font(self.cfg, 29), 700, 1):
+            draw.text((164, 61), line, font=_font(self.cfg, 29), fill="#1d3227")
+        label = f'{ctx["source"]} · #{ctx["channel"]}'
+        draw.text((164, 109), _wrap(label, _font(self.cfg, 20), 920, 1)[0], font=_font(self.cfg, 20), fill="#637069")
+        draw.line((60, 170, 1140, 170), fill="#e5eae2", width=2)
+        font = _font(self.cfg, 34)
+        for i, line in enumerate(_wrap(ctx["original"], font, 1060, 6)):
+            draw.text((68, 193 + i * 48), line, font=font, fill="#233229")
+        draw.text((64, 524), "ORIGINAL EXCERPT · " + ctx["date"], font=_font(self.cfg, 16), fill="#637069")
+        source_url = _wrap(ctx["url"], _font(self.cfg, 14), 800, 1)
+        if source_url:
+            draw.text((64, 552), source_url[0], font=_font(self.cfg, 14), fill="#637069")
+        brand = _wrap(ctx["brand"], _font(self.cfg, 26), 250, 1)[0]
+        draw.text((1130, 535), brand, anchor="ra", font=_font(self.cfg, 26), fill="#253a2d")
+        image.save(path, "PNG")

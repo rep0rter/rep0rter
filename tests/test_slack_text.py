@@ -15,3 +15,8 @@ def test_unknown_user_is_anonymised():
 def test_excerpt_trims():
     assert excerpt("a" * 200, 10) == "a" * 9 + "…"
     assert excerpt("short   text\nhere") == "short text here"
+
+
+def test_url_labels_are_not_duplicated_in_original_cards():
+    assert to_plain('<https://example.org/a|https://example.org/a>') == 'https://example.org/a'
+    assert to_plain('<https://example.org/a/|example.org/a>') == 'https://example.org/a/'

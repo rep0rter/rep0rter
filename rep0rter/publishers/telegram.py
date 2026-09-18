@@ -1,56 +1,66 @@
-"""Telegram Bot API publisher.
-
-Only a bot token and a chat id are needed. The bot must be an administrator
-of the target channel with permission to post messages.
-"""
-
+"""Telegram formatting and transport. Durable delivery lives in ``delivery``."""
 from __future__ import annotations
 
 import html
-import logging
+import json
+from pathlib import Path
+from urllib.parse import urlsplit
 
 import requests
 
 from ..config import Config
+from ..i18n import COPY, LANGUAGES, page_name, post_text
 from ..reporter import Candidate
 from ..store import Post
 
-log = logging.getLogger(__name__)
-
 API = "https://api.telegram.org/bot{token}/{method}"
-MAX_LEN = 4096  # Telegram hard limit per message
+MAX_LEN = 4096
+CAPTION_LEN = 1024
+
+
+class TelegramRejected(RuntimeError):
+    """Telegram explicitly rejected the request; it was not delivered."""
+    def __init__(self, status: int, retry_after: int | None = None):
+        super().__init__(f"Telegram rejected delivery (HTTP/API {status})")
+        self.status = status
+        self.retry_after = retry_after
 
 
 def _esc(s: str) -> str:
-    return html.escape(s or "", quote=False)
+    return html.escape(s or "", quote=True)
+
+
+def _link(url: str, label: str) -> str:
+    try:
+        parsed = urlsplit(url)
+        valid = parsed.scheme in ("http", "https") and bool(parsed.hostname) and not parsed.username and not parsed.password
+    except ValueError:
+        valid = False
+    return f'<a href="{_esc(url)}">{_esc(label)}</a>' if valid else _esc(label)
 
 
 def format_item(c: Candidate, post: Post) -> str:
     channel = c.container.name if c.container else c.event.container_id
     stats = []
-    if c.event.reply_count or c.event.reaction_count:
-        if c.event.reply_count:
-            stats.append(f"💬 {c.event.reply_count}")
-        if c.event.reaction_count:
-            stats.append(f"👍 {c.event.reaction_count}")
+    if c.event.reply_count:
+        stats.append(f"💬 {c.event.reply_count}")
+    if c.event.reaction_count:
+        stats.append(f"👍 {c.event.reaction_count}")
     meta = f"#{_esc(channel)} · {_esc(c.event.author_name)}"
     if stats:
         meta += " · " + " ".join(stats)
-    return (
-        f"<b>{_esc(post.headline)}</b>\n"
-        f"{_esc(post.summary)}\n"
-        f"{meta} · <a href=\"{_esc(c.event.url)}\">原文</a>"
-    )
+    return f"<b>{_esc(post.headline)}</b>\n{_esc(post.summary)}\n{meta} · {_link(c.event.url, '原文')}"
 
 
 def format_messages(items: list[tuple[Candidate, Post]]) -> list[str]:
-    """Bundle items into as few messages as the length limit allows."""
-    blocks = [format_item(c, p) for c, p in items]
-    messages: list[str] = []
-    current = ""
-    for block in blocks:
+    """Legacy text preview. Reject oversized items without breaking HTML."""
+    messages, current = [], ""
+    for c, p in items:
+        block = format_item(c, p)
+        if len(block.encode("utf-16-le")) // 2 > MAX_LEN:
+            raise ValueError("Single Telegram text item exceeds 4096 characters")
         joined = block if not current else current + "\n\n" + block
-        if len(joined) > MAX_LEN and current:
+        if len(joined.encode("utf-16-le")) // 2 > MAX_LEN:
             messages.append(current)
             current = block
         else:
@@ -60,36 +70,60 @@ def format_messages(items: list[tuple[Candidate, Post]]) -> list[str]:
     return messages
 
 
-def send_message(cfg: Config, text: str) -> int:
-    resp = requests.post(
-        API.format(token=cfg.telegram_bot_token, method="sendMessage"),
-        json={
-            "chat_id": cfg.telegram_target,
-            "text": text,
-            "parse_mode": "HTML",
-            "disable_web_page_preview": True,
-        },
-        timeout=30,
-    )
-    if resp.status_code != 200:
-        raise RuntimeError(f"telegram sendMessage failed: {resp.status_code} {resp.text[:300]}")
-    return int(resp.json()["result"]["message_id"])
+def format_caption(cfg: Config, c: Candidate, post: Post) -> str:
+    """Fit escaped text to Telegram's caption limit; full text stays on site."""
+    if post.id is None:
+        raise ValueError("Persist posts before preparing Telegram captions")
+    language = cfg.telegram_language
+    if language not in LANGUAGES:
+        raise ValueError(f"Unsupported Telegram language: {language}")
+    headline, summary, translated = post_text(post, language)
+    links = " · ".join(_link(f"{cfg.site_url.rstrip('/')}/posts/{post.id}/{page_name(lang)}", name)
+                       for lang, name in LANGUAGES.items())
+    footer = f"\n{_link(c.event.url, COPY[language]['source'])}\n{links}"
+    if not translated:
+        footer = "\n" + _esc(COPY[language]["missing"]) + footer
+    # Measure encoded HTML conservatively. Never truncate an entity or HTML tag.
+    while True:
+        caption = f"<b>{_esc(headline)}</b>\n{_esc(summary)}{footer}"
+        if len(caption.encode("utf-16-le")) // 2 <= CAPTION_LEN:
+            return caption
+        if len(summary) > 1:
+            summary = summary[:-2].rstrip() + "…"
+        elif len(headline) > 1:
+            headline = headline[:-2].rstrip() + "…"
+        else:
+            raise ValueError("Telegram caption links exceed 1024 characters; shorten REP0RTER_SITE_URL")
+
+
+def send_photo(cfg: Config, target: str, photo: str | Path, caption: str) -> int:
+    """Send once. A transport exception may mean delivery happened; never retry here."""
+    if not cfg.telegram_bot_token or not target:
+        raise ValueError("Telegram token and target are required")
+    with Path(photo).open("rb") as image:
+        response = requests.post(
+            API.format(token=cfg.telegram_bot_token, method="sendPhoto"),
+            data={"chat_id": target, "caption": caption, "parse_mode": "HTML"},
+            files={"photo": ("source.png", image, "image/png")}, timeout=(10, 40),
+        )
+    # Do not expose response text, requests exception URLs, or bot tokens in logs.
+    try:
+        body = response.json()
+    except (ValueError, json.JSONDecodeError):
+        raise RuntimeError("Telegram returned an ambiguous response") from None
+    if body.get("ok") is False:
+        status = int(body.get("error_code", response.status_code))
+        retry_after = body.get("parameters", {}).get("retry_after")
+        raise TelegramRejected(status, int(retry_after) if retry_after is not None else None)
+    if response.status_code != 200 or body.get("ok") is not True:
+        raise RuntimeError("Telegram returned an ambiguous response")
+    return int(body["result"]["message_id"])
 
 
 def publish(cfg: Config, items: list[tuple[Candidate, Post]], dry_run: bool = False) -> list[int]:
-    """Send the items. Returns Telegram message ids (empty on dry run)."""
-    if not items:
-        return []
-    messages = format_messages(items)
-    if dry_run or not (cfg.telegram_bot_token and cfg.telegram_target):
-        if not dry_run:
-            log.warning("Telegram not configured (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID); printing instead")
-        for m in messages:
-            print("----- telegram message -----")
-            print(html.unescape(m))
-        return []
-    ids = []
-    for m in messages:
-        ids.append(send_message(cfg, m))
-    log.info("sent %d telegram message(s) to %s", len(ids), cfg.telegram_target)
-    return ids
+    """Preview only; production callers must use delivery.prepare_posts/deliver_pending."""
+    if not dry_run:
+        raise RuntimeError("Use the durable Telegram outbox for delivery")
+    for c, p in items:
+        print(format_caption(cfg, c, p) if p.id else format_item(c, p))
+    return []

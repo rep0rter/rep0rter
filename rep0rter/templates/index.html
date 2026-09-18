@@ -1,56 +1,60 @@
 <!DOCTYPE html>
-<html lang="zh-Hant-TW">
+<html lang="{{ language }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{ cfg.site_title }} · g0v 社群動態</title>
-<meta name="description" content="rep0rter 是 g0v 的虛擬記者，每小時整理 Slack 等協作場域裡值得知道的動態。">
-<link rel="alternate" type="application/rss+xml" title="{{ cfg.site_title }} RSS" href="{{ cfg.site_url }}/feed.xml">
-<link rel="stylesheet" href="style.css">
+<meta name="color-scheme" content="light dark">
+<title>{{ page_title }} · {{ cfg.site_title }}</title>
+<meta name="description" content="{{ description }}">
+<link rel="canonical" href="{{ canonical }}">
+<meta property="og:title" content="{{ page_title }}">
+<meta property="og:description" content="{{ description }}">
+<meta property="og:url" content="{{ canonical }}">
+<meta property="og:type" content="{{ 'article' if detail else 'website' }}">
+{% if og_image %}<meta property="og:image" content="{{ cfg.site_url.rstrip('/') }}/{{ og_image }}">{% endif %}
+<meta name="twitter:card" content="summary_large_image">
+{% if branding %}<link rel="icon" type="image/png" href="{{ prefix }}{{ branding.favicon }}">{% endif %}
+<link rel="alternate" type="application/rss+xml" title="{{ cfg.site_title }} RSS · {{ languages[language] }}" href="{{ prefix }}{{ feed }}">
+{% for lang in languages %}<link rel="alternate" hreflang="{{ lang }}" href="{{ canonical.rsplit('/', 1)[0] }}/{{ page_name(lang) }}">{% endfor %}
+<link rel="stylesheet" href="{{ prefix }}style.css">
+<script defer src="{{ prefix }}language.js"></script>
 </head>
 <body>
 <header>
-  <h1>{{ cfg.site_title }}</h1>
-  <p class="tagline">g0v 的虛擬記者。每小時看一遍社群的協作場域，把值得知道的事整理給你。</p>
-  <nav>
-    <a href="feed.xml">RSS</a>
-    <a href="https://github.com/rep0rter/rep0rter">原始碼</a>
-    <a href="https://g0v-slack-archive.g0v.ronny.tw/">Slack 存檔</a>
+  <div class="masthead"><a class="wordmark" href="{{ prefix }}{{ page_name(language) }}">{% if branding %}<img src="{{ prefix }}{{ branding.logo }}" alt="" width="44" height="44">{% endif %}{{ cfg.site_title }}</a><span class="edition">CIVIC TECH · COMMUNITY DISPATCH</span></div>
+  <h1>{{ copy.tagline }}</h1>
+  <p class="tagline">{{ copy.intro }}</p>
+  <nav class="languages" aria-label="{{ copy.language }}">
+    {% for lang, label in languages.items() %}<a href="{{ page_name(lang) }}" lang="{{ lang }}" hreflang="{{ lang }}" data-language="{{ lang }}"{% if lang == language %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
   </nav>
+  <nav class="links"><a href="{{ prefix }}{{ feed }}">RSS</a><a href="https://github.com/rep0rter/rep0rter">{{ copy.code }}</a><a href="https://g0v-slack-archive.g0v.ronny.tw/">{{ copy.archive }}</a></nav>
 </header>
-
 <main>
-{% if not items %}
-  <p class="empty">還沒有任何報導。第一次執行後這裡就會出現內容。</p>
-{% endif %}
+{% if not items %}<p class="empty">{{ copy.empty }}</p>{% endif %}
 {% for day, day_items in days.items() %}
-  <section class="day">
-    <h2>{{ day }}</h2>
+  <section class="day" aria-labelledby="day-{{ day }}">
+    <h2 id="day-{{ day }}"><time>{{ day }}</time><span>{{ day_items | length }}</span></h2>
     {% for it in day_items %}
     <article id="{{ it.post.id }}">
-      <h3><a href="{{ it.event.url }}" rel="noopener">{{ it.post.headline }}</a></h3>
-      <p class="summary">{{ it.post.summary }}</p>
-      <p class="meta">
-        <span class="channel">#{{ it.channel }}</span>
-        <span>{{ it.event.author_name }}</span>
-        <span>發文 {{ it.event_local }}</span>
+      <div class="story-top"><a class="channel" href="{{ prefix }}{{ it.source_path }}{{ page_name(language) }}">#{{ it.channel }}</a><a class="permalink" href="{{ prefix }}{{ it.story_path }}" aria-label="{{ copy.read }} {{ it.post.id }}">↗</a></div>
+      <h3 lang="{{ language if it.translated else 'und' }}"><a href="{{ prefix }}{{ it.story_path }}">{{ it.headline }}</a></h3>
+      <p class="summary" lang="{{ language if it.translated else 'und' }}">{{ it.summary }}</p>
+      {% if not it.translated %}<p class="translation-note">{{ copy.missing }}</p>{% endif %}
+      <figure>
+        <a href="{{ prefix }}{{ it.image }}" aria-label="{{ copy.download }}"><img class="source-card" src="{{ prefix }}{{ it.image }}" width="1200" height="630" loading="lazy" alt="{{ copy.image_alt }}{{ it.event.author_name or it.channel }}"></a>
+        <figcaption><span>{{ copy.card_label }}</span><a href="{{ prefix }}{{ it.image }}" download>{{ copy.download }} ↓</a></figcaption>
+      </figure>
+      <p class="meta"><span>{{ it.event.author_name }}</span><span>{{ copy.published }} {{ it.event_local }}</span>
         {% if it.event.reply_count %}<span>💬 {{ it.event.reply_count }}</span>{% endif %}
         {% if it.event.reaction_count %}<span>👍 {{ it.event.reaction_count }}</span>{% endif %}
-        <a href="{{ it.event.url }}" rel="noopener">原文</a>
+        <a href="{{ it.event.url }}" rel="noopener">{{ copy.source }} ↗</a>
       </p>
-      {% if it.post.reasons %}
-      <p class="reasons">為什麼報導：{{ it.post.reasons | join('、') }}</p>
-      {% endif %}
+      <details{% if detail %} open{% endif %}><summary>{{ copy.original }}</summary><blockquote dir="auto">{{ it.original }}</blockquote></details>
     </article>
     {% endfor %}
   </section>
 {% endfor %}
 </main>
-
-<footer>
-  <p>資料來源：g0v Slack 公開頻道（透過 Ronny Wang 維護的存檔）。摘要由程式與語言模型產生，每則都附原文連結，請以原文為準。</p>
-  <p>目前收錄 {{ event_count }} 則事件、{{ post_count }} 篇報導。最後更新 {{ generated_local }}（台北時間）。</p>
-  <p>想讓某則訊息不被報導？在 g0v Slack 的 #rep0rter 告訴我們。</p>
-</footer>
+<footer><p>{{ copy.footer }}</p><p>{{ stats }}<br>{{ copy.updated }} {{ generated_local }}</p><p>{{ copy.optout }}</p></footer>
 </body>
 </html>
