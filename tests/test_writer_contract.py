@@ -153,3 +153,67 @@ def test_story_cancellation_can_publish_attributed_correction_from_real_evidence
     assert '取消' in result.summary and '討論' in result.summary
     assert result.evidence_ids==['e1','cancel']
     assert 'story-update:1:hash' not in [e['id'] for e in result.bundle['evidence']]
+
+
+def test_story_closed_event_fallback_quotes_correction_not_prior_invitation():
+    root=candidate('9/19 工作坊開放報名，歡迎一起參與').event
+    closed=Event('closed','slack','thread_reply','slack:C',NOW,text='更正：這是閉門座談，沒有開放報名',parent_id='e1')
+    c=candidate();c.event=Event('story-update:1:closed','slack','story_update','slack:C',NOW,text=closed.text)
+    c.evidence_events=[root,closed];c.thread_events=[closed]
+    result=write(c,None,NOW)
+    assert not result.needs_review
+    assert '閉門' in result.summary and '沒有開放報名' in result.summary
+    assert '歡迎一起參與' not in result.summary
+    assert result.evidence_ids==['e1','closed']
+
+
+def test_story_deadline_and_collaboration_fallback_uses_actual_update():
+    root=candidate().event
+    reply=Event('deadline','slack','thread_reply','slack:C',NOW,text='新增報名截止日期為9/23',parent_id='e1')
+    c=candidate();c.event=Event('story-update:1:deadline','slack','story_update','slack:C',NOW,text=reply.text)
+    c.evidence_events=[root,reply];c.thread_events=[reply]
+    result=write(c,None,NOW)
+    assert not result.needs_review
+    assert '2026-09-23' in result.summary
+    assert result.event_date=='2026-09-23'
+    assert result.evidence_ids==['e1','deadline']
+
+
+def test_incomplete_banquet_time_clause_cannot_be_fallback_copy():
+    result=write(candidate('昨天出席某個社群組織的晚宴時，在活動上收到邀請'),None,NOW)
+    assert '晚宴時' != result.summary[-3:]
+    assert text_errors('來源摘錄','2026-09-17出席社群基金會的晚宴時')
+
+
+def test_material_notes_revision_does_not_repeat_incomplete_root_clause():
+    root=candidate('昨天出席某個社群組織的晚宴時，在活动上收到邀請').event
+    notes=Event('notes','slack','thread_reply','slack:C',NOW,text='新增共筆，歡迎一起編輯 https://example.test/notes',parent_id='e1')
+    c=candidate();c.event=Event('story-update:1:notes','slack','story_update','slack:C',NOW,text=notes.text)
+    c.evidence_events=[root,notes];c.thread_events=[notes]
+    result=write(c,None,NOW)
+    assert not result.needs_review
+    assert '新增共筆' in result.summary
+    assert '晚宴' not in result.summary
+
+
+def test_model_review_request_is_not_silently_replaced_by_normal_fallback():
+    llm=Mock();data=response();data['needs_review']=True;data['review_reason']='Insufficient context'
+    llm.chat_json.return_value=data
+    result=write(candidate(),llm,NOW)
+    assert result.needs_review
+    assert result.model_review_requested
+    assert result.review_reason=='model_requested_review'
+    assert result.model_review_reasons==['Insufficient context','Insufficient context']
+
+
+def test_source_correction_fallback_retains_model_review_provenance():
+    root=candidate().event
+    correction=Event('cancel','slack','thread_reply','slack:C',NOW,text='更正：工作坊取消',parent_id='e1')
+    c=candidate();c.event=Event('story-update:1:cancel','slack','story_update','slack:C',NOW,text=correction.text)
+    c.evidence_events=[root,correction]
+    llm=Mock();data=response();data['needs_review']=True;data['review_reason']='Cancellation needs attribution'
+    llm.chat_json.return_value=data
+    result=write(c,llm,NOW)
+    assert not result.needs_review and '取消' in result.summary
+    assert result.model_review_requested
+    assert 'validated_attributed_source_correction' in result.review_reason

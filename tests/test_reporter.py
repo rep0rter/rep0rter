@@ -113,9 +113,7 @@ def test_stored_github_bots_are_hard_excluded_even_in_shadow(tmp_path):
             text='Release published with new public dataset https://example.test',reply_count=99,
             meta={'visibility':'public','eligible':True})])
         assert select_candidates(store,cfg,now)==[]
-        import json
-        decision=json.loads(store.conn.execute('SELECT decision FROM editorial_decisions').fetchone()[0])
-        assert decision['reasons']==['automation_author']
+        assert store.event_count()==0  # Automation is rejected before persistence or LLM/audit evidence.
 
 
 def test_stored_slack_github_integration_is_not_news(tmp_path):
@@ -125,3 +123,16 @@ def test_stored_slack_github_integration_is_not_news(tmp_path):
         store.upsert_events([Event('integration','slack','message','slack:C',now,author_name='GitHub',
             text='Release a new pull request fixing the CI dependency https://example.test',reply_count=99)])
         assert select_candidates(store,cfg,now)==[]
+
+
+def test_human_korean_github_pr_has_no_slack_legacy_requirement(tmp_path):
+    cfg=_cfg(tmp_path);cfg.editorial_mode='shadow'
+    now=time.time()
+    with Store(cfg.db_path) as store:
+        pr=Event('github:repo:pr:1','github','pull_request','github:repo',now,author_name='human-contributor',
+            text='시민들이 지역 환경 데이터를 쉽게 확인하도록 접근성과 검색 기능을 개선했습니다',
+            url='https://github.com/community/project/pull/1',meta={'visibility':'public','eligible':True,'content_format':'plain'})
+        store.upsert_events([pr])
+        picked=select_candidates(store,cfg,now)
+        assert [c.event.id for c in picked]==[pr.id]
+        assert picked[0].score==6

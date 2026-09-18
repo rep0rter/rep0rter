@@ -16,7 +16,7 @@ from .config import Config
 from .llm import LLM
 from .i18n import LANGUAGES
 from .slack_text import excerpt, to_plain
-from .editorial import evaluate, legacy_score, record_decision
+from .editorial import Decision, ensure_audit, evaluate, legacy_score, record_decision
 from .writer_contract import SYSTEM_PROMPT, text_errors, write, record_write
 from .store import Container, Event, Post, Store
 
@@ -34,6 +34,7 @@ class Candidate:
     user_names: dict[str, str] = field(default_factory=dict)
     thread_events: list[Event] = field(default_factory=list)
     evidence_events: list[Event] = field(default_factory=list)
+    selection_event_id: str | None = None
 
 
 # ---- selection ----------------------------------------------------------
@@ -48,7 +49,7 @@ def _allowed(store, event):
     return event_allowed(store, event)
 
 
-def select_candidates(store: Store, cfg: Config, now: float | None = None) -> list[Candidate]:
+def select_candidates(store: Store, cfg: Config, now: float | None = None, *, limit_all: bool = False) -> list[Candidate]:
     now = now if now is not None else time.time()
     since = now - cfg.max_item_age_hours * 3600
     user_names = store.user_names("slack")
@@ -67,7 +68,7 @@ def select_candidates(store: Store, cfg: Config, now: float | None = None) -> li
         container = store.get_container(e.container_id)
         replies_seen = store.reply_count_seen(e.id)
         decision = evaluate(e, container, cfg, now, replies_seen)
-        score = legacy_score(e, container, cfg, now, replies_seen) if mode == "shadow" else decision.score
+        score = legacy_score(e, container, cfg, now, replies_seen) if mode == "shadow" and e.source == "slack" else decision.score
         hard_exclusions = {"missing_verified_root", "internal_channel", "source_opt_out", "future_source_timestamp", "thread_reply_requires_story_update", "automation_author"}
         allowed = not any(r in hard_exclusions for r in decision.reasons)
         # Public source adapters apply source-specific admission before Slack-style ranking.
@@ -78,18 +79,19 @@ def select_candidates(store: Store, cfg: Config, now: float | None = None) -> li
         if not passes:
             continue
         cand = Candidate(event=e, container=container, score=score, reasons=decision.reasons,
-                         plain_text=to_plain(e.text, user_names), user_names=user_names)
+                         plain_text=to_plain(e.text, user_names), user_names=user_names, selection_event_id=e.id)
         replies = store.conn.execute("SELECT * FROM events WHERE parent_id=? ORDER BY ts DESC LIMIT 100", (e.id,)).fetchall()
         cand.thread_events = [r for r in (store._row_to_event(row) for row in replies) if _allowed(store, r)]
         cand.thread_excerpts = [f"{r.author_name}: {excerpt(to_plain(r.text, user_names), 120)}" for r in cand.thread_events[:12]]
         picked.append(cand)
     picked.sort(key=lambda c: (c.score, c.event.ts), reverse=True)
-    picked = picked[:cfg.max_items_per_run]
+    if not limit_all:
+        picked = picked[:cfg.max_items_per_run]
     selected = {c.event.id for c in picked}
     for e, container, replies_seen, decision, passes in observations:
         if passes and e.id not in selected:
             decision.reasons.append("per_run_limit")
-        record_decision(store, e, container, cfg, now, decision, e.id in selected, replies_seen, mode)
+        record_decision(store, e, container, cfg, now, decision, e.id in selected and not limit_all, replies_seen, mode)
     log.info("%d selected candidates (editorial mode %s)", len(picked), mode)
     return picked
 
@@ -136,6 +138,33 @@ def translate_post(post: Post, llm: LLM, languages=LANGUAGES) -> bool:
         return False
 
 
+def _record_final_selection(store,cfg,expanded,selected,now):
+    ensure_audit(store)
+    selected_ids={c.selection_event_id or c.event.id for c in selected}
+    expanded_ids={c.selection_event_id or c.event.id for c in expanded}
+    observed=set()
+    with store.conn:
+        for row in store.conn.execute('SELECT * FROM editorial_decisions WHERE evaluated_at=?',(now,)).fetchall():
+            key=row['event_id'];observed.add(key)
+            decision=json.loads(row['decision'])
+            decision['details']['selection_stage']='after_story_dedup'
+            if key in selected_ids:
+                reason='selected_after_story_dedup'
+            elif key in expanded_ids:
+                reason='per_run_limit'
+            else:
+                reason='excluded_or_existing_story'
+            decision['reasons'].append(reason)
+            store.conn.execute('UPDATE editorial_decisions SET selected=?,decision=? WHERE id=?',
+                (int(key in selected_ids),json.dumps(decision,ensure_ascii=False),row['id']))
+    for c in selected:
+        key=c.selection_event_id or c.event.id
+        if key not in observed:
+            decision=Decision(True,c.score,c.reasons+['selected_material_revision'],{'material_revision':c.score},
+                              details={'selection_stage':'after_story_dedup'})
+            record_decision(store,c.event,c.container,cfg,now,decision,True,mode=getattr(cfg,'editorial_mode','shadow'))
+
+
 def draft_posts(store: Store, cfg: Config, use_llm: bool = True) -> list[tuple[Candidate, Post]]:
     """Select and write candidates; persist decision/evidence audits, never posts or delivery."""
     llm = LLM(cfg) if (use_llm and cfg.llm_enabled) else None
@@ -143,7 +172,13 @@ def draft_posts(store: Store, cfg: Config, use_llm: bool = True) -> list[tuple[C
         log.info("LLM not configured, using plain-text fallback")
     now = time.time()
     drafts: list[tuple[Candidate, Post]] = []
-    for c in select_candidates(store, cfg, now):
+    from .stories import expand_candidates
+    expanded=expand_candidates(store,cfg,select_candidates(store, cfg, now, limit_all=True),now)
+    candidates=expanded[:cfg.max_items_per_run]
+    _record_final_selection(store,cfg,expanded,candidates,now)
+    for c in candidates:
+        if not _allowed(store,c.event) or any(not _allowed(store,e) for e in [*c.evidence_events,*c.thread_events]):
+            continue
         result = write(c, llm, now)
         record_write(store, c, result, now)
         if result.needs_review:

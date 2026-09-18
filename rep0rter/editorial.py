@@ -52,6 +52,12 @@ def evaluate(event, container, cfg, now: float, replies_seen: int = 0) -> Decisi
     without_urls = URL.sub("", plain)
     hits = list(dict.fromkeys(INTENT.findall(without_urls)))
     links = URL.findall(plain)
+    # GitHub adapters admit only public human-authored substantial releases,
+    # collaboration calls, and civic outcome PRs. They have no Slack baseline.
+    if event.source == "github" and event.meta.get("eligible") is True and event.kind in {"release", "issue", "pull_request"}:
+        hits = hits or ["source_verified:" + event.kind]
+        if event.url.startswith(("https://", "http://")):
+            links = list(dict.fromkeys([*links, event.url]))
     replies = max(0, event.reply_count, replies_seen)
     reactions = max(0, event.reaction_count)
     parts = {"topic": 4.0 if hits else 0.0, "date_or_link": 2.0 if DATE.search(body) or links else 0.0,
@@ -85,7 +91,7 @@ def evaluate(event, container, cfg, now: float, replies_seen: int = 0) -> Decisi
         reason = "cancellation_or_delay_requires_review"
     elif re.search(r"今天晚上|今晚|tonight|今夜|오늘\s*밤", plain, re.I) and datetime.fromtimestamp(now, TZ).date() > datetime.fromtimestamp(event.ts, TZ).date():
         reason = "tonight_crossed_source_day"
-    elif all(re.search(r"^[\s>]*[>「『\"]", line) for line in plain.splitlines() if INTENT.search(URL.sub("", line))):
+    elif INTENT.search(without_urls) and all(re.search(r"^[\s>]*[>「『\"]", line) for line in plain.splitlines() if INTENT.search(URL.sub("", line))):
         reason = "quoted_announcement_requires_review"
     if reason:
         return Decision(False, 0.0, [reason], parts, details=details)

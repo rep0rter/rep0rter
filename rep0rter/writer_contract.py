@@ -130,6 +130,8 @@ def text_errors(headline, summary, aliases=(), channel="") -> list[str]:
             errors.append(key + ":relative_date")
         if URL.search(value):
             errors.append(key + ":url_must_be_structured")
+        if re.search(r"(?:的時候|(?<!小)時|之前|之後|的話|以及|並且|\b(?:when|while|because|and|although))$", value.strip().rstrip("。.!！?？"), re.I):
+            errors.append(key + ":incomplete_clause")
         if author_mentioned(value, list(aliases)):
             errors.append(key + ":author_repeated")
     if isinstance(headline, str):
@@ -147,6 +149,8 @@ class WriteResult:
     translations: dict = field(default_factory=dict)
     writer_mode: str = "fallback"
     model: str | None = None
+    model_review_requested: bool = False
+    model_review_reasons: list[str] = field(default_factory=list)
     validation_errors: list[str] = field(default_factory=list)
     evidence_ids: list[str] = field(default_factory=list)
     event_date: str | None = None
@@ -223,21 +227,39 @@ def fallback(bundle, errors=None) -> WriteResult:
     root = bundle["evidence"][0]
     text = root["text"]
     result = WriteResult(validation_errors=list(errors or []), evidence_ids=[root["id"]], bundle=bundle)
-    corrections = [r for r in bundle["evidence"] if CANCEL.search(r["text"])]
-    if corrections:
-        if not bundle["metadata"].get("story_update"):
-            result.needs_review, result.review_reason = True, "cancellation_or_delay_requires_review"
+    if bundle["metadata"].get("story_update"):
+        # Publish the actual correction, never fall back to the superseded invitation.
+        from .stories import UPDATE, CORRECTION
+        records = {r["id"]: r for r in bundle["evidence"] if r["id"] != root["id"]}
+        if not records:
+            records = {root["id"]: root}  # a material edit to the canonical root itself
+        ordered = sorted(records.values(), key=lambda r: (bool(CANCEL.search(r["text"]) or CLOSED.search(r["text"])), r["source_time"]), reverse=True)
+        selected = []
+        evidence_ids = [root["id"]]
+        for record in ordered:
+            clean = URL.sub("", record["text"])
+            clauses = [c.strip(" \t\r\n*_~`()（）-。！？!?，,：:；;、.") for c in re.split(r"\n|(?<=[。！？!?；;])", clean)]
+            clauses = sorted(clauses, key=lambda c: bool(CORRECTION.search(c)), reverse=True)
+            for clause in clauses:
+                if not clause or not UPDATE.search(clause) or clause in selected:
+                    continue
+                summary = "討論更正：" + "；".join([*selected, clause])
+                if not text_errors("來源資訊更新", summary, bundle["metadata"]["author_aliases"]):
+                    selected.append(clause)
+                    evidence_ids.append(record["id"])
+            if len(selected) >= 3:
+                break
+        if selected:
+            result.headline = "來源資訊更新"
+            result.summary = "討論更正：" + "；".join(selected)
+            result.evidence_ids = list(dict.fromkeys(evidence_ids))
+            dates = re.findall(r"\d{4}-\d{2}-\d{2}", result.summary)
+            result.event_date = dates[0] if dates else None
             return result
-        # An explicit story correction is attributed and quoted from its actual source.
-        latest = max(corrections, key=lambda r: r["source_time"])
-        correction = URL.sub("", latest["text"]).strip()
-        result.headline = "討論更正活動資訊"
-        result.summary = "討論更正：" + correction
-        result.evidence_ids = list(dict.fromkeys([root["id"], latest["id"]]))
-        if not text_errors(result.headline, result.summary, bundle["metadata"]["author_aliases"]):
-            return result
-        result.headline = result.summary = ""
         result.needs_review, result.review_reason = True, "correction_requires_shorter_reviewed_excerpt"
+        return result
+    if any(CANCEL.search(r["text"]) for r in bundle["evidence"]):
+        result.needs_review, result.review_reason = True, "cancellation_or_delay_requires_review"
         return result
     clean = URL.sub("", text)
     clean = re.sub(r"<@[^>]+>|:[a-zA-Z0-9_+-]+:", "", clean)
@@ -265,12 +287,15 @@ def write(candidate, llm, now) -> WriteResult:
         return fallback(bundle)
     data = None
     valid = {}
+    model_review_reasons = []
     for attempt in range(2):
         payload = dict(bundle)
         if errors:
             payload["rewrite_required"] = errors
         try:
             data = llm.chat_json(SYSTEM_PROMPT, json.dumps(payload, ensure_ascii=False))
+            if isinstance(data,dict) and data.get("needs_review") is True:
+                model_review_reasons.append(str(data.get("review_reason") or "requested"))
             valid, current = validate_response(data, bundle)
             errors.extend(current)
             if not current:
@@ -281,6 +306,17 @@ def write(candidate, llm, now) -> WriteResult:
     base = valid.get("zh-TW")
     result = fallback(bundle, errors) if base is None else WriteResult(headline=base["headline"], summary=base["summary"], writer_mode="llm", validation_errors=errors, bundle=bundle)
     result.translations = valid
+    result.model_review_requested = bool(model_review_reasons)
+    result.model_review_reasons = model_review_reasons
+    if model_review_reasons:
+        if result.writer_mode == "fallback":
+            if bundle["metadata"].get("story_update") and not result.needs_review:
+                result.review_reason = "model_requested_review; validated_attributed_source_correction"
+            else:
+                result.needs_review = True
+                result.review_reason = "model_requested_review"
+        else:
+            result.review_reason = "model_review_resolved_on_retry"
     model = getattr(llm, "model", None)
     result.model = model if isinstance(model, str) else None
     if valid:
@@ -299,4 +335,5 @@ def record_write(store, candidate, result, now):
           json.dumps(result.validation_errors), json.dumps(result.evidence_ids), json.dumps(result.bundle, ensure_ascii=False),
           json.dumps({"headline": result.headline, "summary": result.summary, "translations": result.translations,
                       "event_date": result.event_date, "participation_url": result.participation_url,
-                      "review_reason": result.review_reason}, ensure_ascii=False), int(result.needs_review)))
+                      "review_reason": result.review_reason, "model_review_requested": result.model_review_requested,
+                      "model_review_reasons": result.model_review_reasons}, ensure_ascii=False), int(result.needs_review)))

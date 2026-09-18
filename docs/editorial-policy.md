@@ -70,3 +70,18 @@ facts, evidence snapshots allow review, and ambiguous cancellation/relative-time
 cases are held. Long URLs stay in structured audit fields and source links.
 The initial relative-date resolver handles explicit day offsets and month/day
 references (including December-to-January); ambiguous weekends stay reviewable.
+
+New public source adapters have no historical Slack scoring baseline: GitHub
+items already admitted by the human-content source policy use bounded proposed
+scores even during Slack shadow mode. Their public issue/release/PR URL is
+source evidence, and typed admission does not require Chinese keywords.
+
+The final per-run cap is applied after story deduplication. Decision rows record
+actual selection after this step so repeated crossposts cannot starve distinct
+stories. Privacy is rechecked against the root and all evidence immediately
+before model invocation.
+
+A model `needs_review` request is retained in writer audit provenance. Ordinary
+fallback does not override it. For a material story correction, a separately
+validated attributed extract can publish the source correction; the audit
+explicitly records both the model's review request and this fallback decision.
