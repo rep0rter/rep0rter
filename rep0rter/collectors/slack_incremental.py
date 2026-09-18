@@ -183,8 +183,8 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
     # Missing parents and active root snapshots share a persistent, bounded queue.
     queue = read_state(store, 'slack:root_refresh')
     missing = store.conn.execute("SELECT DISTINCT e.parent_id FROM events e LEFT JOIN events root ON root.id=e.parent_id WHERE e.source='slack' AND e.parent_id IS NOT NULL AND root.id IS NULL").fetchall()
-    tracked = store.conn.execute("SELECT e.id FROM events e WHERE e.source='slack' AND e.kind='message' AND e.ts>=? ORDER BY e.last_seen LIMIT 100", (now - 48*3600,)).fetchall()
-    older = store.conn.execute("SELECT e.id FROM events e WHERE e.source='slack' AND e.kind='message' AND e.ts<? ORDER BY e.last_seen LIMIT 2", (now - 48*3600,)).fetchall()
+    tracked = store.conn.execute("SELECT e.id FROM events e WHERE e.source='slack' AND e.kind='message' AND e.ts>=? AND NOT EXISTS(SELECT 1 FROM event_tombstones t WHERE t.event_id=e.id) AND json_extract(e.meta,'$.deleted_at') IS NULL ORDER BY e.last_seen LIMIT 100", (now - 48*3600,)).fetchall()
+    older = store.conn.execute("SELECT e.id FROM events e WHERE e.source='slack' AND e.kind='message' AND e.ts<? AND NOT EXISTS(SELECT 1 FROM event_tombstones t WHERE t.event_id=e.id) AND json_extract(e.meta,'$.deleted_at') IS NULL ORDER BY e.last_seen LIMIT 2", (now - 48*3600,)).fetchall()
     due_ids = {r[0] for r in missing} | {r[0] for r in tracked} | {r[0] for r in older}
     for root_id in sorted(due_ids, key=lambda root: queue.get(root, {}).get('attempted_at', 0))[:4]:
         last = queue.get(root_id, {})
@@ -193,7 +193,7 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         if store.conn.execute('SELECT 1 FROM event_tombstones WHERE event_id=?', (root_id,)).fetchone():
             continue
         existing_root = store.get_event(root_id)
-        if existing_root and not _allowed(store, event=existing_root):
+        if existing_root and (existing_root.meta.get('deleted_at') or existing_root.meta.get('content_status') == 'deleted' or not _allowed(store, event=existing_root)):
             continue
         _, channel_id, root_ts = root_id.split(':', 2)
         if channel_id not in public_ids or not _allowed(store, container_id='slack:' + channel_id):
