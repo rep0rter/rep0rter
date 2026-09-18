@@ -119,9 +119,11 @@ def collect(store, accounts, session, metrics, days=2):
                     if parent_id:
                         event.parent_id = parent_id
             # Bounded rotating rechecks preserve edits and propagate deletions/visibility changes.
-            tracked = store.conn.execute('SELECT * FROM events WHERE container_id=? ORDER BY last_seen LIMIT 4', (cid,)).fetchall()
+            tracked = store.conn.execute("SELECT e.* FROM events e WHERE e.container_id=? AND NOT EXISTS (SELECT 1 FROM event_tombstones t WHERE t.event_id=e.id) AND json_extract(e.meta,'$.deleted_at') IS NULL AND COALESCE(json_extract(e.meta,'$.visibility'),'unknown')='public' AND json_extract(e.meta,'$.external_id') IS NOT NULL ORDER BY e.last_seen LIMIT 4", (cid,)).fetchall()
             for row in tracked:
                 old = store._row_to_event(row)
+                if not event_allowed(store, old) or not old.meta.get('external_id'):
+                    continue
                 response = session.get(instance + '/api/v1/statuses/' + quote(old.meta['external_id'], safe=''), timeout=30)
                 if response.status_code in (404, 410):
                     old.text = old.html = ''

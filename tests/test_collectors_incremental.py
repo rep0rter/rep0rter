@@ -150,3 +150,39 @@ def test_partial_homepage_drop_fails_before_any_cursor_or_directory_write(tmp_pa
         assert read_state(store,'slack:C')['last_complete_ts']=='100'
         assert read_state(store,'slack:health')['last_good_directory_count']==100
         assert not store.event_count()
+
+
+def test_initial_empty_after_verified_by_unbounded_older_head(monkeypatch):
+    get=pages(monkeypatch,[[],[{'ts':'80','text':'older'}]])
+    rows,complete,error,resume=inc.scan(Mock(),'C',Decimal('90'))
+    assert rows==[] and complete and not error
+    assert 'after' in get.call_args_list[0].kwargs
+    assert 'after' not in get.call_args_list[1].kwargs and 'before' not in get.call_args_list[1].kwargs
+
+
+def test_persisted_gap_has_reason_and_available_history_split(tmp_path,monkeypatch):
+    channel=inc.api.ChannelRow('C','public','','',10,100,None)
+    monkeypatch.setattr(inc.api,'fetch_channels',lambda session:[channel])
+    pages(monkeypatch,[[],[]])
+    with Store(tmp_path/'db') as store:
+        inc.collect(store,session=Mock(headers={}))
+        health=read_state(store,'slack:health')
+        assert health['available'] and not health['history_complete'] and not health['healthy']
+        assert 'ambiguous empty page' in health['reasons']['slack:C']
+        assert 'ambiguous empty page' in json.loads(store.get_kv('collector_errors'))['slack:C']['error']
+
+
+def test_slack_tombstone_root_is_not_refreshed(tmp_path,monkeypatch):
+    from datetime import datetime,timezone
+    now=1000000
+    monkeypatch.setattr(inc.time,'time',lambda:now)
+    channel=inc.api.ChannelRow('C','public','','',10,100,datetime.fromtimestamp(now,timezone.utc))
+    monkeypatch.setattr(inc.api,'fetch_channels',lambda session:[channel])
+    get=pages(monkeypatch,[[{'ts':'800000'}]])
+    with Store(tmp_path/'db') as store:
+        with store.conn:
+            store.conn.execute('INSERT INTO event_tombstones VALUES(?,?,?)',('slack:C:900000',900000,'excluded'))
+        # A recent root is retained as a blank record after redaction.
+        store.conn.execute("INSERT INTO events(id,source,kind,container_id,ts,first_seen,last_seen,meta) VALUES(?,?,?,?,?,?,?,?)",('slack:C:900000','slack','message','slack:C',900000,900000,900000,'{}'));store.conn.commit()
+        inc.collect(store,session=Mock(headers={}))
+        assert get.call_count==1

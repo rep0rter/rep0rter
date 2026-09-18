@@ -37,6 +37,15 @@ def scan(session, channel_id, lower, *, max_pages=30, start_before=None):
             return list(collected.values()), False, 'request budget exhausted', before
         if not isinstance(payload, dict) or not isinstance(payload.get('messages'), list):
             raise RuntimeError('unavailable channel or invalid archive response')
+        if not payload['messages'] and before is None and not collected:
+            # An unbounded head page can establish an older raw bound for a quiet
+            # channel. The homepage last-posted alone cannot prove this.
+            try:
+                payload = api._get(session, api.BASE_URL + '/index/getmessage', channel=channel_id, count=100).json()
+            except BudgetExceeded:
+                return [], False, 'request budget exhausted while verifying empty after page', None
+            if not isinstance(payload, dict) or not isinstance(payload.get('messages'), list):
+                raise RuntimeError('unavailable channel or invalid empty-page verification response')
         if not payload['messages']:
             return list(collected.values()), False, 'ambiguous empty page: upstream exposes no raw cursor', None
         page = {}
@@ -84,7 +93,8 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
     if previous_count and len(channels) < previous_count * .5:
         raise RuntimeError(f'archive public directory suddenly shrank from {previous_count} to {len(channels)}; retaining prior state')
     public_ids = {ch.id for ch in channels}
-    failures, total = 0, 0
+    failures, total, transport_failures = 0, 0, 0
+    reasons = {}
     selected = []
     quiet = []
     for channel in channels:
@@ -141,6 +151,7 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
                 next_state.update(last_complete_ts=str(high), last_success=time.time(), pending_before=None, pending_lower=None, pending_high=None)
             else:
                 failures += 1
+                reasons[cid] = error
                 next_state.update(pending_before=resume_before, pending_lower=str(lower) if resume_before else None, pending_high=str(high) if resume_before else None)
             if due:
                 next_state['last_refresh'] = now
@@ -156,13 +167,16 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
             total += len(events)
         except BudgetExceeded as exc:
             next_state.update(error=str(exc), gap=True)
+            reasons[cid] = str(exc)
             with store.conn:
                 write_state(store, cid, next_state)
             failures += 1
             break
         except Exception as exc:
             log.warning('Slack channel %s failed: %s', channel.id, exc)
+            transport_failures += 1
             next_state.update(error=str(exc), gap=True)
+            reasons[cid] = str(exc)
             with store.conn:
                 write_state(store, cid, next_state)
             failures += 1
@@ -175,6 +189,11 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
     for root_id in sorted(due_ids, key=lambda root: queue.get(root, {}).get('attempted_at', 0))[:4]:
         last = queue.get(root_id, {})
         if now - last.get('attempted_at', 0) < REFRESH_INTERVAL:
+            continue
+        if store.conn.execute('SELECT 1 FROM event_tombstones WHERE event_id=?', (root_id,)).fetchone():
+            continue
+        existing_root = store.get_event(root_id)
+        if existing_root and not _allowed(store, event=existing_root):
             continue
         _, channel_id, root_ts = root_id.split(':', 2)
         if channel_id not in public_ids or not _allowed(store, container_id='slack:' + channel_id):
@@ -195,11 +214,23 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
             break
         except Exception as exc:
             queue[root_id] = {'attempted_at': now, 'resolved': False, 'error': str(exc)}
+            reasons[root_id] = str(exc)
+            transport_failures += 1
             failures += 1
+    # Unresolved debt must not disappear from health merely because a retry is not due.
+    for channel in channels:
+        cid = 'slack:' + channel.id
+        state = read_state(store, cid)
+        if _allowed(store, container_id=cid) and state.get('gap') and state.get('error'):
+            reasons.setdefault(cid, state['error'])
+    failures = max(failures, len(reasons))
     queue = {k:v for k,v in queue.items() if k in due_ids or now-v.get('attempted_at',0)<7*86400}
     with store.conn:
         write_state(store, 'slack:root_refresh', queue)
         write_state(store, 'slack:health', {'last_attempt_at': now, 'containers': len(channels), 'failed_channels': failures,
-                   'healthy': failures == 0, 'last_good_directory_count': len(channels), 'fingerprint': hashlib.sha256(repr(channels).encode()).hexdigest(),
+                   'healthy': failures == 0, 'available': transport_failures == 0, 'history_complete': failures == 0, 'reasons': reasons, 'last_good_directory_count': len(channels), 'fingerprint': hashlib.sha256(repr(channels).encode()).hexdigest(),
                    'metrics': asdict(metrics)})
+    from .registry import record_source_error
+    for channel, reason in reasons.items():
+        record_source_error(store, channel, reason)
     return total

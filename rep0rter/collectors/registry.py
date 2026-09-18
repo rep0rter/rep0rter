@@ -72,7 +72,9 @@ def collect_all(store, days=2, max_channels=None, config=None, *, session=None):
             count = state.get('failed_channels', sum(1 for source in errors if source.startswith(name)))
             failures += count
             containers += state.get('containers', 0)
-            sources[name] = {'healthy': count == 0, 'events': n, 'failed_channels': count}
+            sources[name] = {'healthy': count == 0, 'available': state.get('available', count == 0),
+                             'history_complete': state.get('history_complete', count == 0),
+                             'events': n, 'failed_channels': count, 'reasons': state.get('reasons', {})}
         except Exception as exc:
             failures += 1
             record_source_error(store, name, exc)

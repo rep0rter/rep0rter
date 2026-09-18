@@ -67,6 +67,7 @@ def to_event(raw, repo, kind, *, editorial_override=False):
               'eligible': bool(eligible), 'automation': automation, 'editorial_override': editorial_override, 'avatar_url': author.get('avatar_url', ''), 'source_name': 'GitHub',
               'container_kind': 'repository', 'labels': sorted(labels),
               'engagement': {'github_comments': int(raw.get('comments') or 0), 'github_reactions': int((raw.get('reactions') or {}).get('total_count') or 0)},
+              'lifecycle': {key: raw.get(key) for key in ('state', 'merged_at', 'published_at', 'draft', 'prerelease')},
               'relations': {}, 'raw_version': 1})
 
 

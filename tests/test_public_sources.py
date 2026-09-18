@@ -192,3 +192,26 @@ def test_human_fix_ci_scope_is_excluded_even_with_impact_heading():
     raw=release(name='',title='fix(ci): restrict workflow permissions',user={'login':'human','type':'User'},body='## Impact\nPublic dataset workflow security has improved through restricted permissions and build tokens.',merged_at='2026-09-18T00:00:00Z')
     assert github.is_automation(raw,'pull_request')
     assert not eligible(github.to_event(raw,'example/civic','pull_request'))
+
+
+def test_mastodon_scrubbed_tombstone_is_not_rechecked(tmp_path,monkeypatch):
+    monkeypatch.setattr(mastodon.time,'time',lambda:1789689600)
+    actor='https://social.example/@civic';account={'id':'1','url':actor,'acct':'civic'}
+    with Store(tmp_path/'db') as store:
+        session=Mock();session.get.side_effect=[response(account),response([status()])]
+        mastodon.collect(store,[actor],session,Metrics())
+        eid=mastodon.object_id(status()['uri'])
+        with store.conn:
+            store.conn.execute('UPDATE events SET meta=?,text=? WHERE id=?',(json.dumps({'deleted_at':123,'visibility':'unknown'}),'',eid))
+            store.conn.execute('INSERT INTO event_tombstones VALUES(?,?,?)',(eid,123,'test withdrawal'))
+        session.reset_mock();session.get.side_effect=[response(account),response([])]
+        mastodon.collect(store,[actor],session,Metrics())
+        assert session.get.call_count==2
+        assert read_state(store,'mastodon-account:'+actor)['error']==''
+
+
+def test_lifecycle_source_facts_preserved_for_writer_evidence():
+    event=github.to_event(release(state='closed',merged_at='2026-09-18T00:00:00Z'),'example/civic','pull_request')
+    assert event.meta['lifecycle']['state']=='closed'
+    assert event.meta['lifecycle']['merged_at']=='2026-09-18T00:00:00Z'
+    assert 'draft' in event.meta['lifecycle']
