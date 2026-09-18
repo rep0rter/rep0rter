@@ -184,6 +184,46 @@ def _issue(issues, key, detail):
     issues[key] = detail
 
 
+class _PolicyReadView:
+    """Minimal event reader for policy evaluation, with no Store initialization."""
+    def __init__(self, conn):
+        self.conn = conn
+
+    def get_event(self, event_id):
+        from .store import Event
+        row = self.conn.execute('SELECT * FROM events WHERE id=?', (event_id,)).fetchone()
+        if row is None:
+            return None
+        values = {key: row[key] for key in Event.__dataclass_fields__ if key != 'meta'}
+        return Event(**values, meta=json.loads(row['meta'] or '{}'))
+
+
+def _latest_visible_post_at(conn):
+    """Match publication policy without migrating historical DBs or modifying ledgers."""
+    from .policy import event_allowed
+    view = _PolicyReadView(conn)
+    tables = set(_tables(conn))
+    policy_available = {'policy_rules', 'event_tombstones'} <= tables
+    query = 'SELECT p.event_id,p.published_at FROM posts p'
+    if 'retractions' in tables:
+        query += ' WHERE NOT EXISTS (SELECT 1 FROM retractions r WHERE r.post_id=p.id)'
+    query += ' ORDER BY p.published_at DESC'
+    for row in conn.execute(query):
+        event = view.get_event(row['event_id'])
+        if event is None:
+            continue
+        if policy_available:
+            allowed = event_allowed(view, event)
+        else:
+            # Older schemas have no policy tables; still honor known deletion and
+            # visibility rather than inventing policy rows in a read-only check.
+            allowed = (not event.meta.get('deleted_at') and event.meta.get('content_status') != 'deleted'
+                       and event.meta.get('visibility', 'public' if event.source == 'slack' else 'unknown') == 'public')
+        if allowed:
+            return row['published_at']
+    return None
+
+
 def check_health(db_path, *, backup_dir=None, now=None, stale_seconds=9000,
                  min_free_bytes=512 * 1024**2, site_url=None, get=requests.get):
     """No migrations, writes, alerts, collection or LLM calls."""
@@ -215,7 +255,7 @@ def check_health(db_path, *, backup_dir=None, now=None, stale_seconds=9000,
             negative = conn.execute('SELECT count(*) FROM events WHERE first_seen < ts - 1').fetchone()[0]
             if negative:
                 _issue(issues, 'clock_skew', f'{negative} event(s) have negative acquisition delay')
-            latest_post = conn.execute('SELECT max(published_at) FROM posts').fetchone()[0]
+            latest_post = _latest_visible_post_at(conn)
             details['latest_post_at'] = latest_post
     except (sqlite3.Error, OSError, ValueError, TypeError):
         _issue(issues, 'database_unreadable', 'Database or health metadata could not be read')
