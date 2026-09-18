@@ -57,6 +57,7 @@ class ChannelRow:
     num_members: int
     total_messages: int
     last_posted_at: datetime | None
+    last_synced_at: datetime | None = None
 
 
 def make_session() -> requests.Session:
@@ -117,6 +118,7 @@ def fetch_channels(session: requests.Session) -> list[ChannelRow]:
                 num_members=int(str(data.get("num_members") or 0).replace(",", "")),
                 total_messages=int(cells[3].replace(",", "") or 0),
                 last_posted_at=last_posted,
+                last_synced_at=_parse_archive_datetime(cells[6]),
             ))
         except (ValueError, TypeError, KeyError, AttributeError) as exc:
             log.warning("degraded channel listing: skipping malformed row (%s)", exc)
@@ -232,6 +234,13 @@ def to_event(raw: dict, channel_id: str, public_channel_ids: set[str] | None = N
         reaction_count=sum(r["count"] for r in reactions),
         meta={
             **content_meta,
+            "is_bot": bool(user.get("is_bot") or raw.get("bot_id")),
+            "bot_id": raw.get("bot_id"), "app_id": raw.get("app_id"), "subtype": raw.get("subtype"),
+            "visibility": "public", "source_instance": BASE_URL, "external_id": ts,
+            "canonical_object_id": event_id(channel_id, ts), "content_format": "mrkdwn",
+            "updated_at": (raw.get("edited") or {}).get("ts") if isinstance(raw.get("edited"), dict) else None,
+            "engagement": {"slack_reactions": sum(r["count"] for r in reactions), "slack_replies": int(raw.get("reply_count") or 0)},
+            "relations": {"reply_to": event_id(channel_id, thread_ts) if is_reply else None},
             "reactions": reactions, "files": files, "reply_users_count": raw.get("reply_users_count", 0),
             "avatar_url": next((profile.get(k) for k in ("image_192", "image_72", "image_48", "image_24")
                                 if isinstance(profile.get(k), str) and profile[k].startswith("https://")), ""),
@@ -243,45 +252,9 @@ def to_event(raw: dict, channel_id: str, public_channel_ids: set[str] | None = N
 
 
 def collect(store: Store, days: int = 2, max_channels: int | None = None, session: requests.Session | None = None) -> int:
-    """Fetch every public channel that posted in the window and upsert its messages."""
-    session = session or make_session()
-    now = datetime.now(timezone.utc)
-    since = now - timedelta(days=days)
-
-    channels = fetch_channels(session)
-    log.info("archive lists %d public channels", len(channels))
-
-    # Skip channels that were quiet for the whole window, with a one-day margin
-    # because "last posted" on the homepage is only as fresh as the last sync.
-    margin = since - timedelta(days=1)
-    active = [c for c in channels if c.last_posted_at is None or c.last_posted_at >= margin]
-    active.sort(key=lambda c: c.last_posted_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
-    if max_channels:
-        active = active[:max_channels]
-    log.info("%d channels posted within the last %d days", len(active), days)
-
-    total = 0
-    public_channel_ids = {c.id for c in channels}
-    for i, ch in enumerate(active, 1):
-        store.upsert_container(Container(
-            id=f"{SOURCE}:{ch.id}", source=SOURCE, name=ch.name, topic=ch.topic, purpose=ch.purpose,
-            num_members=ch.num_members, url=channel_url(ch.id),
-        ))
-        events: list[Event] = []
-        for raw in iter_messages(session, ch.id, since):
-            event, author = to_event(raw, ch.id, public_channel_ids)
-            events.append(event)
-            if author:
-                store.upsert_user(*author)
-            for uid, name in mention_names_from_html(event.text, event.html).items():
-                store.upsert_user_name(f"{SOURCE}:{uid}", name)
-        if not events:
-            continue
-        n = store.upsert_events(events)
-        total += n
-        log.info("[%d/%d] #%s: %d messages", i, len(active), ch.name, n)
-    log.info("collected %d slack events", total)
-    return total
+    """Collect via durable overlap cursors, bounded refresh and source health."""
+    from .slack_incremental import collect as incremental_collect
+    return incremental_collect(store, days, max_channels, session)
 
 
 def export_json(store: Store, days: int, out_path: str) -> dict:
