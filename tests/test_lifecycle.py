@@ -110,3 +110,57 @@ def test_exclusion_arriving_during_card_render_prevents_transport(tmp_path, monk
         monkeypatch.setattr(delivery.telegram,'send_photo',forbidden)
         assert delivery.deliver_pending(config,store)=={}
         assert store.conn.execute('SELECT status FROM delivery_jobs').fetchone()[0]=='failed'
+
+
+def test_redaction_sanitizes_all_cached_generations_even_when_rebuild_fails(tmp_path, monkeypatch):
+    import hashlib
+    import pytest
+    from bs4 import BeautifulSoup
+    from PIL import Image
+    from xml.etree import ElementTree as ET
+    from rep0rter.config import Config
+    from rep0rter.i18n import LANGUAGES, page_name, feed_name
+    from rep0rter.publishers import site
+    from rep0rter.store import Container
+
+    config=Config(data_dir=tmp_path,site_url='https://site.invalid')
+    def render(renderer,event,container,names):
+        path=renderer.cfg.site_dir/'cards'/(hashlib.sha256(event.id.encode()).hexdigest()+'.png')
+        path.parent.mkdir(parents=True,exist_ok=True)
+        Image.new('RGB',(2,2),'white').save(path)
+        return path
+    monkeypatch.setattr(site.CardRenderer,'render',render)
+    with Store(config.db_path) as store:
+        store.upsert_container(Container('slack:C','slack','source'))
+        for i in (1,2):
+            source=Event(f'slack:C:{i}','slack','message','slack:C',100+i,author_id=f'U{i}',
+                         author_name=f'AUTHOR{i}',text=f'ORIGINAL{i}',url=f'https://source.invalid/{i}')
+            store.upsert_events([source],now=150)
+            translations={code:{'headline':f'{code} HEADLINE{i}','summary':f'{code} SUMMARY{i}'} for code in LANGUAGES}
+            store.add_post(Post(source.id,180+i,7,f'HEADLINE{i}',f'SUMMARY{i}',translations=translations))
+        site.build(store,config)
+        site.build(store,config)  # Keep both a current symlink and previous generation.
+        survivor_before=BeautifulSoup((config.site_dir/'index.html').read_text(),'html.parser').find('article',id='1')
+        survivor_links=[a['href'] for a in survivor_before.find_all('a',href=True)]
+        survivor_text=survivor_before.get_text()
+        policy.redact(store,['slack:C:2'])
+        def fail(*args,**kwargs):
+            raise RuntimeError('simulated renderer failure')
+        monkeypatch.setattr(site,'_build',fail)
+        with pytest.raises(RuntimeError,match='renderer failure'):
+            site.build(store,config)
+        for root in (tmp_path/'.site-releases').iterdir():
+            for path in list(root.rglob('*.html'))+list(root.rglob('*.xml')):
+                text=path.read_text()
+                assert not any(secret in text for secret in ('ORIGINAL2','AUTHOR2','HEADLINE2','SUMMARY2','https://source.invalid/2'))
+            assert not list((root/'cards').glob('*.png'))
+            for code in LANGUAGES:
+                doc=BeautifulSoup((root/'posts/2'/page_name(code)).read_text(),'html.parser')
+                assert doc.find('meta',attrs={'name':'robots'})['content']=='noindex'
+                assert not doc.find('meta',attrs={'property':'og:title'})
+                assert doc.html['lang']==code
+                guids=[item.findtext('guid') for item in ET.parse(root/feed_name(code)).findall('./channel/item')]
+                assert guids==['1']
+        survivor_after=BeautifulSoup((config.site_dir/'index.html').read_text(),'html.parser').find('article',id='1')
+        assert survivor_after.get_text()==survivor_text
+        assert [a['href'] for a in survivor_after.find_all('a',href=True)]==survivor_links

@@ -96,7 +96,7 @@ def test_health_failures_stale_backup_disk_and_clock(operational_db, tmp_path):
             conn.execute('INSERT INTO runs(started_at,finished_at,error) VALUES (?,?,?)', (200 + i, 210 + i, 'failed'))
         conn.execute("UPDATE events SET first_seen=90 WHERE id='event'")
         conn.execute('INSERT INTO runs(started_at) VALUES (200)')
-    result = ops.check_health(operational_db, now=1000000, backup_dir=tmp_path / 'missing', min_free_bytes=10**30)
+    result = ops.check_health(operational_db, now=1000000, backup_dir=tmp_path / 'missing', min_free_bytes=10**30, require_offsite=True)
     assert {'collection_stale', 'backup_stale', 'offsite_backup_stale', 'disk_low', 'run_stuck', 'clock_skew'} <= result['issues'].keys()
     # Current unfinished run does not falsely count as a completed failure.
     assert 'consecutive_failures' not in result['issues']
@@ -208,3 +208,16 @@ def test_maintenance_backup_failure_does_not_advance_success(operational_db, tmp
     assert 'backup_failed' in result['health']['issues']
     assert ops._read_json(tmp_path / 'backups' / 'maintenance.json').get('backed_up_at') is None
     assert not (tmp_path / 'backups' / 'alerts.json').exists()
+
+
+def test_offsite_is_optional_unless_explicitly_configured(operational_db,tmp_path,monkeypatch):
+    directory=tmp_path/'backups'
+    ops.backup_database(operational_db,directory,now=200)
+    local=ops.check_health(operational_db,backup_dir=directory,now=210,min_free_bytes=0)
+    assert local['healthy']
+    assert 'offsite_backup_stale' not in local['issues']
+    required=ops.check_health(operational_db,backup_dir=directory,now=210,min_free_bytes=0,require_offsite=True)
+    assert 'offsite_backup_stale' in required['issues']
+    monkeypatch.setenv('REP0RTER_BACKUP_OFFSITE','backup@example.invalid:/dedicated')
+    configured=ops.check_health(operational_db,backup_dir=directory,now=210,min_free_bytes=0)
+    assert 'offsite_backup_stale' in configured['issues']

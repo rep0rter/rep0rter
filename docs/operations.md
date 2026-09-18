@@ -42,9 +42,10 @@ snapshot that week. Configure `REP0RTER_BACKUP_OFFSITE=backup@host:/directory` a
 an explicitly mounted read-only SSH configuration with verified `known_hosts`
 for a separate host. `rsync` and `ssh` must be installed. No destination is
 invented, no host key checking is disabled, no remote files are deleted. Apply
-remote retention at that destination if needed. Without a verified offsite copy,
-health deliberately reports `offsite_backup_stale`; a local snapshot does not
-satisfy the off-host requirement. Backup/rsync failures do not advance the
+remote retention at that destination if needed. Off-host backups are optional by the operator's explicit choice. Health only
+requires an offsite copy when `REP0RTER_BACKUP_OFFSITE` is configured or
+`health --require-offsite` is requested; local daily/weekly backups and restore
+drills are the default. A local snapshot is never described as an off-host copy. Backup/rsync failures do not advance the
 maintenance success marker and are retried next hour.
 
 The restore drill creates a new temporary database, checks checksum, integrity,
@@ -62,6 +63,16 @@ drill and health checks, rebuild the site, then start the worker. Never restore
 an old exclusions companion over a newer live ledger. Keep external policy
 copies current on the backup host to survive loss of the primary host.
 
+## Withdrawal during rendering failures
+
+Withdrawal immediately sanitizes every current and retained site generation under
+the site build lock, before requesting a full rebuild. Matching articles and RSS
+GUIDs are removed, permanent pages become generic four-language notices without
+personal metadata, and derived image caches are purged. These are atomic per-file
+replacements, so a later renderer failure does not keep withdrawn text online.
+Surviving article text and link targets remain intact. A subsequent successful
+build restores the normal layout and regenerates allowed cards.
+
 ## Read-only health and explicit administrator alerts
 
 ```sh
@@ -73,7 +84,7 @@ python -m rep0rter maintenance --send-alerts   # explicit administrator transpor
 Checks include DB readability, verified healthy collection within 2.5 hours,
 latest degraded collection, three consecutive failed runs, unfinished runs over
 2.5 hours, negative source/first-seen delay, free disk reserve (default 512 MiB),
-backup/offsite ages <= 26 hours, HTTP response and RSS parsing. The feed's newest
+local backup age <= 26 hours (also offsite age when explicitly configured), HTTP response and RSS parsing. The feed's newest
 publication is compared with the persisted latest post, so a legitimately quiet
 community does not trigger a stale-news alarm. Collection freshness remains a
 separate check. Invalid source pages must not advance healthy collection state.

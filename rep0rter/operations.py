@@ -225,9 +225,10 @@ def _latest_visible_post_at(conn):
 
 
 def check_health(db_path, *, backup_dir=None, now=None, stale_seconds=9000,
-                 min_free_bytes=512 * 1024**2, site_url=None, get=requests.get):
+                 min_free_bytes=512 * 1024**2, site_url=None, get=requests.get, require_offsite=None):
     """No migrations, writes, alerts, collection or LLM calls."""
     now = time.time() if now is None else now
+    require_offsite = bool(os.environ.get('REP0RTER_BACKUP_OFFSITE')) if require_offsite is None else require_offsite
     issues = {}
     details = {'checked_at': now}
     db_path = Path(db_path)
@@ -268,7 +269,7 @@ def check_health(db_path, *, backup_dir=None, now=None, stale_seconds=9000,
             _issue(issues, 'backup_stale', 'No verified backup within 26 hours')
         remote = _read_json(Path(backup_dir) / 'offsite.json').get('copied_at', 0)
         details['latest_offsite_at'] = remote or None
-        if not remote or now - remote > 26 * 3600:
+        if require_offsite and (not remote or now - remote > 26 * 3600):
             _issue(issues, 'offsite_backup_stale', 'No verified off-host copy within 26 hours')
     if site_url:
         try:
@@ -432,7 +433,7 @@ def maintenance(cfg, *, backup_dir=None, offsite=None, send_alerts=False, now=No
                 state['rehearsed_at'] = now
         except (OSError, sqlite3.Error, ValueError, RuntimeError, subprocess.SubprocessError) as exc:
             backup_error = type(exc).__name__
-        report = check_health(cfg.db_path, backup_dir=directory, now=now, site_url=os.environ.get('REP0RTER_HEALTH_URL'))
+        report = check_health(cfg.db_path, backup_dir=directory, now=now, site_url=os.environ.get('REP0RTER_HEALTH_URL'), require_offsite=bool(offsite))
         if backup_error:
             report['issues']['backup_failed'] = 'Backup or restore rehearsal failed: ' + backup_error
             report['healthy'] = False
@@ -452,7 +453,7 @@ def maintenance(cfg, *, backup_dir=None, offsite=None, send_alerts=False, now=No
 
 def cmd_health(cfg, args):
     result = check_health(cfg.db_path, backup_dir=args.backup_dir or cfg.data_dir / 'backups',
-                          min_free_bytes=args.min_free_mb * 1024**2, site_url=args.url)
+                          min_free_bytes=args.min_free_mb * 1024**2, site_url=args.url, require_offsite=args.require_offsite or bool(os.environ.get('REP0RTER_BACKUP_OFFSITE')))
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if result['healthy'] else 1
 
@@ -485,6 +486,7 @@ def register_commands(sub):
     p = sub.add_parser('health', help='read-only freshness, backup, disk and optional web health')
     p.add_argument('--url', default=os.environ.get('REP0RTER_HEALTH_URL'))
     p.add_argument('--backup-dir', type=Path)
+    p.add_argument('--require-offsite', action='store_true', help='also require an off-host copy within 26 hours')
     p.add_argument('--min-free-mb', type=int, default=512)
     p.set_defaults(func=cmd_health, readonly=True)
     p = sub.add_parser('metrics', help='read-only acquisition/eligibility/publication latency distributions')

@@ -68,11 +68,12 @@ def initialize(store):
     _import_external(store)
     # Union with the external ledger: restoring an older DB cannot revive content.
     scrubbed = False
+    withdrawn_urls = {row[0] for row in store.conn.execute('SELECT url FROM events JOIN event_tombstones ON events.id=event_tombstones.event_id') if row[0]}
     with store.conn:
         for row in store.conn.execute('SELECT event_id FROM event_tombstones').fetchall():
             scrubbed = _scrub(store, row['event_id']) or scrubbed
     if scrubbed:
-        _purge_media(store)
+        _purge_media(store, withdrawn_urls)
     save(store)
 
 
@@ -116,6 +117,9 @@ def _user_id(source, author):
 
 
 def event_allowed(store, event, _visited=None):
+    from .sources import automated
+    if automated(event):
+        return False
     visited = set() if _visited is None else _visited
     if event.id in visited:
         return True
@@ -251,20 +255,133 @@ def _audit_dependents(store, ids):
         result.update(related)
 
 
-def _purge_media(store):
-    # Filenames are content hashes, so safely purge the derived caches as a whole.
-    # Site rebuild renders only currently allowed events. No user-uploaded assets
-    # or database backups are deleted here.
+def _atomic_text(path, text):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(dir=path.parent, mode='w', encoding='utf-8', delete=False) as stream:
+        temporary = Path(stream.name)
+        try:
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        except BaseException:
+            temporary.unlink(missing_ok=True)
+            raise
+    try:
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _withdrawn_page(language):
+    import html
+    from .i18n import COPY, LANGUAGES, page_name
+    copy = COPY[language]
+    links = ' '.join(f'<a href="{page_name(code)}" lang="{code}">{html.escape(label)}</a>'
+                     for code, label in LANGUAGES.items())
+    return (f'<!DOCTYPE html><html lang="{language}"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            '<meta name="robots" content="noindex"><title>' + html.escape(copy['withdrawn']) +
+            '</title></head><body><main><h1>' + html.escape(copy['withdrawn']) + '</h1><p>' +
+            html.escape(copy['withdrawal_notice']) + '</p><a href="../../' + page_name(language) +
+            '">rep0rter</a><nav>' + links + '</nav></main></body></html>')
+
+
+def _sanitize_site(store, root, withdrawn_urls=()):
+    """Fail closed for withdrawal, even if a later complete rebuild fails.
+
+    Public artifacts are derived caches. Remove only withdrawn articles/items;
+    preserve surviving article content and link targets. Corrupt feeds cannot be
+    verified and become an empty feed pending the next successful full rebuild.
+    """
+    from bs4 import BeautifulSoup
+    import xml.etree.ElementTree as ET
+    from .i18n import LANGUAGES, page_name
+    rows = store.conn.execute('SELECT p.id,p.event_id FROM posts p JOIN retractions r ON p.id=r.post_id').fetchall()
+    withdrawn = {str(row['id']) for row in rows}
+    guids = withdrawn | {row['event_id'] for row in rows}
+    if not withdrawn:
+        return
+    withdrawn_urls = set(withdrawn_urls)
+    # Recover source links from cached withdrawn articles before removing them;
+    # this also supports replay after a partially completed prior sanitization.
+    for path in root.rglob('*.html'):
+        cached = BeautifulSoup(path.read_text(encoding='utf-8'), 'html.parser')
+        for article in cached.find_all('article'):
+            if str(article.get('id')) in withdrawn:
+                withdrawn_urls.update(link['href'] for link in article.select('p.meta a[rel~=noopener][href]'))
+    for path in root.rglob('*.html'):
+        relative = path.relative_to(root)
+        if len(relative.parts) >= 3 and relative.parts[0] == 'posts' and relative.parts[1] in withdrawn:
+            language = next((code for code in LANGUAGES if path.name == page_name(code)), 'zh-TW')
+            _atomic_text(path, _withdrawn_page(language))
+            continue
+        document = BeautifulSoup(path.read_text(encoding='utf-8'), 'html.parser')
+        removed = False
+        for article in list(document.find_all('article')):
+            if str(article.get('id')) in withdrawn:
+                article.decompose()
+                removed = True
+        # Related-source lists in an otherwise surviving story must also stop
+        # exposing an excluded author's name/link. All other links remain intact.
+        for link in list(document.find_all('a', href=True)):
+            if link['href'] in withdrawn_urls:
+                link.decompose()
+                removed = True
+        if not removed:
+            continue
+        # A source page may have used a withdrawn source's name or headline in
+        # metadata. Retain canonical/navigation links; never retain old previews.
+        for meta in list(document.find_all('meta')):
+            if meta.get('property', '').startswith('og:') or meta.get('name', '') in ('description', 'twitter:card', 'twitter:title', 'twitter:description', 'twitter:image'):
+                meta.decompose()
+        if document.title:
+            document.title.string = 'rep0rter'
+        for section in document.select('section.day'):
+            articles = section.find_all('article')
+            if not articles:
+                section.decompose()
+            elif section.h2 and section.h2.span:
+                section.h2.span.string = str(len(articles))
+        _atomic_text(path, str(document))
+    for path in root.rglob('*.xml'):
+        try:
+            tree = ET.fromstring(path.read_bytes())
+            changed = False
+            for channel in tree.findall('./channel'):
+                for item in list(channel.findall('item')):
+                    if item.findtext('guid', '').strip() in guids:
+                        channel.remove(item)
+                        changed = True
+            if changed:
+                _atomic_text(path, ET.tostring(tree, encoding='unicode', xml_declaration=True))
+        except ET.ParseError:
+            _atomic_text(path, '<?xml version="1.0" encoding="utf-8"?><rss version="2.0"><channel><title>rep0rter</title><description>Feed rebuilding</description></channel></rss>')
+    for post_id in withdrawn:
+        for language in LANGUAGES:
+            _atomic_text(root / 'posts' / post_id / page_name(language), _withdrawn_page(language))
+
+
+def _purge_media(store, withdrawn_urls=()):
+    # Serialize with whole-generation builds so a build cannot republish a stale
+    # page just after this scrub. The lock is acquired only after DB commits.
     base = store.path.parent
-    paths = [base / 'image-cache', base / 'site' / 'cards']
-    releases = base / 'site-releases'
-    if releases.is_dir():
-        paths.extend(release / 'cards' for release in releases.iterdir() if release.is_dir())
-    for path in paths:
-        if path.is_symlink():
-            path.unlink()
-        elif path.is_dir():
-            shutil.rmtree(path)
+    with (base / 'site-build.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        roots = set()
+        if (base / 'site').is_dir():
+            roots.add((base / 'site').resolve())
+        for name in ('.site-releases', 'site-releases'):
+            releases = base / name
+            if releases.is_dir():
+                roots.update(path.resolve() for path in releases.iterdir() if path.is_dir())
+        for root in roots:
+            _sanitize_site(store, root, withdrawn_urls)
+        paths = [base / 'image-cache', *(root / 'cards' for root in roots)]
+        for path in paths:
+            if path.is_symlink():
+                path.unlink()
+            elif path.is_dir():
+                shutil.rmtree(path)
 
 
 def _scrub(store, event_id):
@@ -311,6 +428,7 @@ def redact(store, event_ids, reason='withdrawn'):
             refs={r.get('event_id') for r in e.meta.get('references',[]) if isinstance(r,dict)}
             if e.id not in event_ids and (e.parent_id in event_ids or refs & event_ids):
                 event_ids.add(e.id); changed=True
+    withdrawn_urls = {row[0] for event_id in event_ids for row in store.conn.execute('SELECT url FROM events WHERE id=?', (event_id,)) if row[0]}
     now=time.time()
     with store.conn:
         store.conn.executemany('INSERT OR IGNORE INTO event_tombstones VALUES(?,?,?)',((e,now,reason) for e in event_ids))
@@ -321,7 +439,7 @@ def redact(store, event_ids, reason='withdrawn'):
             _scrub(store,event_id)
         for row in store.conn.execute("SELECT subject FROM policy_rules WHERE scope='user'").fetchall():
             store.conn.execute('DELETE FROM users WHERE id=?',(row['subject'],))
-    _purge_media(store)
+    _purge_media(store, withdrawn_urls)
     return sorted(event_ids)
 
 
