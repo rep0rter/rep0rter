@@ -1,37 +1,35 @@
-# 四語與來源圖卡：2026-09-18 實作範圍
+# Issue 實作與部署紀錄
 
-本次讓新報導一次產生 zh-TW／ko／ja／en，保存有效版本，缺少的翻譯可分批補齊。
-網站、RSS、永久文章頁與來源頁使用同一份 SQLite；語言切換保留文章位置。
-每篇圖卡只呈現原文摘錄、作者與來源，公開頭貼／logo 缺少時使用縮寫。
+上一版四語功能已在 2026-09-18 部署；2026-09-19 的整合版接續完成下列功能。
+每篇同時保存 zh-TW／ko／ja／en；圖片沿用原文、來源、公開頭貼，不把翻譯摘要冒充作者引言。
+網站、來源頁、單篇頁、RSS 均可切換語言。舊訊息可以沿固定作者 ID 找到已知的公開頭貼。
 
-圖片流程參考 [chumei](https://github.com/skyhong2002/chumei/blob/main/scripts/render_source_covers.py)
-的內容區塊截圖、快取與備援思路；此處獨立實作本機 HTML 排版，不直接執行外站 HTML。
-工作區既有 assets/logo.png 納入本站 header、favicon 和分享預覽。
-
-## 架構取捨
-
-按使用者要求，已透過 Claude CLI 取得第二意見。採納原文圖卡、固定文章網址、逐語言
-驗證與缺少標示、發送結果不明需人工核對、優先資料正確性與發布可靠性等建議。
-維持既有數字 post ID 與根目錄繁中網址，避免更動已發布連結／RSS GUID；翻譯先以
-posts.translations JSON 儲存，讓既有部署可以小幅 migration。日後若需要逐語言編輯審核、
-版本追蹤，再拆分翻譯資料表。此次沒有新增 Discord、GitHub、Mastodon collector。
-
-## Issue 對應與剩餘工作
-
-| Issue | 本次完成 | 尚未完成 |
+| Issue | 已實作與驗證的功能 | 仍須持續觀察／設定 |
 |---|---|---|
-| [#3](https://github.com/rep0rter/rep0rter/issues/3) | rich_text／附件文字還原、公開引用來源與作者識別、不確定公開性的引用不擷取 | 主題合併、討論串新版本、缺 root 補抓、退出規則傳播 |
-| [#6](https://github.com/rep0rter/rep0rter/issues/6) | 精確時間戳、重複頁與無進度防護、跨頁重複資料合併 | 持久化 after 游標、重疊回掃、舊主文更新排程 |
-| [#11](https://github.com/rep0rter/rep0rter/issues/11) | 修正 JOIN ID 碰撞，離線 fixture、migration／多語／圖卡／發布失敗測試，Python 3.12 CI | 完整編輯品質 golden corpus、所有故障情境與長期回放 |
-| [#12](https://github.com/rep0rter/rep0rter/issues/12) | 既有 logo／favicon／OG、四語永久單篇頁與來源頁、Telegram/RSS 回站入口、手機／鍵盤／深淺色 | 配合退出機制撤回舊頁／OG／卡片快取 |
-| [#13](https://github.com/rep0rter/rep0rter/issues/13) | 一篇一圖、正確 chat/message mapping、持久 outbox、lease、防盲目重送、測試 chat 不退回正式、長度與 HTML 檢查 | 舊合併訊息遷移、Telegram 編輯／刪除操作與撤回重建 |
+| #2 | 入場條件、否定與相對日期判斷、有上限互動分、版本化逐項快照、人工標籤、原時點回放、影子報表 | 預設 shadow；兩週資料與人工精確率評估尚未滿期，不自動切換 |
+| #3 | 附件／rich text 還原、公開引用歸屬、缺 root 有界補抓、新共筆／募集／截止／取消形成修訂、致謝不推播 | 不可確認的引用與不完整證據留待確認 |
+| #4 | 引用 ID、canonical URL、追蹤參數、長文相似度的保守聚類，跨輪與同輪去重、日期／版本辨識、交易唯一鍵、來源與修訂軌跡 | 不爬取任意短網址；寧可保留可疑相似消息，避免合併不同活動 |
+| #5 | 採集／資格／選擇／發布／實際送達延遲、樣本數、P50/P95、bootstrap／失敗恢復分組、請求量與位元數 | 兩週量測持續累積，排程仍每小時 |
+| #6 | after 與 before 分開、重疊回掃、跨輪續掃、事件與游標原子提交、舊 root 刷新、reaction 減少、每日與每輪預算 | 上游沒有 cursor 的全空頁仍有可觀測性限制，保留 unresolved 狀態而不謊稱完整 |
+| #7 | 固定 ID 退出清單、外部政策 ledger、不可復活 tombstone、引用／回覆／證據傳播、撤回預覽與套用、網站／RSS／快取移除、備份還原重套政策 | 提出者身分由管理者確認；第三方快取與轉寄無法保證收回 |
+| #8 | 嚴格 JSON／四語字數契約、來源時間與絕對日期、證據 ID、提議與陳述歸屬、閉門／更正優先、有限重試、可驗證摘錄或待審 | 結構檢查不等於完全證明任意模型改寫的語意，保留可稽核證據 |
+| #9 | SQLite 線上備份、每日 7 份／每週 4 份、完整性與校驗、隔離還原演練、唯讀健康、來源骤減防護、去重管理告警、固定 log rotation、完整站台原子切換 | 使用者已明確取消異地主機備份；管理告警需設定獨立管理目的地 |
+| #10 | source registry、公開政策、格式正規化、typed metrics、穩定跨實例 ID、GitHub／Mastodon allowlist、刪除／可見性追查、來源錯誤隔離 | 正式啟用的來源見 collectors／FtO 文件；不預設訂閱任意帳號 |
+| #11 | 離線合成 fixture、禁止 dotenv／socket、migration／ID 碰撞／失敗／並發／撤回回歸測試、Python 3.12 push／PR CI | 遠端 CI 狀態需以實際 workflow 為準 |
+| #12 | logo／favicon／OG、四語單篇永久頁／來源頁、301 篇後保留、修訂連結、撤回頁與快取更新、行動／鍵盤／深淺色 | 舊 feed GUID 維持數字 ID，避免訂閱讀者重收舊文 |
+| #13 | 一篇一圖、持久 outbox、target/message mapping、lease、429／unknown 恢復、測試目標 fail closed、撤回重建已確認的舊合併訊息 | 舊的只有整數 message ID 需人工確認 chat 與完整同包內容；不盲目刪除或重送 |
 
-以上是部分 issue 的可交付修正，不能將整張 issue 都標為完成。#2 選稿重設、#4 主題去重、
-#5 採集延遲量測、#7 完整退出／撤回、#8 完整 LLM 證據契約、#9 備份／健康告警、
-#10 多來源模型仍需各自完成；新增 CI 與結構驗證不等於已完成其全部需求。
+## 最新使用者偏好
 
-## 驗證方式
+GitHub bot／Slack GitHub integration、依賴更新、CI 與例行維護不是新聞；採集前、既存資料
+選稿前與輸出前都套用 automation 排除。正式站曾出現的 5 篇自動通知已依使用者要求撤下。
+GitHub 僅接收具體成果、協作邀請或對使用者有實質影響的人工內容。
 
-自動測試全程使用暫存資料、合成 fixture 與 mocked transport；在載入應用程式前停用
-.env，封鎖實際網路。CI 指定 Python 3.12。瀏覽器版以本機臨時快照驗證四語切換、
-圖片、手機排版及永久網址，未推播正式 Telegram。翻譯和建站都可以獨立操作。
+## 架構決策
+
+依使用者要求透過 Claude CLI 再次諮詢，採納：安全政策獨立於可還原資料庫、保守主題合併、
+unknown 發送不盲重試、來源增量有界、影子評分不自動升級，以及 Docker 掛載 data 父目錄後
+原子切換 site symlink。既有文章 ID／RSS GUID 保持不變。異地備份依最新使用者指示省略。
+
+相關操作：[採集與來源](collectors.md)、[日韓來源核實](fto-sources.md)、[編輯規則](editorial-policy.md)、
+[主題與修訂](stories.md)、[維運](operations.md)、[Telegram 恢復](telegram-delivery.md)。

@@ -1,6 +1,6 @@
 # rep0rter
 
-g0v 的虛擬記者。匯集 Slack（之後還有 GitHub、HackMD、Mastodon 等）協作場域的紀錄，
+g0v 的虛擬記者。匯集 Slack、GitHub 與明列 Mastodon 帳號的公開協作紀錄，
 每小時挑出值得大家知道的動態，推播到 Telegram，並發布在 [rep0rter.observe.tw](https://rep0rter.observe.tw)。
 
 每篇報導同時產生台灣繁體中文、韓文、日文、英文版本，網站可自由切換並保留閱讀位置。
@@ -17,15 +17,15 @@ slack_archive    events, posts       select +      telegram
 (more later)     containers, runs    write (LLM)   site (HTML + RSS)
 ```
 
-- **collectors** 把每個來源抓成統一的「事件」寫進 SQLite。目前只有 Slack，資料來自
-  Ronny Wang 維護的 [g0v Slack 公開存檔](https://g0v-slack-archive.g0v.ronny.tw/)。
+- **collectors** 把每個來源抓成統一的「事件」寫進 SQLite。Slack 資料來自
+  Ronny Wang 維護的 [g0v Slack 公開存檔](https://g0v-slack-archive.g0v.ronny.tw/)，GitHub／Mastodon 僅採集明列來源。
 - **store** 是所有東西的共同資料庫：事件、頻道、已發布的報導、執行紀錄。
-- **reporter** 用規則替每則事件打分（回覆數、reaction、關鍵字、頻道規模、新鮮度），
-  超過門檻的用 LLM 寫成短訊；沒有設定 LLM 時退回純文字摘錄。
+- **reporter** 先排除 bot／退出內容，對事件與主題更新評分；新 Slack 規則預設影子觀察，
+  保存新舊分數與證據快照。寫稿依四語契約，失敗時用可驗證摘錄或留待確認。
 - **publishers** 把報導送到 Telegram，並重新產生靜態網站與 RSS。
 
-每小時跑一次完整流程。有值得報的就推，沒有就靜默。同一則事件只會報一次，
-但互動數會持續更新，所以一則訊息可以在幾小時後因為討論熱起來而被選中。
+每小時跑一次完整流程。有值得報的就推，沒有就靜默。跨頻道公告以主題去重；
+新的共筆、募集、截止與取消資訊形成有來源可追溯的修訂，致謝或例行 bot 通知不推播。
 
 ## 本機執行
 
@@ -93,12 +93,12 @@ Docker 已包含 Chromium 與 Noto CJK 字型。本機若使用其他字型，�
 請用 `python -m rep0rter outbox` 檢查，參考 [Telegram 恢復操作](docs/telegram-delivery.md)。
 
 升級既有環境前請先以 SQLite backup API 備份資料庫；啟動時會保留既有文章並新增翻譯欄位。
-`translate` 和 `build-site` 不會重送已發布文章。尚未實作完整退出／撤回傳播及舊 Telegram
-合併訊息重建，進度界線見 [本次 issue 修正範圍](docs/implementation-notes.md)。
+`translate` 和 `build-site` 不會重送已發布文章。退出會傳播至引用、證據與發布快取；
+舊 Telegram 合併訊息須先確認完整對應後才能重建。逐項進度見 [issue 實作紀錄](docs/implementation-notes.md)。
 
 ## 部署
 
-`compose.yaml` 有兩個容器：`worker` 每小時跑一輪，`web` 用 Caddy 提供
+`compose.yaml` 包含 `worker` 每小時採集、`maintenance` 本機備份與健康檢查，以及 `web` 用 Caddy 提供
 `data/site/` 的靜態檔在 `127.0.0.1:18090`。公開網址由 Cloudflare tunnel
 轉到這個 port。
 
@@ -122,3 +122,26 @@ docker compose logs -f worker
 - 只讀公開頻道，每則報導都附原文連結，摘要以原文為準。
 - 不希望被報導的訊息，到 g0v Slack 的 #rep0rter 說一聲。
 - 對存檔網站的請求有間隔與重試，請勿把頻率調得太高。
+
+## 來源、退出與維運
+
+GitHub bot、Slack GitHub integration、CI、依賴升級與例行維護通知不進新聞。
+日韓來源的具體核實與設定見 [FtO 來源](docs/fto-sources.md)；其他帳號需明確 allowlist。
+[來源採集](docs/collectors.md)、[影子評分與證據契約](docs/editorial-policy.md)、
+[主題去重／修訂](docs/stories.md)、[備份與健康](docs/operations.md) 分別記錄操作方式。
+
+```sh
+python -m rep0rter exclusion add --scope user --subject slack:U123 --reason '本人要求退出'
+python -m rep0rter retract --preview
+python -m rep0rter retract --apply              # 清理本機資料與站台，準備遠端撤回
+python -m rep0rter retraction-delivery --apply  # 執行已確認 mapping 的 Telegram 撤回
+python -m rep0rter backup
+python -m rep0rter health
+python -m rep0rter metrics
+python -m rep0rter editorial-report
+```
+
+退出申請由管理者先確認身分與範圍；可用 `exclusion list/remove` 管理。取消退出只允許未來內容，
+已撤回的訊息仍保留最小 tombstone 防止重抓／備份還原後復活。`data/exclusions.json` 是目前政策，
+還原資料庫時不可用舊備份覆蓋它。管理告警必須另設管理目的地；本機每日／每週備份預設啟用，
+異地備份依使用者決定不設。影子評分與延遲改善仍需累積兩週觀察，不宣稱立即達到精確率目標。

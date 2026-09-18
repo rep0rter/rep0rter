@@ -46,7 +46,8 @@ def format_item(c: Candidate, post: Post) -> str:
         stats.append(f"💬 {c.event.reply_count}")
     if c.event.reaction_count:
         stats.append(f"👍 {c.event.reaction_count}")
-    meta = f"#{_esc(channel)} · {_esc(c.event.author_name)}"
+    label = ('#' if c.event.source == 'slack' else '') + channel
+    meta = f"{_esc(label)} · {_esc(c.event.author_name)}"
     if stats:
         meta += " · " + " ".join(stats)
     return f"<b>{_esc(post.headline)}</b>\n{_esc(post.summary)}\n{meta} · {_link(c.event.url, '原文')}"

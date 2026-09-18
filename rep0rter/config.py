@@ -59,6 +59,7 @@ class Config:
     score_threshold: float = _env_float("REP0RTER_SCORE_THRESHOLD", 6.0)
     max_items_per_run: int = _env_int("REP0RTER_MAX_ITEMS_PER_RUN", 5)
     max_item_age_hours: int = _env_int("REP0RTER_MAX_ITEM_AGE_HOURS", 48)
+    editorial_mode: str = _env("REP0RTER_EDITORIAL_MODE", "shadow") or "shadow"
     keywords: list[str] = field(default_factory=lambda: _env_list("REP0RTER_KEYWORDS", DEFAULT_KEYWORDS))
 
     # telegram

@@ -68,3 +68,11 @@ COPY = {
         "card_label": "Original excerpt", "read": "Read story",
     },
 }
+
+for _language, _values in {
+    'zh-TW': ('報導發布','修訂','相關來源','最後正常採集（台北）','這篇報導已撤回','內容已移除。第三方訂閱器與轉寄的副本可能仍存在。'),
+    'ko': ('소식 게시','수정','관련 출처','마지막 정상 수집 (타이베이)','이 소식은 철회되었습니다','내용이 삭제되었습니다. 외부 구독기나 전달된 사본은 남아 있을 수 있습니다.'),
+    'ja': ('記事公開','改訂','関連情報源','最終正常収集（台北）','この記事は撤回されました','内容は削除されました。外部の購読サービスや転送されたコピーは残る場合があります。'),
+    'en': ('Reported','Revision','Related sources','Last healthy collection (Taipei)','This story has been withdrawn','The content has been removed. Copies in third-party readers and forwarded messages may remain.'),
+}.items():
+    COPY[_language].update(zip(('reported','revision','sources','healthy','withdrawn','withdrawal_notice'),_values))

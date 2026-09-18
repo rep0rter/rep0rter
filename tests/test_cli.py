@@ -11,7 +11,7 @@ def test_run_dry_run_collects_without_creating_posts_jobs_or_site(tmp_path, monk
     event = Event('slack:C:1', 'slack', 'message', 'slack:C', 1, text='原文')
     def collect(store, **kwargs):
         return store.upsert_events([event])
-    monkeypatch.setattr(cli.slack_archive, 'collect', collect)
+    monkeypatch.setattr(cli, 'collect_all', collect)
     monkeypatch.setattr(cli, 'draft_posts', lambda *a, **kw: [(Candidate(event, None, 8), Post(event.id, 2, 8, '標題', '摘要'))])
     monkeypatch.setattr(cli.telegram, 'publish', lambda *a, **kw: [])
     def forbidden(*args):
@@ -42,7 +42,7 @@ def test_run_site_failure_keeps_posts_and_unsent_jobs_for_recovery(tmp_path, mon
     event = Event('slack:C:1', 'slack', 'message', 'slack:C', 1, text='原文')
     def collect(store, **kwargs):
         return store.upsert_events([event])
-    monkeypatch.setattr(cli.slack_archive, 'collect', collect)
+    monkeypatch.setattr(cli, 'collect_all', collect)
     monkeypatch.setattr(cli, 'draft_posts', lambda *a, **kw: [(Candidate(event, None, 8), Post(event.id, 2, 8, '標題', '摘要'))])
     def broken(*_):
         raise OSError('site unavailable')

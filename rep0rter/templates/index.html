@@ -36,7 +36,8 @@
     <h2 id="day-{{ day }}"><time>{{ day }}</time><span>{{ day_items | length }}</span></h2>
     {% for it in day_items %}
     <article id="{{ it.post.id }}">
-      <div class="story-top"><a class="channel" href="{{ prefix }}{{ it.source_path }}{{ page_name(language) }}">#{{ it.channel }}</a><a class="permalink" href="{{ prefix }}{{ it.story_path }}" aria-label="{{ copy.read }} {{ it.post.id }}">↗</a></div>
+      <div class="story-top"><a class="channel" href="{{ prefix }}{{ it.source_path }}{{ page_name(language) }}">{{ it.source_label }}</a><a class="permalink" href="{{ prefix }}{{ it.story_path }}" aria-label="{{ copy.read }} {{ it.post.id }}">↗</a></div>
+      {% if it.content_warning %}<p class="translation-note">{{ it.content_warning }}</p>{% endif %}
       <h3 lang="{{ language if it.translated else 'und' }}"><a href="{{ prefix }}{{ it.story_path }}">{{ it.headline }}</a></h3>
       <p class="summary" lang="{{ language if it.translated else 'und' }}">{{ it.summary }}</p>
       {% if not it.translated %}<p class="translation-note">{{ copy.missing }}</p>{% endif %}
@@ -47,14 +48,17 @@
       <p class="meta"><span>{{ it.event.author_name }}</span><span>{{ copy.published }} {{ it.event_local }}</span>
         {% if it.event.reply_count %}<span>💬 {{ it.event.reply_count }}</span>{% endif %}
         {% if it.event.reaction_count %}<span>👍 {{ it.event.reaction_count }}</span>{% endif %}
-        <a href="{{ it.event.url }}" rel="noopener">{{ copy.source }} ↗</a>
+        {% if it.source_url %}<a href="{{ it.source_url }}" rel="noopener">{{ copy.source }} ↗</a>{% endif %}
       </p>
+      {% if detail %}<p class="meta">{{ copy.reported }} {{ it.published_local }}{% if it.story.revision > 1 %} · {{ copy.revision }} {{ it.story.revision }}{% endif %}</p>
+      {% if it.story.versions | length > 1 %}<nav class="links" aria-label="{{ copy.revision }}">{% for version in it.story.versions %}<a href="../{{ version.id }}/{{ page_name(language) }}">{{ copy.revision }} {{ version.revision }}</a>{% endfor %}</nav>{% endif %}
+      {% if it.story.sources | length > 1 %}<p class="meta">{{ copy.sources }}: {% for source in it.story.sources %}<a href="{{ source.url }}" rel="noopener">{{ source.name }}</a>{% endfor %}</p>{% endif %}{% endif %}
       <details{% if detail %} open{% endif %}><summary>{{ copy.original }}</summary><blockquote dir="auto">{{ it.original }}</blockquote></details>
     </article>
     {% endfor %}
   </section>
 {% endfor %}
 </main>
-<footer><p>{{ copy.footer }}</p><p>{{ stats }}<br>{{ copy.updated }} {{ generated_local }}</p><p>{{ copy.optout }}</p></footer>
+<footer><p>{{ copy.footer }}</p><p>{{ stats }}<br>{{ copy.updated }} {{ generated_local }}{% if last_healthy %}<br>{{ copy.healthy }} {{ last_healthy }}{% endif %}</p><p>{{ copy.optout }} <a href="https://g0v-slack-archive.g0v.ronny.tw/index/channel/C069ARZJNE9">#rep0rter</a></p></footer>
 </body>
 </html>

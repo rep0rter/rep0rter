@@ -138,6 +138,10 @@ class Store:
         if "translations" not in columns:
             self.conn.execute("ALTER TABLE posts ADD COLUMN translations TEXT DEFAULT '{}'")
             self.conn.commit()
+        from .policy import initialize
+        initialize(self)
+        if self.conn.execute('PRAGMA user_version').fetchone()[0] < 2:
+            self.conn.execute('PRAGMA user_version=2')
 
     # ---- generic ---------------------------------------------------------
     def close(self) -> None:
@@ -180,15 +184,23 @@ class Store:
         return Container(**{k: row[k] for k in Container.__dataclass_fields__})
 
     def upsert_user(self, user_id: str, name: str, real_name: str) -> None:
+        from .policy import user_allowed
+        if not user_allowed(self, user_id):
+            return
         with self.conn:
             self.conn.execute(
                 """INSERT INTO users (id, name, real_name) VALUES (?, ?, ?)
-                   ON CONFLICT(id) DO UPDATE SET name = excluded.name, real_name = excluded.real_name""",
+                   ON CONFLICT(id) DO UPDATE SET
+                     name = CASE WHEN excluded.name != '' THEN excluded.name ELSE users.name END,
+                     real_name = CASE WHEN excluded.real_name != '' THEN excluded.real_name ELSE users.real_name END""",
                 (user_id, name, real_name),
             )
 
     def upsert_user_name(self, user_id: str, name: str) -> None:
         """Record a username seen in a mention without clobbering a known real_name."""
+        from .policy import user_allowed
+        if not user_allowed(self, user_id):
+            return
         with self.conn:
             self.conn.execute(
                 """INSERT INTO users (id, name, real_name) VALUES (?, ?, '')
@@ -200,14 +212,20 @@ class Store:
         """Map raw user id -> display name for one source (used to resolve mentions)."""
         prefix = source + ":"
         rows = self.conn.execute("SELECT id, name, real_name FROM users WHERE id LIKE ?", (prefix + "%",))
-        return {r["id"][len(prefix):]: (r["real_name"] or r["name"]) for r in rows}
+        from .policy import user_allowed
+        return {r["id"][len(prefix):]: (r["real_name"] or r["name"]) for r in rows if user_allowed(self, r['id'])}
 
     # ---- events -----------------------------------------------------------
     def upsert_events(self, events: Iterable[Event], now: float | None = None) -> int:
+        from .policy import event_allowed
         now = now or time.time()
         n = 0
         with self.conn:
             for e in events:
+                if not e.source or not e.id or not e.container_id:
+                    raise sqlite3.IntegrityError('Event requires source, id and container_id')
+                if not event_allowed(self, e):
+                    continue
                 self.conn.execute(
                     """INSERT INTO events (id, source, kind, container_id, author_id, author_name, text, html, url,
                                            ts, parent_id, reply_count, reaction_count, meta, first_seen, last_seen)
@@ -224,11 +242,18 @@ class Store:
         return n
 
     def _row_to_event(self, row: sqlite3.Row) -> Event:
+        meta=json.loads(row['meta'] or '{}')
+        if not meta.get('avatar_url') and row['author_id']:
+            known=self.conn.execute("""SELECT json_extract(meta,'$.avatar_url') AS avatar FROM events
+                WHERE author_id=? AND json_extract(meta,'$.avatar_url') LIKE 'https://%'
+                ORDER BY last_seen DESC LIMIT 1""",(row['author_id'],)).fetchone()
+            if known:
+                meta['avatar_url']=known['avatar']
         return Event(
             id=row["id"], source=row["source"], kind=row["kind"], container_id=row["container_id"],
             ts=row["ts"], author_id=row["author_id"], author_name=row["author_name"], text=row["text"],
             html=row["html"], url=row["url"], parent_id=row["parent_id"], reply_count=row["reply_count"],
-            reaction_count=row["reaction_count"], meta=json.loads(row["meta"] or "{}"),
+            reaction_count=row["reaction_count"], meta=meta,
         )
 
     def get_event(self, event_id: str) -> Event | None:
@@ -240,17 +265,19 @@ class Store:
         rows = self.conn.execute(
             """SELECT e.* FROM events e
                LEFT JOIN posts p ON p.event_id = e.id
-               WHERE e.kind = 'message' AND e.ts >= ? AND p.id IS NULL
+               WHERE e.kind IN ('message','release','issue','pull_request','status') AND e.ts >= ? AND p.id IS NULL
                ORDER BY e.ts DESC""",
             (since_ts,),
         ).fetchall()
-        return [self._row_to_event(r) for r in rows]
+        from .policy import event_allowed
+        return [e for r in rows if event_allowed(self, e := self._row_to_event(r))]
 
     def thread_replies(self, root_id: str, limit: int = 20) -> list[Event]:
         rows = self.conn.execute(
             "SELECT * FROM events WHERE parent_id = ? ORDER BY ts ASC LIMIT ?", (root_id, limit)
         ).fetchall()
-        return [self._row_to_event(r) for r in rows]
+        from .policy import event_allowed
+        return [e for r in rows if event_allowed(self, e := self._row_to_event(r))]
 
     def reply_count_seen(self, root_id: str) -> int:
         return self.conn.execute("SELECT COUNT(*) FROM events WHERE parent_id = ?", (root_id,)).fetchone()[0]
@@ -282,6 +309,7 @@ class Store:
             )
 
     def recent_posts(self, limit: int = 200) -> list[tuple[Post, Event, Container | None]]:
+        from .policy import event_allowed
         rows = self.conn.execute(
             """SELECT p.id AS post_id, p.event_id, p.published_at, p.score,
                       p.headline, p.summary, p.reasons, p.delivery, p.translations, e.*
@@ -298,7 +326,8 @@ class Store:
                 translations=json.loads(r["translations"] or "{}"),
             )
             event = self._row_to_event(r)
-            result.append((post, event, self.get_container(event.container_id)))
+            if event_allowed(self, event):
+                result.append((post, event, self.get_container(event.container_id)))
         return result
 
     def post_count(self) -> int:

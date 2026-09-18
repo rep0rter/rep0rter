@@ -242,7 +242,8 @@ class CardRenderer:
         source = str(event.meta.get("source_name") or ("g0v Slack" if event.source == "slack" else host))
         author = event.author_name or source
         channel = container.name if container else event.container_id
-        original = to_plain(event.text, names) if event.source == "slack" else event.text.strip()
+        from ..sources import plain_text
+        original = to_plain(event.text, names) if event.source == "slack" else plain_text(event).strip()
         if not original:
             original = "（來源訊息沒有可顯示的文字 / No source text available）"
         ctx = {"author": author, "source": source, "channel": channel,

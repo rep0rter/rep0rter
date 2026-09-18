@@ -84,3 +84,12 @@ def test_posts_are_unique_per_event(tmp_path):
         with pytest.raises(sqlite3.IntegrityError):
             store.add_post(post)
         assert store.post_count() == 1
+
+
+def test_historical_events_resolve_latest_public_avatar_by_stable_author(tmp_path):
+    with Store(tmp_path/'avatar.sqlite') as store:
+        old=event('old-photo')
+        recent=replace(old,id='recent-photo',meta={'avatar_url':'https://public.example.test/portrait.png'})
+        store.upsert_events([old],now=100)
+        store.upsert_events([recent],now=200)
+        assert store.get_event(old.id).meta['avatar_url']=='https://public.example.test/portrait.png'

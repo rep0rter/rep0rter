@@ -152,3 +152,33 @@ def test_all_local_links_and_branding_assets_exist(published_site):
         assert local_path(cfg, image).is_file()
         for node in doc.select('meta[property="og:url"], link[rel="canonical"]'):
             assert local_path(cfg, node.get("content") or node.get("href")).is_file()
+
+
+def test_failed_generation_keeps_complete_previous_release(published_site,monkeypatch):
+    store,cfg,_,_,_=published_site
+    old_target=cfg.site_dir.resolve()
+    old_page=(cfg.site_dir/'index.html').read_bytes()
+    def broken(*args,**kwargs):
+        raise RuntimeError('renderer unavailable')
+    monkeypatch.setattr(site.CardRenderer,'render',broken)
+    with pytest.raises(RuntimeError): site.build(store,cfg)
+    assert cfg.site_dir.resolve()==old_target
+    assert (cfg.site_dir/'index.html').read_bytes()==old_page
+    assert len(list((cfg.data_dir/'.site-releases').iterdir()))==1
+
+
+def test_withdrawal_removes_all_editions_feeds_assets_and_prior_releases(published_site):
+    from rep0rter.policy import add_rule,redact
+    store,cfg,_,entries,_=published_site
+    removed,event=entries[-1]
+    add_rule(store,'event',event.id)
+    redact(store,[event.id])
+    site.build(store,cfg)
+    assert len(list((cfg.data_dir/'.site-releases').iterdir()))==1
+    for _,(page,feed) in EDITIONS.items():
+        doc=html(cfg.site_dir/'posts'/str(removed.id)/page)
+        assert not doc.select('article,blockquote,meta[property="og:image"]')
+        assert removed.headline not in doc.get_text()
+        assert not html(cfg.site_dir/page).find('article',id=str(removed.id))
+        assert str(removed.id) not in [item.findtext('guid') for item in ElementTree.parse(cfg.site_dir/feed).findall('channel/item')]
+    assert not (cfg.site_dir/'cards'/(hashlib.sha256(event.id.encode()).hexdigest()+'.png')).exists()

@@ -14,7 +14,7 @@
     <guid isPermaLink="false">{{ it.post.id }}</guid>
     <pubDate>{{ it.published_rfc822 }}</pubDate>
     <category>{{ it.channel }}</category>
-    <description>{{ it.summary }} （#{{ it.channel }} · {{ it.event.author_name }}）{% if not it.translated %} {{ copy.missing }}{% endif %} {{ copy.source }}: {{ it.event.url }}</description>
+    <description>{{ it.summary }} （{{ it.source_label }} · {{ it.event.author_name }}）{% if not it.translated %} {{ copy.missing }}{% endif %} {{ copy.source }}: {{ it.source_url }}</description>
     <enclosure url="{{ cfg.site_url.rstrip('/') }}/{{ it.image }}" length="{{ it.image_size }}" type="image/png"/>
   </item>
   {% endfor %}

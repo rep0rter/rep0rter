@@ -6,9 +6,11 @@ import argparse
 import logging
 import sys
 import time
+import json
 
 from . import __version__
 from .collectors import slack_archive
+from .collectors.registry import collect_all
 from .config import Config, load_config
 from .delivery import DeliveryOutbox, deliver_pending, prepare_posts
 from .i18n import LANGUAGES
@@ -23,14 +25,18 @@ log = logging.getLogger("rep0rter")
 
 def cmd_collect(cfg: Config, args) -> int:
     with Store(cfg.db_path) as store:
-        n = slack_archive.collect(store, days=args.days or cfg.collect_days, max_channels=args.max_channels)
+        n = collect_all(store, days=args.days or cfg.collect_days, max_channels=args.max_channels,config=cfg)
+        _reconcile_exclusions(store,cfg)
+        healthy=json.loads(store.get_kv('collector_health','{}')).get('healthy',True)
     print(f"collected {n} events")
-    return 0
+    return 0 if healthy else 1
 
 
 def cmd_report(cfg: Config, args) -> int:
     """Select + write + publish new items. Persists posts unless --dry-run."""
     with Store(cfg.db_path) as store:
+        if not args.dry_run:
+            _reconcile_exclusions(store,cfg)
         drafts = draft_posts(store, cfg, use_llm=not args.no_llm)
         for c, p in drafts:
             log.info("selected %.1f %s | %s", c.score, c.event.url, p.headline)
@@ -41,12 +47,15 @@ def cmd_report(cfg: Config, args) -> int:
         prepare_posts(cfg, store, drafts)
         site_publisher.build(store, cfg)
         deliver_pending(cfg, store)
+        from .retractions import process
+        process(store,cfg)
     print(f"posted {len(drafts)} item(s)")
     return 0
 
 
 def cmd_build_site(cfg: Config, args) -> int:
     with Store(cfg.db_path) as store:
+        _reconcile_exclusions(store,cfg)
         out = site_publisher.build(store, cfg)
     print(f"site written to {out}")
     return 0
@@ -62,6 +71,7 @@ def cmd_translate(cfg: Config, args) -> int:
         return 2
     attempted = updated = incomplete = 0
     with Store(cfg.db_path) as store:
+        _reconcile_exclusions(store,cfg)
         llm = LLM(cfg)
         languages = args.language or list(LANGUAGES)
         for post, _, _ in store.recent_posts(limit=-1):
@@ -93,13 +103,30 @@ def cmd_outbox(cfg: Config, args) -> int:
     return 0
 
 
+def _reconcile_exclusions(store,cfg):
+    from .policy import affected,redact
+    from .retractions import plan_remote,queue
+    existing={r[0] for r in store.conn.execute('SELECT event_id FROM event_tombstones')}
+    ids=[event_id for event_id in affected(store) if event_id not in existing]
+    if ids:
+        post_ids=[r[0] for r in store.conn.execute('SELECT id FROM posts WHERE event_id IN (%s)' % ','.join('?' for _ in ids),ids)]
+        plans=plan_remote(store,cfg,post_ids)
+        redact(store,ids)
+        queue(store,plans)
+    pending=[r[0] for r in store.conn.execute("SELECT post_id FROM retractions WHERE status='pending'")]
+    if pending:
+        queue(store,plan_remote(store,cfg,pending))
+
+
 def run_once(cfg: Config, dry_run: bool = False, no_llm: bool = False, days: int | None = None) -> tuple[int, int]:
     """One full cycle: collect -> report -> publish -> build site."""
     with Store(cfg.db_path) as store:
         run_id = store.start_run()
         collected = posted = 0
         try:
-            collected = slack_archive.collect(store, days=days or cfg.collect_days)
+            collected = collect_all(store, days=days or cfg.collect_days,config=cfg)
+            if not dry_run:
+                _reconcile_exclusions(store,cfg)
             drafts = draft_posts(store, cfg, use_llm=not no_llm)
             if dry_run:
                 telegram.publish(cfg, drafts, dry_run=True)
@@ -108,7 +135,10 @@ def run_once(cfg: Config, dry_run: bool = False, no_llm: bool = False, days: int
                 posted = len(drafts)
                 site_publisher.build(store, cfg)
                 deliver_pending(cfg, store)
-            store.finish_run(run_id, collected, posted)
+                from .retractions import process
+                process(store,cfg)
+            health=json.loads(store.get_kv('collector_health','{}'))
+            store.finish_run(run_id, collected, posted,error='degraded collection: see collector_health' if health.get('healthy') is False else None)
         except Exception as exc:
             store.finish_run(run_id, collected, posted, error=repr(exc))
             raise
@@ -168,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=cmd_collect)
 
     p = sub.add_parser("report", help="select, write and publish new items")
-    p.add_argument("--dry-run", action="store_true", help="print instead of sending; do not persist")
+    p.add_argument("--dry-run", action="store_true", help="preview without posts/delivery; decision audits are saved")
     p.add_argument("--no-llm", action="store_true")
     p.set_defaults(func=cmd_report)
 
@@ -206,14 +236,21 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("status", help="show store and configuration status")
     p.set_defaults(func=cmd_status)
 
+    from . import operations,policy,retractions,editorial
+    for module in (operations,policy,retractions,editorial):
+        module.register_commands(sub)
+
     args = parser.parse_args(argv)
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         stream=sys.stderr,
     )
+    for handler in logging.getLogger().handlers:
+        handler.setFormatter(operations.RedactingFormatter('%(asctime)s %(levelname)s %(name)s: %(message)s'))
     cfg = load_config()
-    cfg.ensure_dirs()
+    if not getattr(args,'readonly',False):
+        cfg.ensure_dirs()
     return args.func(cfg, args)
 
 

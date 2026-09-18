@@ -92,7 +92,8 @@ class DeliveryOutbox:
     def sent(self, job, message_id: int) -> None:
         with self.conn:
             cursor = self.conn.execute("""UPDATE delivery_jobs SET status='sent',message_id=?,error=NULL,next_attempt=NULL,
-                lease_token=NULL,lease_until=NULL,updated_at=? WHERE id=? AND status='sending' AND lease_token=?""",
+                lease_token=NULL,lease_until=NULL,updated_at=? WHERE id=?
+                AND (status='sending' OR (status='failed' AND error='withdrawn')) AND lease_token=?""",
                 (message_id, time.time(), job['id'], job['lease_token']))
             if cursor.rowcount != 1:
                 raise RuntimeError("Delivery lease lost after send; reconcile Telegram")
@@ -124,9 +125,29 @@ class DeliveryOutbox:
 def prepare_posts(cfg: Config, store: Store, items: list[tuple[Candidate, Post]]) -> None:
     """Persist site posts and Telegram jobs together, before any network send."""
     outbox = DeliveryOutbox(store)
+    from . import stories
+    from .policy import event_allowed
+    stories.ensure(store)
     now = time.time()
     with store.conn:
-        for _, post in items:
+        store.conn.execute('BEGIN IMMEDIATE')
+        for candidate, post in items:
+            if not event_allowed(store, candidate.event):
+                continue
+            meta = candidate.event.meta
+            if meta.get('story_id') and store.conn.execute(
+                'SELECT 1 FROM story_posts WHERE story_id=? AND (revision=? OR fingerprint=?)',
+                (meta['story_id'], meta['story_revision'], meta['story_fingerprint'])).fetchone():
+                continue
+            if candidate.event.kind == 'story_update':
+                event_values=asdict(candidate.event)
+                event_values['meta']=json.dumps(event_values['meta'],ensure_ascii=False)
+                event_values['now']=now
+                store.conn.execute('''INSERT OR IGNORE INTO events
+                  (id,source,kind,container_id,author_id,author_name,text,html,url,ts,parent_id,
+                   reply_count,reaction_count,meta,first_seen,last_seen)
+                  VALUES(:id,:source,:kind,:container_id,:author_id,:author_name,:text,:html,:url,:ts,:parent_id,
+                   :reply_count,:reaction_count,:meta,:now,:now)''',event_values)
             values = asdict(post)
             cursor = store.conn.execute("""INSERT INTO posts
                 (event_id,published_at,score,headline,summary,reasons,delivery,translations)
@@ -137,6 +158,7 @@ def prepare_posts(cfg: Config, store: Store, items: list[tuple[Candidate, Post]]
             row = store.conn.execute("SELECT id FROM posts WHERE event_id=?", (post.event_id,)).fetchone()
             post.id = row['id']
             if cursor.rowcount:
+                stories.reserve(store, candidate, post.id)
                 store.conn.execute("""INSERT INTO delivery_jobs(post_id,target,created_at,updated_at)
                     VALUES(?,?,?,?)""", (post.id, cfg.telegram_target or '', now, now))
 
@@ -166,6 +188,10 @@ def deliver_pending(cfg: Config, store: Store) -> dict[int, int]:
         while (job := outbox.claim(cfg.telegram_target)) is not None:
             try:
                 candidate, post = _job_item(store, job['post_id'])
+                from .policy import event_allowed
+                if not event_allowed(store, candidate.event):
+                    outbox.failed(job, 'Excluded or withdrawn before delivery')
+                    continue
                 caption = telegram.format_caption(cfg, candidate, post)
                 photo = renderer.render(candidate.event, candidate.container, store.user_names(candidate.event.source))
                 outbox.payload(job, caption, str(photo))
@@ -174,6 +200,10 @@ def deliver_pending(cfg: Config, store: Store) -> dict[int, int]:
                 log.error("Telegram job %s preparation failed (%s)", job['id'], type(exc).__name__)
                 continue
             try:
+                latest=store.get_event(candidate.event.id)
+                if latest is None or not event_allowed(store,latest):
+                    outbox.failed(job,'Excluded or withdrawn before transport')
+                    continue
                 message_id = telegram.send_photo(cfg, job['target'], photo, caption)
             except telegram.TelegramRejected as exc:
                 outbox.failed(job, str(exc), retry_after=(exc.retry_after or 60) if exc.status == 429 else None)
@@ -197,4 +227,8 @@ def deliver_pending(cfg: Config, store: Store) -> dict[int, int]:
                 log.error("Telegram job %s sent as message %s but save failed; reconcile before retry", job['id'], message_id)
                 raise RuntimeError("Telegram sent but delivery commit failed; manual reconciliation required") from None
             delivered[job['post_id']] = message_id
+            latest=store.get_event(candidate.event.id)
+            if latest is None or not event_allowed(store,latest):
+                from .retractions import queue,plan_remote
+                queue(store,plan_remote(store,cfg,[job['post_id']]))
     return delivered
