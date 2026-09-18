@@ -1,0 +1,194 @@
+{
+  "provenance": "Authored minimal anonymous paraphrases of issue #2 table; not a historical replay or production export. The seven editorial verdicts are retained as post numbers.",
+  "cases": [
+    {
+      "name": "linked_article",
+      "text": "https://example.test/news",
+      "eligible": false,
+      "reason": "readable_text_below_12",
+      "reviewed_post": null
+    },
+    {
+      "name": "election_link",
+      "text": "https://example.test/election",
+      "eligible": false,
+      "reason": "readable_text_below_12",
+      "reviewed_post": null
+    },
+    {
+      "name": "policy_hope",
+      "text": "希望這個方向有機會成為法規，大家繼續討論",
+      "eligible": false,
+      "reason": "missing_explicit_topic_and_evidence",
+      "reviewed_post": null
+    },
+    {
+      "name": "video_links",
+      "text": "https://example.test/a https://example.test/b",
+      "eligible": false,
+      "reason": "readable_text_below_12",
+      "reviewed_post": null
+    },
+    {
+      "name": "carbon_guide",
+      "text": "社區組織近期出版中介組織指引手冊，提供社區交流與協作的資訊 https://example.test/guide",
+      "eligible": true,
+      "reason": null,
+      "reviewed_post": null
+    },
+    {
+      "name": "tonight_meetup",
+      "text": "今天晚上還是有小松，會就上週的活動討論成效 https://example.test/meet",
+      "eligible": false,
+      "reason": "tonight_crossed_source_day",
+      "reviewed_post": 2
+    },
+    {
+      "name": "future_dinner",
+      "text": "我們預計 11/5 跟團隊舉辦餐敘，歡迎在台北的朋友聯絡",
+      "eligible": true,
+      "reason": null,
+      "reviewed_post": null
+    },
+    {
+      "name": "social_link",
+      "text": "https://example.test/social",
+      "eligible": false,
+      "reason": "readable_text_below_12",
+      "reviewed_post": null
+    },
+    {
+      "name": "disaster_talk",
+      "text": "10/02 週五下午線上講座：人工智慧與災害風險管理 https://example.test/talk",
+      "eligible": true,
+      "reason": null,
+      "reviewed_post": 1
+    },
+    {
+      "name": "short_system",
+      "text": "黑熊通報系統 https://example.test/system",
+      "eligible": false,
+      "reason": "readable_text_below_12",
+      "reviewed_post": null
+    },
+    {
+      "name": "internal_revival",
+      "text": "我打算在週末重啟專案，先跟大家分享一下",
+      "eligible": false,
+      "reason": "internal_channel",
+      "reviewed_post": 3
+    },
+    {
+      "name": "empty_forward_1",
+      "text": "",
+      "eligible": false,
+      "reason": "missing_verified_root",
+      "reviewed_post": null
+    },
+    {
+      "name": "empty_forward_2",
+      "text": "",
+      "eligible": false,
+      "reason": "missing_verified_root",
+      "reviewed_post": null
+    },
+    {
+      "name": "school_list",
+      "text": "學區產製課題：部分學校可對應村里，另有學校清單待協作 https://example.test/schools",
+      "eligible": true,
+      "reason": null,
+      "reviewed_post": null
+    },
+    {
+      "name": "empty_forward_3",
+      "text": "",
+      "eligible": false,
+      "reason": "missing_verified_root",
+      "reviewed_post": 4
+    },
+    {
+      "name": "empty_forward_4",
+      "text": "",
+      "eligible": false,
+      "reason": "missing_verified_root",
+      "reviewed_post": null
+    },
+    {
+      "name": "empty_internal",
+      "text": "",
+      "eligible": false,
+      "reason": "missing_verified_root",
+      "reviewed_post": null
+    },
+    {
+      "name": "internal_casual",
+      "text": "隨便詠唱出來了 https://example.test/tool",
+      "eligible": false,
+      "reason": "internal_channel",
+      "reviewed_post": 7
+    },
+    {
+      "name": "travel_sim",
+      "text": "Price for sim and esim at airport varies by provider",
+      "eligible": false,
+      "reason": "missing_explicit_topic_and_evidence",
+      "reviewed_post": null
+    },
+    {
+      "name": "venue_placeholder",
+      "text": "台北場地待登載 https://example.test/venue",
+      "eligible": false,
+      "reason": "readable_text_below_12",
+      "reviewed_post": null
+    },
+    {
+      "name": "short_video",
+      "text": "https://example.test/shorts",
+      "eligible": false,
+      "reason": "readable_text_below_12",
+      "reviewed_post": null
+    },
+    {
+      "name": "child_ai_panel",
+      "text": "9/24 有兒少人工智慧素養與風險座談會，後續會分享共筆 https://example.test/panel",
+      "eligible": true,
+      "reason": null,
+      "reviewed_post": 5
+    },
+    {
+      "name": "food_talk",
+      "text": "9/19 週六食農講座，探討蜂蜜與活魚 https://example.test/food",
+      "eligible": true,
+      "reason": null,
+      "reviewed_post": 6
+    },
+    {
+      "name": "local_accident",
+      "text": "地圖應該可以更新了，工地發生意外，大家注意消息 https://example.test/news",
+      "eligible": false,
+      "reason": "missing_explicit_topic_and_evidence",
+      "reviewed_post": null
+    },
+    {
+      "name": "another_video",
+      "text": "https://example.test/video",
+      "eligible": false,
+      "reason": "readable_text_below_12",
+      "reviewed_post": null
+    },
+    {
+      "name": "missed_trip",
+      "text": "Sorry for not being able to go to the meeting this time",
+      "eligible": false,
+      "reason": "missing_explicit_topic_and_evidence",
+      "reviewed_post": null
+    },
+    {
+      "name": "last_link",
+      "text": "https://example.test/watch",
+      "eligible": false,
+      "reason": "readable_text_below_12",
+      "reviewed_post": null
+    }
+  ]
+}

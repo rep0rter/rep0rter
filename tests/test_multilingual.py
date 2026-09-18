@@ -13,13 +13,18 @@ def translations():
     return {lang: {'headline': name + ' title', 'summary': name + ' summary'} for lang, name in LANGUAGES.items()}
 
 
+def response():
+    return {"translations": translations(), "evidence_ids": ["slack:C:1"], "event_date": None,
+            "participation_url": None, "needs_review": False, "review_reason": ""}
+
+
 def candidate():
     return Candidate(Event('slack:C:1', 'slack', 'message', 'slack:C', 1, text='9/19 工作坊開放報名，歡迎一起參與'), None, 8, plain_text='9/19 工作坊開放報名')
 
 
 def test_four_languages_are_written_in_one_call_and_survive_store(tmp_path):
     llm = Mock()
-    llm.chat_json.return_value = translations()
+    llm.chat_json.return_value = response()
     headline, summary, editions = write_multilingual_item(candidate(), llm)
     assert llm.chat_json.call_count == 1
     assert set(editions) == set(LANGUAGES)
@@ -38,7 +43,7 @@ def test_invalid_languages_are_missing_not_coerced_or_truncated():
     data['ko']['headline'] = ['not text']
     data['en']['summary'] = 'x' * 501
     data['ja']['summary'] = ' '
-    llm.chat_json.return_value = data
+    llm.chat_json.return_value = {**response(), 'translations': data}
     headline, summary, editions = write_multilingual_item(candidate(), llm)
     assert set(editions) == {'zh-TW'}
     post = Post('x', 1, 9, headline, summary, translations=editions)

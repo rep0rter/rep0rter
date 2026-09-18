@@ -4,15 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 
 import requests
 
 from .config import Config
 
 log = logging.getLogger(__name__)
-
-_JSON_BLOCK = re.compile(r"\{.*\}", re.S)
 
 
 class LLM:
@@ -40,16 +37,13 @@ class LLM:
         return data["choices"][0]["message"]["content"] or ""
 
     def chat_json(self, system: str, user: str) -> dict:
-        """Ask for a JSON object; tolerate code fences and stray prose."""
+        """Require exactly a JSON object; caller owns bounded corrective retries."""
         text = self.chat(system + "\n\n只回傳一個 JSON 物件，不要加任何說明或 code fence。", user)
         try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            m = _JSON_BLOCK.search(text)
-            if m:
-                try:
-                    return json.loads(m.group(0))
-                except json.JSONDecodeError:
-                    pass
-        log.warning("LLM returned non-JSON: %.200s", text)
-        raise ValueError("LLM response was not JSON")
+            result = json.loads(text)
+        except (json.JSONDecodeError, TypeError) as exc:
+            # Do not log untrusted model output (which can include source/private data).
+            raise ValueError("LLM response was not strict JSON") from exc
+        if not isinstance(result, dict):
+            raise ValueError("LLM response must be a JSON object")
+        return result
