@@ -135,3 +135,42 @@ def test_queue_deduplicates_same_plan(group):
     plan=withdraw(group,[1])
     remote.queue(group,plan)
     assert group.conn.execute('SELECT count(*) FROM telegram_mutations').fetchone()[0]==1
+
+
+def test_already_absent_delete_target_completes_without_replay(group,monkeypatch):
+    withdraw(group,[1,2,3])
+    calls=[]
+    monkeypatch.setattr(remote.requests,'post',lambda *args,**kwargs:calls.append(args[0]) or response(
+        False,400,error_code=400,description='Bad Request: message to delete not found'))
+    assert remote.process(group,cfg(group))==1
+    assert group.conn.execute('SELECT status FROM telegram_mutations').fetchone()[0]=='sent'
+    assert [r[0] for r in group.conn.execute('SELECT status FROM retractions')]==['complete']*3
+    assert remote.process(group,cfg(group))==0
+    assert len(calls)==1
+
+
+@pytest.mark.parametrize('description,reason',[
+    ("Bad Request: message can't be deleted",'message_cannot_be_deleted'),
+    ('Bad Request: not enough rights to delete messages','permission_denied'),
+    ('Bad Request: chat not found','chat_not_found'),
+    ('Bad Request: arbitrary https://api.telegram.org/bot12345:SECRET/send?token=SECRET','rejected'),
+])
+def test_explicit_delete_rejection_stays_failed_with_bounded_reason(group,monkeypatch,description,reason):
+    withdraw(group,[1,2,3])
+    monkeypatch.setattr(remote.requests,'post',lambda *args,**kwargs:response(
+        False,400,error_code=400,description=description))
+    assert remote.process(group,cfg(group))==0
+    row=group.conn.execute('SELECT * FROM telegram_mutations').fetchone()
+    assert row['status']=='failed' and row['next_attempt'] is None
+    assert row['error']==f'Telegram rejected (400: {reason})'
+    assert 'SECRET' not in row['error'] and 'https://' not in row['error']
+    assert [r[0] for r in group.conn.execute('SELECT status FROM retractions')]==['pending']*3
+
+
+def test_missing_edit_target_is_not_accepted_as_success(group,monkeypatch):
+    withdraw(group,[1])
+    monkeypatch.setattr(remote.requests,'post',lambda *args,**kwargs:response(
+        False,400,error_code=400,description='Bad Request: message to edit not found'))
+    assert remote.process(group,cfg(group))==0
+    row=group.conn.execute('SELECT * FROM telegram_mutations').fetchone()
+    assert row['status']=='failed' and 'edit_target_not_found' in row['error']

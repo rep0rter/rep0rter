@@ -78,6 +78,35 @@ def queue(store,plans):
               (plan['target'],plan['message_id'],plan['action'],payload,digest,time.time()))
 
 
+def rejection_reason(status, description):
+    """Map remote descriptions to a bounded vocabulary, never persist raw text."""
+    detail = description.strip().casefold() if isinstance(description, str) else ''
+    if detail.startswith('bad request: '):
+        detail = detail[len('bad request: '):]
+    if status == 429:
+        return 'rate_limited'
+    if status == 401:
+        return 'authentication_failed'
+    if status == 403:
+        return 'permission_denied'
+    if status == 400:
+        if detail == 'message to delete not found':
+            return 'message_already_absent'
+        if detail == 'message is not modified' or detail.startswith('message is not modified:'):
+            return 'message_not_modified'
+        if detail in ("message can't be deleted", 'message cannot be deleted'):
+            return 'message_cannot_be_deleted'
+        if detail in ("message can't be edited", 'message cannot be edited'):
+            return 'message_cannot_be_edited'
+        if detail == 'chat not found':
+            return 'chat_not_found'
+        if detail == 'message to edit not found':
+            return 'edit_target_not_found'
+        if 'not enough rights' in detail or 'have no rights' in detail:
+            return 'permission_denied'
+    return 'rejected'
+
+
 def process(store,cfg):
     store.conn.executescript(SCHEMA)
     now=time.time()
@@ -114,16 +143,22 @@ def process(store,cfg):
             body=response.json()
             if not isinstance(body, dict) or 'ok' not in body or response.status_code >= 500:
                 raise RuntimeError('Ambiguous Telegram mutation response')
-            if not body.get('ok'):
+            confirmed_noop = False
+            if body.get('ok') is False:
                 status=int(body.get('error_code',response.status_code))
-                # Repeating a completed edit is harmless and confirms desired state.
-                if not (action=='editMessageText' and status==400 and 'message is not modified' in body.get('description','').lower()):
+                reason=rejection_reason(status,body.get('description'))
+                # A missing delete target confirms absence; editing a missing
+                # target does not confirm the requested reconstructed message.
+                confirmed_noop = status == 400 and (
+                    (action == 'deleteMessage' and reason == 'message_already_absent') or
+                    (action == 'editMessageText' and reason == 'message_not_modified'))
+                if not confirmed_noop:
                     with store.conn:
                         store.conn.execute("UPDATE telegram_mutations SET status='failed',error=?,next_attempt=?,lease_until=NULL WHERE id=?",
-                            (f'Telegram rejected ({status})',time.time()+int(body.get('parameters',{}).get('retry_after',60)) if status==429 else None,job['id']))
+                            (f'Telegram rejected ({status}: {reason})',time.time()+int(body.get('parameters',{}).get('retry_after',60)) if status==429 else None,job['id']))
                     if status==429: break
                     continue
-            if body.get('ok') is not True and not (action == 'editMessageText' and 'message is not modified' in body.get('description','').lower()):
+            if not confirmed_noop and (body.get('ok') is not True or response.status_code != 200):
                 raise RuntimeError('Ambiguous Telegram mutation response')
             with store.conn:
                 store.conn.execute("UPDATE telegram_mutations SET status='sent',payload=?,completed_at=?,error=NULL,lease_until=NULL WHERE id=?",
