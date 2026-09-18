@@ -122,3 +122,16 @@ def test_slack_github_integration_never_persists_events_or_user(tmp_path,monkeyp
         assert store.event_count()==0
         assert store.conn.execute('SELECT COUNT(*) FROM users').fetchone()[0]==0
         assert read_state(store,'slack:C')['last_complete_ts']=='900000'
+
+
+def test_slack_deletion_sentinel_scrubs_existing_content_and_avatar(tmp_path):
+    with Store(tmp_path/'db') as store:
+        original=Event('slack:C:100','slack','message','slack:C',100,author_id='slack:U',author_name='Original author',text='Original content',html='<p>Original</p>',meta={'avatar_url':'https://example.test/avatar','original_text':'Original'})
+        persist(store,'slack:C',{},[original],Metrics(),100)
+        deleted,_=inc.api.to_event({'ts':'100','subtype':'message_deleted','text':'deleted original','user':{'id':'U','real_name':'Original author'}},'C')
+        persist(store,'slack:C',{},[deleted],Metrics(),101)
+        saved=store.get_event(original.id)
+        assert saved.text==saved.html==saved.author_name==''
+        assert saved.author_id=='slack:U'
+        assert saved.meta['deleted_at']==101 and saved.meta['visibility']=='deleted'
+        assert 'avatar_url' not in saved.meta and 'original_text' not in saved.meta

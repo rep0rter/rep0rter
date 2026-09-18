@@ -33,6 +33,19 @@ def persist(store, key, state, events, metrics, now=None):
             from ..policy import event_allowed
             from ..sources import automated
             old = store.get_event(event.id)
+            deleted = bool(event.meta.get('deleted_at') or event.meta.get('content_status') == 'deleted'
+                           or event.meta.get('visibility') in {'deleted', 'withdrawn'})
+            if deleted:
+                # Retain stable identity for policy dependency matching, never retain deleted content.
+                identity_keys = ('source_instance', 'external_id', 'canonical_object_id', 'source_name')
+                identity = {key: event.meta[key] for key in identity_keys if key in event.meta}
+                identity.update(deleted_at=event.meta.get('deleted_at') or now, observed_at=now,
+                                visibility='withdrawn' if event.meta.get('visibility') == 'withdrawn' else 'deleted', content_status='deleted', eligible=False, plain_text='')
+                event.meta = identity
+                event.text = event.html = event.author_name = ''
+                event.reply_count = event.reaction_count = 0
+                if old:
+                    event.author_id = old.author_id
             # Tombstones for existing rows must persist so withdrawals can propagate.
             if (automated(event) or not event_allowed(store, event)) and not (old and event.meta.get('deleted_at')):
                 continue
