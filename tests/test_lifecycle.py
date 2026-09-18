@@ -164,3 +164,20 @@ def test_redaction_sanitizes_all_cached_generations_even_when_rebuild_fails(tmp_
         survivor_after=BeautifulSoup((config.site_dir/'index.html').read_text(),'html.parser').find('article',id='1')
         assert survivor_after.get_text()==survivor_text
         assert [a['href'] for a in survivor_after.find_all('a',href=True)]==survivor_links
+
+
+def test_withdrawal_preserves_ambiguous_delivery_for_operator_reconciliation(tmp_path):
+    from rep0rter.config import Config
+    from rep0rter.delivery import DeliveryOutbox,prepare_posts
+    from rep0rter.reporter import Candidate
+    with Store(tmp_path/'db.sqlite') as store:
+        source=Event('slack:C:1','slack','message','slack:C',100,text='Original')
+        store.upsert_events([source])
+        cfg=Config(data_dir=tmp_path,telegram_chat_id='news')
+        prepare_posts(cfg,store,[(Candidate(source,None,7),Post(source.id,180,7,'Title','Summary'))])
+        outbox=DeliveryOutbox(store)
+        job=outbox.claim('news')
+        outbox.failed(job,'timeout',unknown=True)
+        policy.redact(store,[source.id])
+        assert store.conn.execute('SELECT status FROM delivery_jobs').fetchone()[0]=='unknown'
+        assert outbox.claim('news') is None
