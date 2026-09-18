@@ -217,3 +217,71 @@ def test_source_correction_fallback_retains_model_review_provenance():
     assert not result.needs_review and '取消' in result.summary
     assert result.model_review_requested
     assert 'validated_attributed_source_correction' in result.review_reason
+
+
+def merged_pull_request():
+    from rep0rter.collectors.github import to_event
+    raw={'id':42,'title':'버스 등록 접근성 개선','body':'## Impact\nCitizens can register buses through accessible forms and receive clearer validation errors.\n\n## Test plan\n- [ ] Browser verification',
+         'html_url':'https://github.com/community/bus/pull/42','state':'closed','merged_at':'2026-09-18T15:30:00Z',
+         'created_at':'2026-09-17T12:00:00Z','updated_at':'2026-09-18T15:30:00Z','user':{'id':1,'login':'human','type':'User'},'draft':False}
+    return Candidate(to_event(raw,'community/bus','pull_request'),None,6)
+
+
+def software_response(event_id):
+    return {'translations':{
+        'zh-TW':{'headline':'改善公車登錄介面','summary':'已合併的修改改善表單操作及輸入提示'},
+        'ko':{'headline':'버스 등록 접근성 개선','summary':'양식 조작과 오류 안내를 개선한 변경이 병합됐다'},
+        'ja':{'headline':'バス登録画面を改善','summary':'フォーム操作と入力案内を改善する変更が統合された'},
+        'en':{'headline':'Bus form improvements merged','summary':'The merged change improves form access and validation messages'}},
+        'evidence_ids':[event_id],'event_date':None,'participation_url':None,'needs_review':False,'review_reason':''}
+
+
+def test_raw_merged_pr_evidence_includes_lifecycle_without_inventing_activity_date():
+    c=merged_pull_request()
+    llm=Mock();llm.chat_json.return_value=software_response(c.event.id)
+    result=write(c,llm,NOW)
+    assert not result.needs_review and result.writer_mode=='llm'
+    assert len(result.translations)==4
+    assert result.event_date is None and result.participation_url is None
+    bundle=json.loads(llm.chat_json.call_args.args[1])
+    record=bundle['evidence'][0]
+    assert record['source_kind']=='pull_request' and record['source']=='github'
+    assert record['lifecycle']['merged_at']=='2026-09-18T15:30:00Z'
+    assert record['lifecycle']['state']=='closed'
+    assert record['lifecycle_authority']=='source_api'
+    assert '[ ] Browser verification' in record['text']
+    assert bundle['policy']['software_updates_need_no_activity_date_or_registration']
+    assert bundle['policy']['merge_does_not_prove_deployment_or_test_success']
+
+
+def test_pr_merge_time_can_support_occurrence_date_but_not_activity_event_date():
+    c=merged_pull_request();bundle=evidence_bundle(c,NOW)
+    data=software_response(c.event.id)
+    for edition in data['translations'].values():
+        edition['summary']='The change was merged on 2026-09-18'
+    valid,errors=validate_response(data,bundle)
+    assert len(valid)==4 and not errors
+    data['event_date']='2026-09-18'
+    valid,errors=validate_response(data,bundle)
+    assert not valid and 'event_date:not_in_evidence' in errors
+
+
+def test_missing_or_untyped_lifecycle_does_not_infer_merge_from_eligibility():
+    c=merged_pull_request();c.event.meta.pop('lifecycle')
+    bundle=evidence_bundle(c,NOW)
+    assert bundle['evidence'][0]['lifecycle']=={}
+    assert bundle['evidence'][0]['lifecycle_authority']=='unknown'
+    c.event.meta['lifecycle']={'merged_at':'not a timestamp','published_at':'2026-09-18','state':['closed'],'draft':'false'}
+    assert evidence_bundle(c,NOW)['evidence'][0]['lifecycle']=={}
+
+
+def test_retry_includes_previous_rejected_copy_for_concrete_rewrite():
+    c=merged_pull_request();bad=software_response(c.event.id)
+    bad['translations']['en']['headline']='A'*31
+    good=software_response(c.event.id)
+    llm=Mock();llm.chat_json.side_effect=[bad,good]
+    result=write(c,llm,NOW)
+    assert not result.needs_review and len(result.translations)==4
+    payload=json.loads(llm.chat_json.call_args.args[1])
+    assert payload['previous_output']['translations']['en']['headline']=='A'*31
+    assert 'en:headline:length' in payload['rewrite_required']
