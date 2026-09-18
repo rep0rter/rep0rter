@@ -135,3 +135,18 @@ def test_slack_deletion_sentinel_scrubs_existing_content_and_avatar(tmp_path):
         assert saved.author_id=='slack:U'
         assert saved.meta['deleted_at']==101 and saved.meta['visibility']=='deleted'
         assert 'avatar_url' not in saved.meta and 'original_text' not in saved.meta
+
+
+def test_partial_homepage_drop_fails_before_any_cursor_or_directory_write(tmp_path,monkeypatch):
+    from rep0rter.collectors.state import write_state
+    channel=inc.api.ChannelRow('C','public','','',10,100,None)
+    monkeypatch.setattr(inc.api,'fetch_channels',lambda session:[channel])
+    with Store(tmp_path/'db') as store:
+        with store.conn:
+            write_state(store,'slack:health',{'containers':100,'last_good_directory_count':100})
+            write_state(store,'slack:C',{'last_complete_ts':'100'})
+        with pytest.raises(RuntimeError,match='suddenly shrank'):
+            inc.collect(store,session=Mock(headers={}))
+        assert read_state(store,'slack:C')['last_complete_ts']=='100'
+        assert read_state(store,'slack:health')['last_good_directory_count']==100
+        assert not store.event_count()

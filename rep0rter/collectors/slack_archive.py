@@ -242,8 +242,9 @@ def to_event(raw: dict, channel_id: str, public_channel_ids: set[str] | None = N
             "engagement": {"slack_reactions": sum(r["count"] for r in reactions), "slack_replies": int(raw.get("reply_count") or 0)},
             "relations": {"reply_to": event_id(channel_id, thread_ts) if is_reply else None},
             "reactions": reactions, "files": files, "reply_users_count": raw.get("reply_users_count", 0),
-            "avatar_url": next((profile.get(k) for k in ("image_192", "image_72", "image_48", "image_24")
-                                if isinstance(profile.get(k), str) and profile[k].startswith("https://")), ""),
+            "avatar_url": next((profile.get(k) for k in ("image_192", "image_512", "image_1024", "image_72", "image_48", "image_32", "image_24", "image_original")
+                                if profile.get("is_custom_image") is not False and isinstance(profile.get(k), str) and profile[k].startswith("https://")), ""),
+            "avatar_is_custom": profile.get("is_custom_image"),
             "source_name": "g0v Slack",
         },
     )

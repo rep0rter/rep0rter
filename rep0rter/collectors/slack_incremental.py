@@ -79,6 +79,10 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         session = BudgetSession(session, metrics, limit=request_budget)
     now = time.time()
     channels = api.fetch_channels(session)
+    previous_health = read_state(store, 'slack:health')
+    previous_count = previous_health.get('last_good_directory_count', previous_health.get('containers', 0))
+    if previous_count and len(channels) < previous_count * .5:
+        raise RuntimeError(f'archive public directory suddenly shrank from {previous_count} to {len(channels)}; retaining prior state')
     public_ids = {ch.id for ch in channels}
     failures, total = 0, 0
     selected = []
@@ -196,6 +200,6 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
     with store.conn:
         write_state(store, 'slack:root_refresh', queue)
         write_state(store, 'slack:health', {'last_attempt_at': now, 'containers': len(channels), 'failed_channels': failures,
-                   'healthy': failures == 0, 'fingerprint': hashlib.sha256(repr(channels).encode()).hexdigest(),
+                   'healthy': failures == 0, 'last_good_directory_count': len(channels), 'fingerprint': hashlib.sha256(repr(channels).encode()).hexdigest(),
                    'metrics': asdict(metrics)})
     return total

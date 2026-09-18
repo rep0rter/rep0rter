@@ -145,3 +145,12 @@ def test_http_failure_has_bounded_retries(monkeypatch):
         archive._get(session, "https://example.test")
     assert session.get.call_count == 3
     assert [call.args[0] for call in sleep.call_args_list] == [1, 2, 4]
+
+
+@pytest.mark.parametrize('size',['32','512','1024','original'])
+def test_avatar_sizes_and_default_flag(size):
+    raw={'ts':'1789571777.383129','user':{'id':'U','profile':{'image_'+size:'https://example.test/avatar','is_custom_image':True}}}
+    assert archive.to_event(raw,'C')[0].meta['avatar_url']=='https://example.test/avatar'
+    raw['user']['profile']['is_custom_image']=False
+    event,_=archive.to_event(raw,'C')
+    assert event.meta['avatar_url']=='' and event.meta['avatar_is_custom'] is False

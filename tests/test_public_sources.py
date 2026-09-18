@@ -171,3 +171,24 @@ def test_bot_not_persisted_and_override_still_respects_optout(tmp_path,monkeypat
         session.get.side_effect=[response(repo),response([raw]),response([]),response([])]
         github.collect(store,['example/civic'],session,Metrics())
         assert not store.event_count()
+
+
+@pytest.mark.parametrize('body', [
+ '## 요약\nAdmin에서 정류장을 등록하면 위치 안내 서비스에 자동 연결합니다. 승객 화면에서는 노선에 배정된 버스가 여럿일 때 목표 정류장에 가장 가까운 버스를 선택해서 도착 시간을 표시합니다. 이를 통해 시민이 시골 노선버스의 현재 위치를 쉽게 확인할 수 있습니다.',
+ '## 内容（2 commits）\n避難所や給水所の公開データを取り込んだ地図を追加します。市民が災害時の支援情報を印刷して持ち歩けるようになります。開設済みの施設だけを表示して、閉鎖された施設への案内を防止します。既存の公開情報と同じ形式で利用できます。',
+ '## Summary\nThe bus location service now provides accessible arrival information for rural passengers. We added the public dataset export so residents can compare routes and find available transport options.',
+])
+def test_native_language_civic_impact_is_eligible(body):
+    raw=release(body=body,merged_at='2026-09-18T00:00:00Z',user={'login':'human','type':'User'})
+    assert eligible(github.to_event(raw,'example/civic','pull_request'))
+
+
+def test_generic_summary_is_not_meaningful_public_impact():
+    body='## Summary\nFixed the internal helper and improved the code style. Updated tests and adjusted variable names. Added a new CI workflow for dependency builds.'
+    assert not github.meaningful_impact(body)
+
+
+def test_human_fix_ci_scope_is_excluded_even_with_impact_heading():
+    raw=release(name='',title='fix(ci): restrict workflow permissions',user={'login':'human','type':'User'},body='## Impact\nPublic dataset workflow security has improved through restricted permissions and build tokens.',merged_at='2026-09-18T00:00:00Z')
+    assert github.is_automation(raw,'pull_request')
+    assert not eligible(github.to_event(raw,'example/civic','pull_request'))

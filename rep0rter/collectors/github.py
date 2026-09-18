@@ -26,7 +26,20 @@ def is_automation(raw, kind):
     return bool(actor.get('type') == 'Bot' or login.endswith('[bot]') or
                 login in {'dependabot', 'renovate', 'github-actions', 'github-actions[bot]'} or
                 labels & {'dependencies', 'dependency', 'automation', 'automated', 'bot', 'ci', 'chore'} or
-                re.search(r'(?i)^(?:chore|ci|build)(?:\([^)]*\))?\s*:|^(?:bump|update)\s+\S+\s+(?:from|to)\s+v?\d', title))
+                re.search(r'(?i)^\w+\((?:ci|deps(?:-dev)?|dependencies|build)\)\s*:|^(?:chore|ci|build)(?:\([^)]*\))?\s*:|^(?:bump|update)\s+\S+\s+(?:from|to)\s+v?\d', title))
+
+
+def meaningful_impact(body):
+    """Accept native-language outcome descriptions, not a heading by itself."""
+    plain = normalize_text(body or '', 'markdown')
+    if len(plain.strip()) < 40:
+        return False
+    if re.search(r'(?im)(?:^|\n)\s*#{0,6}\s*(?:impact|outcome|成果|影響|利用者への影響|영향)\s*[:：\n]', body or ''):
+        return True
+    summary = re.search(r'(?im)^\s*#{1,6}\s*(?:summary|overview|概要|内容|変更内容|요약|주요 변경|변경 사항|무엇이 바뀌었나)(?:\b|[（(\s|])', body or '')
+    civic = re.search(r'(?i)dataset|open data|accessibility|citizen|transport|\bbus\b|shelter|election|participatory|地図|避難|市民|公共|福祉|バス|データ|버스|정류장|노선|시민|공공|대피|데이터|산재', plain)
+    benefit = re.search(r'(?i)add|enable|allow|improve|export|accessible|provide|prevent|reduce|fix|追加|表示|公開|改善|利用|配布|生成|解決|추가|제공|개선|생성|표시|연결|해결|차단', plain)
+    return len(plain) >= 100 and bool(summary and civic and benefit)
 
 
 def to_event(raw, repo, kind, *, editorial_override=False):
@@ -39,8 +52,7 @@ def to_event(raw, repo, kind, *, editorial_override=False):
     collaboration_call = len(body.strip()) >= 40 and bool(re.search(r'(?i)help wanted|looking for|contribut|collaborat|volunteer|協作|徵求|招募|参加|協力|募集|기여|모집|참여', body))
     eligible = (kind == 'release' and substantial and not raw.get('draft') and bool(raw.get('published_at')) or
                 kind == 'issue' and collaboration_call and bool(labels & COLLABORATION_LABELS) or
-                kind == 'pull_request' and len(body.strip()) >= 40 and bool(raw.get('merged_at')) and bool(re.search(
-                    r'(?im)(?:^|\n)\s*#{0,6}\s*(?:impact|outcome|成果|影響|利用者への影響|영향)\s*[:：\n]', raw.get('body') or '')))
+                kind == 'pull_request' and bool(raw.get('merged_at')) and meaningful_impact(raw.get('body') or ''))
     automation = is_automation(raw, kind)
     eligible = eligible and (not automation or editorial_override)
     event_id = f'github:{repo.lower()}:{kind}:{external}'

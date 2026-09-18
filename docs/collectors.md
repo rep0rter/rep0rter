@@ -9,7 +9,7 @@ REP0RTER_COLLECT_REQUEST_BUDGET=80
 REP0RTER_COLLECT_DAILY_BUDGET=1500
 ```
 
-GitHub 使用公開無認證 REST API：先確認 repository `private=false`，擷取已發布 release、具有明確協作標籤（`help wanted`、`good first issue`、`collaboration` 等）的 issue，以及有 `Impact`／`Outcome`／`成果`／`影響` 段落的 merged PR。release 至少需要 80 字元實質說明；issue 除標籤外需要 40 字元以上正文及明確協作邀請；PR 至少需要 40 字元的影響說明。所有原始候選仍經編輯政策，標籤不是自動推播許可。Mastodon 只接受配置 URL 完全匹配的本機 account 與 `public` 原創 status；保留 CW，boost 不建立獨立候選，回覆保存為不同 kind，不獨立當新聞。物件 ID 以完整 canonical URI 計算，不會讓不同 instance 的 numeric ID 碰撞。
+GitHub 使用公開無認證 REST API：先確認 repository `private=false`，擷取已發布 release、具有明確協作標籤（`help wanted`、`good first issue`、`collaboration` 等）的 issue，以及有 `Impact`／`Outcome`／`成果`／`影響` 段落的 merged PR。release 至少需要 80 字元實質說明；issue 除標籤外需要 40 字元以上正文及明確協作邀請；PR 至少需要 40 字元的影響說明；日文／韓文／英文 Summary 類段落則須同時具備具體公民用途與功能效益、至少 100 字元。所有原始候選仍經編輯政策，標籤不是自動推播許可。Mastodon 只接受配置 URL 完全匹配的本機 account 與 `public` 原創 status；保留 CW，boost 不建立獨立候選，回覆保存為不同 kind，不獨立當新聞。物件 ID 以完整 canonical URI 計算，不會讓不同 instance 的 numeric ID 碰撞。
 
 帳號顯示名稱、repo stars、followers 不作通用新聞分數。事件 metadata 帶 `source_instance`、`external_id`、`canonical_object_id`、`visibility`、`content_format`、`plain_text`、`updated_at`、`observed_at`、typed `engagement`、`relations`。Slack mrkdwn、GitHub Markdown、Mastodon HTML 分別正規化。未知可見性拒絕；來源排除在請求前處理，作者／引用排除在入庫前再檢查。Mastodon 每輪循環重查最多 4 個已存 status；404/410 或變成非公開會清空文字並記錄刪除狀態，供共同撤回流程移除網站與 delivery。
 
@@ -33,7 +33,7 @@ GitHub 使用公開無認證 REST API：先確認 repository `private=false`，�
 
 所有來源共用至少 0.5 秒間隔與每輪／每日 budget；已送出的失敗請求、重試都計入。每日 quota 在 HTTP 之前持久預留，程序崩潰不會退回配額。已配置來源平分剩餘每輪 budget，單一來源失敗隔離；GitHub/Mastodon 的 rate-limit reset/Retry-After 保存後延至下一輪，不阻塞排程睡眠。
 
-`collector_health` 包含 `healthy`、`last_healthy_at`、`last_attempt_at`、`finished_at`、`containers`、`failed_channels`、逐來源健康與 `metrics`：requests、bytes、pages、new_events、updated_events、duplicate_payloads。每輪同時存到 `collector_metrics:<epoch_ms>`，保留 30 天供比較。首頁零頻道不會被視為成功；最後健康時間不會被失敗覆蓋。事件另存 bootstrap、recovery、fetched_at。沒有捏造 archive_first_seen，總採集延遲不能解讀成純上游同步延遲。
+`collector_health` 包含 `healthy`、`last_healthy_at`、`last_attempt_at`、`finished_at`、`containers`、`failed_channels`、逐來源健康與 `metrics`：requests、bytes、pages、new_events、updated_events、duplicate_payloads。每輪同時存到 `collector_metrics:<epoch_ms>`，保留 30 天供比較。首頁零頻道、有效頻道數突然跌到最後有效目錄的一半以下，都不會被視為成功，且不推進游標；最後健康時間不會被失敗覆蓋。事件另存 bootstrap、recovery、fetched_at。沒有捏造 archive_first_seen，總採集延遲不能解讀成純上游同步延遲。
 
 兩週真實請求／漏事件比較需要部署後持續觀測；此實作沒有用預估節省量代替實測，也沒有更改每小時採集週期。
 
@@ -47,3 +47,5 @@ GitHub 使用公開無認證 REST API：先確認 repository `private=false`，�
 - [Archive upstream controller](https://github.com/ronnywang/g0v-slack-archive/blob/00dbb3d6dee294c1da3f124def7f68beadf921d7/webdata/controllers/IndexController.php)
 
 `tests/test_collectors_incremental.py` 與 `tests/test_public_sources.py` 使用合成 API 回應與離線 transport，覆蓋多於 100 筆、短頁、after/before、晚到與重複、空 subtype／0 回應、resume、交易中斷、reaction 撤回、舊 root 補抓、來源隔離、每日 quota、公開性、CW、boost、跨 instance、退出與刪除。
+
+已核對的小型日韓來源與實際 HTTP 驗證見 [FtO 來源](fto-sources.md)。Slack 頭貼支援 24/32/48/72/192/512/1024/original，明確 is_custom_image=false 時使用名字縮寫，不冒用預設圖案。
