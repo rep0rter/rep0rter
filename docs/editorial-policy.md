@@ -1,7 +1,7 @@
 # Editorial selection and grounded writing
 
 Issues #2 and #8 use a versioned policy (`eligibility-v2`) and writer contract
-(`grounded-four-locale-v2`). New databases get append-only decision and writer
+(`grounded-four-locale-v3`). New databases get append-only decision and writer
 audit tables automatically when evaluated. Audit records contain source text;
 they are internal operational records and must follow the same backup/access
 and opt-out retention rules as the event store.
