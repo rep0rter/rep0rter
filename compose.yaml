@@ -18,6 +18,38 @@ services:
     volumes:
       - ${REP0RTER_DATA_HOST_DIR:-./data}:/data
     command: ["loop", "--interval", "3600"]
+    healthcheck:
+      test: ["CMD", "python", "-m", "rep0rter", "health"]
+      interval: 5m
+      timeout: 30s
+      start_period: 15m
+      retries: 3
+    logging:
+      driver: local
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  maintenance:
+    image: rep0rter
+    container_name: rep0rter-maintenance
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - REP0RTER_DATA_DIR=/data
+      - REP0RTER_HEALTH_URL=http://web
+    volumes:
+      - ${REP0RTER_DATA_HOST_DIR:-./data}:/data
+      # Optional read-only SSH configuration for REP0RTER_BACKUP_OFFSITE:
+      # - /absolute/backup-ssh-config:/root/.ssh:ro
+    command: ["maintenance", "--loop"]
+    logging:
+      driver: local
+      options:
+        max-size: "20m"
+        max-file: "3"
 
   web:
     image: caddy:2-alpine
@@ -27,4 +59,14 @@ services:
       - "127.0.0.1:18090:80"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ${REP0RTER_DATA_HOST_DIR:-./data}/site:/srv:ro
+      - ${REP0RTER_DATA_HOST_DIR:-./data}:/data:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost/ && wget -q -O /dev/null http://localhost/feed.xml"]
+      interval: 5m
+      timeout: 20s
+      retries: 3
+    logging:
+      driver: local
+      options:
+        max-size: "20m"
+        max-file: "3"

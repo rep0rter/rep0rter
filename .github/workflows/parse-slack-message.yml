@@ -1,4 +1,4 @@
-name: Manual backup export of g0v Slack messages
+name: Manual public message JSON export (not production backup)
 
 # rep0rter runs hourly on its own host (see compose.yaml). This workflow is a
 # manual fallback that exports the last N days of public Slack messages to

@@ -1,0 +1,118 @@
+# Operations: backups, health, monitoring and latency
+
+`health` and `metrics` use SQLite `mode=ro` + `query_only`; neither constructs a
+Store, migrates a schema, collects, calls an LLM, nor publishes. The CLI skips
+`ensure_dirs` for these commands. A successful process or an empty successful run
+is not evidence of healthy collection: the collector must explicitly persist
+`collector_health.last_healthy_at` after validating its sources.
+
+## Deployment
+
+Compose declares worker and web healthchecks and the existing log policy
+(`local`, `max-size=20m`, `max-file=3`). An unhealthy status is monitoring evidence;
+Docker does not automatically restart a running unhealthy worker. The separate
+maintenance service runs hourly, creates a verified snapshot daily, and rehearses
+restoration every 28 days. The web container mounts the data directory read-only
+so replacing `site` with a release symlink is visible without remounting.
+
+The public JSON export workflow is explicitly named **not production backup**.
+Push/PR CI runs offline Python tests without dotenv or network access. Remote CI
+results must be checked after pushing; configuring CI is not proof it ran.
+
+## Consistent backups
+
+```sh
+python -m rep0rter backup
+python -m rep0rter backup --offsite backup@backup-host:/dedicated/rep0rter
+python -m rep0rter restore-rehearsal data/backups/daily-YYYY-MM-DD.sqlite \
+  --policy data/exclusions.json
+```
+
+Snapshots use SQLite's backup API, including committed WAL data, and are checked
+with `integrity_check` before atomically replacing a daily file. The backup
+contains every SQLite table (events, posts, delivery jobs, cursor state, decisions,
+exclusions, runs, and future tables). A manifest includes UTC creation time,
+`user_version`, schema hash, row counts, and SHA-256 of the snapshot. The current
+policy ledger has its own `.policy.json` companion; it must never replace a newer
+live policy ledger during recovery.
+
+Local retention is the latest **7 daily + 4 ISO-weekly** snapshots. Permissions
+for snapshots/manifests are private. Weekly snapshots are the first successful
+snapshot that week. Configure `REP0RTER_BACKUP_OFFSITE=backup@host:/directory` and
+an explicitly mounted read-only SSH configuration with verified `known_hosts`
+for a separate host. `rsync` and `ssh` must be installed. No destination is
+invented, no host key checking is disabled, no remote files are deleted. Apply
+remote retention at that destination if needed. Without a verified offsite copy,
+health deliberately reports `offsite_backup_stale`; a local snapshot does not
+satisfy the off-host requirement. Backup/rsync failures do not advance the
+maintenance success marker and are retried next hour.
+
+The restore drill creates a new temporary database, checks checksum, integrity,
+every table's content and counts, and verifies already-posted events cannot enter
+the unposted selection. It then copies the **current** policy ledger into the
+isolated directory and initializes the store to reapply current tombstones. A
+missing/invalid current ledger fails closed. It does not start a collector,
+renderer, Telegram sender or scheduler, and deletes the temporary directory.
+Outstanding delivery jobs retain their status; the drill never sends them.
+
+Operational targets are RPO <= 24 hours and RTO <= 2 hours. These are targets, not
+claimed measurements. Recovery should stop worker and maintenance, preserve the
+current exclusions ledger separately, restore into a new directory, run the
+drill and health checks, rebuild the site, then start the worker. Never restore
+an old exclusions companion over a newer live ledger. Keep external policy
+copies current on the backup host to survive loss of the primary host.
+
+## Read-only health and explicit administrator alerts
+
+```sh
+python -m rep0rter health --url https://rep0rter.observe.tw
+python -m rep0rter maintenance                 # evaluates, backs up; does not send
+python -m rep0rter maintenance --send-alerts   # explicit administrator transport
+```
+
+Checks include DB readability, verified healthy collection within 2.5 hours,
+latest degraded collection, three consecutive failed runs, unfinished runs over
+2.5 hours, negative source/first-seen delay, free disk reserve (default 512 MiB),
+backup/offsite ages <= 26 hours, HTTP response and RSS parsing. The feed's newest
+publication is compared with the persisted latest post, so a legitimately quiet
+community does not trigger a stale-news alarm. Collection freshness remains a
+separate check. Invalid source pages must not advance healthy collection state.
+
+Actual notifications require **both** `REP0RTER_ADMIN_BOT_TOKEN` and
+`REP0RTER_ADMIN_CHAT_ID`, with a destination different from news/test channels,
+and `--send-alerts` or `REP0RTER_SEND_ADMIN_ALERTS=1`. There is no fallback to the
+public Telegram target. This implementation does not send any notification while
+being installed or tested. The state machine emits one new-condition alert,
+throttles repeats for 6 hours, and emits one recovery. Tests simulate three
+failures and recovery without any network. Preview state cannot suppress actual
+alerts. Transport errors report their class without credential-bearing URLs.
+Monitor the monitoring service externally as well; no in-process monitor can
+report a total host outage.
+
+## Reproducible latency metrics
+
+```sh
+python -m rep0rter metrics > latency.json
+```
+
+Output states the observation interval, sample counts, bootstrap-known/unknown
+counts and bootstrap fraction, and uses **nearest rank** (`ceil(p*n)`) for P50 and
+P95. Values are seconds, with the proportion over two hours. Groups distinguish
+source, root/reply kind, known bootstrap and known failure-recovery samples; true
+failure recovery remains included rather than being dropped from the SLO.
+
+- Acquisition = event `first_seen - source timestamp`. This is total observed
+  lag, not an estimate of archive synchronization latency.
+- Eligibility = earliest recorded eligible editorial decision minus first seen.
+- Selection = earliest selected decision minus first seen (distinct from merely
+  passing a threshold when the per-run limit excludes an item).
+- Publication = persisted `posts.published_at - first_seen`.
+- Delivery = confirmed outbox `updated_at - published_at`; historical deliveries
+  without an observation are unknown, never imputed from publication time.
+
+Historical bootstrap, eligibility and delivery observations are marked unknown.
+Negative delays are reported separately as clock skew and are excluded from
+quantiles rather than clamped to zero. Run duration is separate from acquisition.
+The default collection interval remains one hour. Collect at least two weeks of
+these metrics before choosing a shorter interval, and respect per-source request
+budgets when changing it.
