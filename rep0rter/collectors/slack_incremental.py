@@ -20,6 +20,8 @@ REFRESH_INTERVAL = 21600
 
 def _allowed(store, event=None, container_id=None):
     from ..policy import container_allowed, event_allowed
+    if event is not None and event.meta.get('content_status') == 'deleted' and store.get_event(event.id):
+        return True
     return (not automated(event) and event_allowed(store, event)) if event is not None else container_allowed(store, container_id)
 
 
