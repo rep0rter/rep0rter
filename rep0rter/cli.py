@@ -306,8 +306,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("status", help="show store and configuration status")
     p.set_defaults(func=cmd_status)
 
-    from . import operations,policy,retractions,editorial,republish
-    for module in (operations,policy,retractions,editorial,republish):
+    from . import operations,policy,retractions,editorial,republish,notion_discovery
+    for module in (operations,policy,retractions,editorial,republish,notion_discovery):
         module.register_commands(sub)
 
     args = parser.parse_args(argv)
