@@ -91,7 +91,7 @@ def connect(path):
 
 
 def sleep(seconds):
-    if services.get() is None:
+    if sys.platform != 'emscripten':
         import time
         time.sleep(seconds)
     else:

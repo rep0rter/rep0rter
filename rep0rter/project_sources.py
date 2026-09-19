@@ -4,6 +4,7 @@ Resolve and pin public IPs on every redirect to prevent local-network requests
 and DNS rebinding. No cookies, environment proxies or credentials are forwarded.
 """
 from __future__ import annotations
+import sys
 
 import ipaddress
 import socket
@@ -31,7 +32,7 @@ def public_address(url):
 
 def fetch(url):
     from .runtime import services
-    if services.get() is not None:
+    if services.get() is not None and sys.platform == 'emscripten':
         return services.get().public_fetch(url, MAX_SOURCE_BYTES)
     deadline = time.monotonic() + 25
     for _ in range(4):
