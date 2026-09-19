@@ -1,11 +1,11 @@
 # 增量採集與公開來源
 
-`rep0rter.collectors.registry.collect_all` 是排程入口。Slack 維持預設來源；GitHub、Mastodon、RSS 必須明列允許來源，不會自動擴張追蹤範圍。
+`rep0rter.collectors.registry.collect_all` 是排程入口。Slack 維持預設來源；GitHub、Mastodon、RSS、Notion 必須明列允許來源，不會自動擴張追蹤範圍。
 
 ```dotenv
 REP0RTER_GITHUB_REPOS=owner/repository,another/project
 REP0RTER_MASTODON_ACCOUNTS=https://social.example/@civic
-REP0RTER_RSS_FEEDS=https://codefor.kr/boards/news.xml
+REP0RTER_FEEDS=https://codefor.kr/boards/news.xml,https://code4japan-community.notion.site/Home-9dd9cd85f07942c1bd5f6ef73efdb122
 REP0RTER_COLLECT_REQUEST_BUDGET=80
 REP0RTER_COLLECT_DAILY_BUDGET=1500
 ```
@@ -16,7 +16,7 @@ GitHub 使用公開無認證 REST API：先確認 repository `private=false`，�
 
 ## RSS 新聞來源
 
-`REP0RTER_RSS_FEEDS` 是逗號分隔的公開 RSS 2.0 URL 允許清單，空值停用。
+`REP0RTER_FEEDS` 是逗號分隔的公開 RSS 2.0 / Notion URL 允許清單；舊 `REP0RTER_RSS_FEEDS` 仍可使用，兩者合併後去重。兩者皆空值時停用。
 每輪每個 feed 只抓一次，沿用共用 request budget、錯誤隔離、Retry-After 退避及退出政策。
 目前加入 [Code for Korea 新聞](https://codefor.kr/boards/news.xml)：無須認證，保留標題、摘要、原文連結及含時區的 `pubDate`。
 事件以 feed URL + GUID 去重；缺 GUID 時使用文章連結。摘要轉純文字並標記 `content_scope=feed_excerpt`，不視為完整文章，也不自動抓取全文。
@@ -24,6 +24,22 @@ GitHub 使用公開無認證 REST API：先確認 repository `private=false`，�
 無效 XML、文章日期或連結會使該 feed 本輪失敗並保留上次成功狀態。
 RSS 文章仍需通過既有主題、內容及新鮮度選稿規則，不會僅因在 feed 中就發布。
 來源退出 ID 為 `rss-feed:https://codefor.kr/boards/news.xml`；個別文章沿用儲存的 `rss:` 事件 ID。
+
+## 公開 Notion 頁面與資料庫
+
+在同一個 `REP0RTER_FEEDS` 清單加入公開 `https://…notion.site/…<page-id>` 或 `https://www.notion.so/…<page-id>` URL，即自動使用 Notion collector；不需要官方 API、帳號、token 或瀏覽器。
+自訂網域目前不自動辨識，請使用原本的 Notion URL。
+
+此 collector 使用網站本身的匿名 JSON 讀取端點 `loadCachedPageChunkV2`、`queryCollection`（HTTP POST，非內容寫入）。這是非官方協定，不保證所有 Notion 頁型皆支援；登入、非公開、格式變更與 HTTP 錯誤會記錄來源失敗。
+Code for Japan Home 的三個內嵌資料庫（活動、募集任務、專案）會自動辨識，不必逐一設定 ID。
+只追蹤指定頁面及其內嵌資料庫，不遞迴掃描任意連結、其他子頁或整個 workspace。其他獨立頁面／資料庫需另加 URL。
+
+資料庫採集可讀取的列屬性，包括標題、說明、連結、狀態及日期，標記 `content_scope=database_properties`；不宣稱已抓取每列完整內文。單一文件則擷取目前頁面內的文字區塊，標記 `notion_page`。人員／權限清單不保存，也不推測作者。Notion 日期欄位是事件內容，不能拿來當文章發布時間。
+ID 固定為 `notion:<page-uuid>`，不同 URL slug／重複 view 不新增同一篇文章。保留 `created_time` 為來源時間，`last_edited_time` 存為 metadata；編輯舊專案不會變成剛發布的新聞。
+首次只保存採集窗口內建立或編輯的項目；已存項目再次出現時更新文字。條目消失不視為刪除，仍可透過現有排除／撤回工具處理。
+
+每個頁面最多讀 5 個 chunk、每個內嵌資料庫最多 1,000 列；達上限或不支援的回應會標記 incomplete/degraded，不更新最後完整成功時間。HTTP GET／POST 都計入共用每日／每輪 budget；429 依 Retry-After 並至少退避一小時。單一來源失敗不阻塞 RSS 或其他來源。
+入口退出 ID 為 `notion-page:<page-uuid>`；Code for Japan Home 是 `notion-page:9dd9cd85-f079-42c1-bd5f-6ef73efdb122`。Notion 原文仍經同一套內容、主題及新鮮度選稿，不會自動把每次編輯發布成新聞。
 
 ## 自動化雜訊
 

@@ -3,7 +3,7 @@
 # rep0rter
 
 **An AI reporter for the g0v civic-tech community.** Every hour it reads public
-collaboration spaces (Slack, GitHub, Mastodon, RSS), picks what matters, writes a short
+collaboration spaces (Slack, GitHub, Mastodon, RSS, public Notion), picks what matters, writes a short
 story in four languages, and publishes it to a website, RSS and Telegram.
 
 - Site: https://rep0rter.observe.tw (English by default; 繁體中文 · 日本語 · 한국어 on request)
@@ -19,8 +19,9 @@ flowchart LR
         G[GitHub repos]
         M[Mastodon accounts]
         R[RSS news feeds]
+        N[Public Notion pages]
     end
-    S & G & M & R --> C[Collectors]
+    S & G & M & R & N --> C[Collectors]
     C --> DB[(SQLite event store)]
     DB --> E[Editorial rules<br/>score · dedupe · exclusions]
     E --> W[LLM writer<br/>zh-TW · ko · ja · en]
@@ -55,6 +56,11 @@ python -m pytest -q tests
 
 Other commands: `collect`, `report`, `build-site`, `translate`, `outbox`, `status`,
 `loop --interval 3600`, `export`.
+
+`REP0RTER_FEEDS` accepts a comma-separated mix of RSS 2.0 feeds and public Notion
+page/database URLs. Notion uses anonymous web JSON requests without an API token;
+these unofficial endpoints may change. The Code for Korea news feed and Code for
+Japan community portal are included in `.env.example`. See [collector limits](docs/collectors.md).
 
 Production runs with `docker compose up -d --build`: a `worker` (hourly cycle),
 `maintenance` (backups, health checks) and `web` (Caddy, static files on `127.0.0.1:18090`).

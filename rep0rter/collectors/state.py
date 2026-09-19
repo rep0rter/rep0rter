@@ -96,6 +96,12 @@ class BudgetSession:
         return max(0, self.limit - self.metrics.requests)
 
     def get(self, *args, **kwargs):
+        return self._request(self.session.get, *args, **kwargs)
+
+    def post(self, *args, **kwargs):
+        return self._request(self.session.post, *args, **kwargs)
+
+    def _request(self, send, *args, **kwargs):
         if self.metrics.requests >= self.limit:
             raise BudgetExceeded('collector request budget exhausted')
         wait = self.interval - (time.monotonic() - self.last)
@@ -105,7 +111,7 @@ class BudgetSession:
             self.reserve()
         self.metrics.requests += 1
         try:
-            response = self.session.get(*args, **kwargs)
+            response = send(*args, **kwargs)
             self.metrics.bytes += len(response.content)
             self.metrics.pages += 1
             return response
