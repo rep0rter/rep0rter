@@ -1,73 +1,96 @@
-"""Threads publishing transport. Production callers use the durable outbox in threads_delivery."""
+"""Threads text publishing transport. Never log the access token or response body."""
 from __future__ import annotations
 
-import json
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 import requests
 
 from ..config import Config
-from ..reporter import Candidate
+from ..i18n import page_name
 from ..store import Post
 
-API = "https://graph.facebook.com/v20.0/{user_id}/threads"
+API = "https://graph.threads.net/v1.0"
 MAX_LEN = 500
 
 
 class ThreadsRejected(RuntimeError):
     def __init__(self, status: int, retry_after: int | None = None):
-        super().__init__(f"Threads rejected delivery (HTTP/API {status})")
+        super().__init__(f"Threads rejected delivery (HTTP {status})")
         self.status = status
         self.retry_after = retry_after
+
+
+def _units(text: str) -> int:
+    return len(text.encode("utf-16-le")) // 2
+
+
+def _truncate(text: str, limit: int) -> str:
+    if _units(text) <= limit:
+        return text
+    if limit < 2:
+        raise ValueError("Threads URL leaves no room for content")
+    while text and _units(text) > limit - 1:
+        text = text[:-1]
+    return text.rstrip() + "…"
 
 
 def _valid_url(url: str) -> bool:
     try:
         parsed = urlsplit(url)
-        return parsed.scheme in ("http", "https") and bool(parsed.hostname) and not parsed.username and not parsed.password
+        return parsed.scheme == "https" and bool(parsed.hostname) and not parsed.username and not parsed.password
     except ValueError:
         return False
 
 
-def format_text(candidate: Candidate, post: Post) -> str:
-    headline = (post.headline or '').strip()
-    summary = (post.summary or '').strip()
-    if headline and summary:
-        text = f"{headline}\n\n{summary}"
-    elif headline:
-        text = headline
-    elif summary:
-        text = summary
-    else:
-        text = "rep0rter update"
-    text = text.replace("\r\n", "\n").replace("\r", "\n").strip()
-    if len(text) > MAX_LEN:
-        text = text[: MAX_LEN - 1].rstrip() + "…"
-    if candidate.event.url and _valid_url(candidate.event.url):
-        text = f"{text}\n\n{candidate.event.url}"
-        if len(text) > MAX_LEN:
-            suffix = f"\n\n{candidate.event.url}"
-            allowed = MAX_LEN - len(suffix)
-            text = text[:allowed].rstrip() + "…" + suffix
-    return text
+def format_text(cfg: Config, post: Post) -> str:
+    root = (cfg.site_url or "").rstrip("/")
+    url = f"{root}/posts/{post.id}/{page_name('zh-TW')}"
+    if post.id is None or not _valid_url(url):
+        raise ValueError("A saved post and HTTPS site URL are required for Threads")
+    body = "\n\n".join(part for part in ((post.headline or "").strip(), (post.summary or "").strip()) if part)
+    if not body:
+        raise ValueError("Threads post has no title or summary")
+    suffix = "\n\n" + url
+    return _truncate(body, MAX_LEN - _units(suffix)) + suffix
+
+
+def _request(method: str, url: str, token: str, **kwargs) -> dict:
+    try:
+        response = requests.request(method, url, headers={"Authorization": f"Bearer {token}"},
+                                    timeout=(10, 40), **kwargs)
+    except requests.RequestException as exc:
+        raise RuntimeError("Threads transport result is unknown") from exc
+    if response.status_code >= 400:
+        retry = response.headers.get("Retry-After")
+        raise ThreadsRejected(response.status_code, int(retry) if retry and retry.isdigit() else None)
+    try:
+        data = response.json()
+    except ValueError:
+        raise RuntimeError("Threads returned an ambiguous response") from None
+    if not isinstance(data, dict) or data.get("error"):
+        raise RuntimeError("Threads returned an ambiguous response")
+    return data
+
+
+def get_account(cfg: Config) -> dict:
+    if not cfg.threads_access_token:
+        raise ValueError("Threads token is required")
+    return _request("GET", API + "/me", cfg.threads_access_token, params={"fields": "id,username"})
+
+
+def get_post(cfg: Config, remote_id: str) -> dict:
+    if not cfg.threads_access_token:
+        raise ValueError("Threads token is required")
+    return _request("GET", API + "/" + quote(remote_id, safe=""), cfg.threads_access_token,
+                    params={"fields": "id,text,permalink"})
 
 
 def publish_post(cfg: Config, target: str, text: str) -> str:
     if not cfg.threads_access_token or not target:
         raise ValueError("Threads token and user id are required")
-    response = requests.post(
-        API.format(user_id=target),
-        data={"text": text, "access_token": cfg.threads_access_token, "media_type": "TEXT"},
-        timeout=(10, 40),
-    )
-    try:
-        body = response.json()
-    except (ValueError, json.JSONDecodeError):
-        raise RuntimeError("Threads returned an ambiguous response") from None
-    if body.get("error"):
-        code = int(body["error"].get("code", response.status_code))
-        retry_after = body["error"].get("retry_after")
-        raise ThreadsRejected(code, int(retry_after) if retry_after is not None else None)
-    if response.status_code != 200 or not body.get("id"):
-        raise RuntimeError("Threads returned an ambiguous response")
+    body = _request("POST", API + "/" + quote(target, safe="") + "/threads",
+                    cfg.threads_access_token,
+                    data={"media_type": "TEXT", "text": text, "auto_publish_text": "true"})
+    if not body.get("id"):
+        raise RuntimeError("Threads publish response missing id")
     return str(body["id"])

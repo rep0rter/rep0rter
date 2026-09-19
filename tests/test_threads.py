@@ -5,6 +5,7 @@ from rep0rter.config import Config
 from rep0rter.reporter import Candidate
 from rep0rter.store import Event, Post, Store
 from rep0rter import threads_delivery
+from rep0rter.publishers import threads
 
 
 def _setup(tmp_path, monkeypatch):
@@ -44,6 +45,10 @@ def test_threads_prepare_and_retry_cycle(tmp_path, monkeypatch):
         return {'id': 'threads-post-42'}
 
     monkeypatch.setattr(threads_delivery, 'publish_post', fake_publish)
+    monkeypatch.setattr(threads_delivery.threads, 'get_account', lambda cfg: {'id': cfg.threads_user_id})
+    monkeypatch.setattr(threads_delivery.threads, 'get_post',
+                        lambda cfg, remote_id: {'id': remote_id, 'permalink': 'https://www.threads.com/@rep0rter.tw/post/42',
+                                                'text': json.loads(store.conn.execute('SELECT payload FROM threads_jobs WHERE status="sending"').fetchone()[0])['text']})
     result = threads_delivery.deliver_pending(cfg, store)
     assert result == {post.event_id: 'threads-post-42'}
     assert store.conn.execute('SELECT status FROM threads_jobs WHERE post_id=?', (post.id,)).fetchone()[0] == 'sent'
@@ -58,3 +63,74 @@ def test_threads_missing_config_keeps_jobs_pending(tmp_path, monkeypatch):
     monkeypatch.setattr(threads_delivery, 'publish_post', lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError('must not publish')))
     assert threads_delivery.deliver_pending(cfg, store) == {}
     assert store.conn.execute('SELECT status FROM threads_jobs WHERE post_id=?', (post.id,)).fetchone()[0] == 'prepared'
+
+
+def test_enqueue_missing_is_idempotent_and_format_uses_site_url(tmp_path, monkeypatch):
+    cfg, store, candidate, post = _setup(tmp_path, monkeypatch)
+    post.id = store.add_post(post)
+    assert threads_delivery.enqueue_missing(cfg, store) == 1
+    assert threads_delivery.enqueue_missing(cfg, store) == 0
+    text = threads.format_text(cfg, post)
+    assert f'https://example.org/posts/{post.id}/' in text
+    assert 'https://example.org/source' not in text
+    assert threads._units(text) <= 500
+
+
+def test_threads_ambiguous_send_stays_unknown(tmp_path, monkeypatch):
+    cfg, store, candidate, post = _setup(tmp_path, monkeypatch)
+    threads_delivery.prepare_posts(cfg, store, [(candidate, post)])
+    monkeypatch.setattr(threads_delivery.threads, 'get_account', lambda cfg: {'id': cfg.threads_user_id})
+    monkeypatch.setattr(threads_delivery, 'publish_post',
+                        lambda *args: (_ for _ in ()).throw(TimeoutError('unknown')))
+    assert threads_delivery.deliver_pending(cfg, store) == {}
+    row = store.conn.execute('SELECT status FROM threads_jobs WHERE post_id=?', (post.id,)).fetchone()
+    assert row['status'] == 'unknown'
+    assert threads_delivery.deliver_pending(cfg, store) == {}
+
+
+def test_threads_batch_limit(tmp_path, monkeypatch):
+    cfg, store, candidate, post = _setup(tmp_path, monkeypatch)
+    cfg = replace(cfg, threads_batch_size=1)
+    for number in range(2):
+        event = replace(candidate.event, id=f'threads:{number}')
+        store.upsert_events([event])
+        item = replace(post, event_id=event.id)
+        threads_delivery.prepare_posts(cfg, store, [(replace(candidate, event=event), item)])
+    monkeypatch.setattr(threads_delivery.threads, 'get_account', lambda cfg: {'id': cfg.threads_user_id})
+    monkeypatch.setattr(threads_delivery.threads, 'get_post',
+                        lambda cfg, remote_id: {'id': remote_id, 'permalink': 'https://www.threads.com/@rep0rter.tw/post/42',
+                                                'text': json.loads(store.conn.execute('SELECT payload FROM threads_jobs WHERE status="sending"').fetchone()[0])['text']})
+    monkeypatch.setattr(threads_delivery, 'publish_post', lambda *args: {'id': 'remote-42'})
+    assert len(threads_delivery.deliver_pending(cfg, store)) == 1
+    statuses = [row[0] for row in store.conn.execute('SELECT status FROM threads_jobs ORDER BY id')]
+    assert statuses == ['sent', 'prepared']
+
+
+def test_threads_transport_uses_bearer_header_and_autopublish(monkeypatch):
+    cfg = replace(Config(), threads_access_token='example-secret')
+    calls = []
+    class Response:
+        status_code = 200
+        headers = {}
+        def json(self):
+            return {'id': 'remote-42'}
+    def fake_request(method, url, **kwargs):
+        calls.append((method, url, kwargs))
+        return Response()
+    monkeypatch.setattr(threads.requests, 'request', fake_request)
+    assert threads.publish_post(cfg, 'user-1', 'hello') == 'remote-42'
+    method, url, kwargs = calls[0]
+    assert method == 'POST'
+    assert url == 'https://graph.threads.net/v1.0/user-1/threads'
+    assert kwargs['headers'] == {'Authorization': 'Bearer example-secret'}
+    assert kwargs['data'] == {'media_type': 'TEXT', 'text': 'hello', 'auto_publish_text': 'true'}
+    assert 'example-secret' not in url and 'example-secret' not in str(kwargs['data'])
+
+
+def test_threads_format_counts_utf16_units(tmp_path, monkeypatch):
+    cfg, store, candidate, post = _setup(tmp_path, monkeypatch)
+    post.id = 12
+    post.summary = '😀' * 300
+    text = threads.format_text(cfg, post)
+    assert threads._units(text) <= 500
+    assert text.endswith('/posts/12/' + threads.page_name('zh-TW'))

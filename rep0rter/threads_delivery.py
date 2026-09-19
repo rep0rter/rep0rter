@@ -44,10 +44,11 @@ CREATE TABLE IF NOT EXISTS threads_jobs (
     post_id INTEGER NOT NULL UNIQUE REFERENCES posts(id),
     target TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'prepared'
-        CHECK(status IN ('prepared','sending','sent','failed','unknown')),
+        CHECK(status IN ('prepared','sending','sent','failed','unknown','cancelled')),
     payload TEXT NOT NULL DEFAULT '{}',
     content_hash TEXT,
     thread_id TEXT,
+    permalink TEXT,
     lease_token TEXT,
     lease_until REAL,
     attempts INTEGER NOT NULL DEFAULT 0,
@@ -64,6 +65,9 @@ class ThreadsOutbox:
         self.store = store
         self.conn = store.conn
         self.conn.executescript(SCHEMA)
+        columns = {row['name'] for row in self.conn.execute('PRAGMA table_info(threads_jobs)')}
+        if 'permalink' not in columns:
+            self.conn.execute('ALTER TABLE threads_jobs ADD COLUMN permalink TEXT')
 
     def recover(self, now: float | None = None) -> None:
         now = time.time() if now is None else now
@@ -117,24 +121,28 @@ class ThreadsOutbox:
                  now, job['id'], job['lease_token']),
             )
 
-    def sent(self, job, thread_id: str) -> None:
+    def sent(self, job, thread_id: str, permalink: str) -> None:
         with self.conn:
             cursor = self.conn.execute(
-                """UPDATE threads_jobs SET status='sent', thread_id=?, error=NULL, next_attempt=NULL,
+                """UPDATE threads_jobs SET status='sent', thread_id=?, permalink=?, error=NULL, next_attempt=NULL,
                 lease_token=NULL, lease_until=NULL, updated_at=? WHERE id=?
                 AND status='sending' AND lease_token=?""",
-                (thread_id, time.time(), job['id'], job['lease_token']),
+                (thread_id, permalink, time.time(), job['id'], job['lease_token']),
             )
             if cursor.rowcount != 1:
                 raise RuntimeError('Threads lease lost after send; reconcile manually')
             row = self.conn.execute('SELECT delivery FROM posts WHERE id=?', (job['post_id'],)).fetchone()
             delivery = json.loads(row['delivery'] or '{}')
-            delivery['threads'] = {'user_id': job['target'], 'thread_id': thread_id, 'outbox_id': job['id']}
+            delivery['threads'] = {'user_id': job['target'], 'thread_id': thread_id,
+                                   'permalink': permalink, 'outbox_id': job['id']}
             self.conn.execute('UPDATE posts SET delivery=? WHERE id=?', (json.dumps(delivery), job['post_id']))
 
-    def reconcile(self, job_id: int, *, thread_id: str | None = None, retry: bool = False) -> None:
+    def reconcile(self, job_id: int, *, thread_id: str | None = None,
+                  permalink: str | None = None, retry: bool = False) -> None:
         if (thread_id is not None) == retry:
             raise ValueError('Choose exactly one of observed thread_id or explicit retry')
+        if thread_id is not None and not permalink:
+            raise ValueError('Verified permalink is required with thread_id')
         row = self.conn.execute('SELECT * FROM threads_jobs WHERE id=?', (job_id,)).fetchone()
         if row is None or row['status'] not in ('unknown', 'failed'):
             raise ValueError('Only unknown/failed Threads jobs can be reconciled')
@@ -150,7 +158,35 @@ class ThreadsOutbox:
                 raise RuntimeError('Threads job changed while reconciling')
         if thread_id is not None:
             row = self.conn.execute('SELECT * FROM threads_jobs WHERE id=?', (job_id,)).fetchone()
-            self.sent(row, thread_id)
+            self.sent(row, thread_id, permalink)
+
+
+def enqueue_missing(cfg: Config, store: Store, post_ids: list[int] | None = None) -> int:
+    """Queue saved, eligible site posts once; an existing job is never reset."""
+    ThreadsOutbox(store)
+    if not cfg.threads_user_id:
+        return 0
+    now = time.time()
+    added = 0
+    rows = store.conn.execute('SELECT id,event_id,delivery FROM posts ORDER BY id').fetchall()
+    selected = set(post_ids) if post_ids is not None else None
+    with store.conn:
+        store.conn.execute('BEGIN IMMEDIATE')
+        for row in rows:
+            if selected is not None and row['id'] not in selected:
+                continue
+            event = store.get_event(row['event_id'])
+            if event is None or not event_allowed(store, event):
+                continue
+            delivery = json.loads(row['delivery'] or '{}')
+            if delivery.get('threads'):
+                continue
+            cursor = store.conn.execute(
+                'INSERT INTO threads_jobs(post_id,target,created_at,updated_at) '
+                'VALUES (?,?,?,?) ON CONFLICT(post_id) DO NOTHING',
+                (row['id'], cfg.threads_user_id, now, now))
+            added += cursor.rowcount
+    return added
 
 
 def prepare_posts(cfg: Config, store: Store, items: list[tuple[Candidate, Post]]) -> None:
@@ -200,14 +236,20 @@ def deliver_pending(cfg: Config, store: Store) -> dict[str, str]:
     if not (cfg.threads_enabled and cfg.threads_user_id and cfg.threads_access_token):
         log.warning('Threads disabled or unconfigured; delivery remains pending')
         return {}
+    account = threads.get_account(cfg)
+    if str(account.get('id')) != cfg.threads_user_id:
+        raise ValueError('Threads token belongs to a different user ID')
     delivered: dict[str, str] = {}
-    while (job := outbox.claim(cfg.threads_user_id)) is not None:
+    for _ in range(max(0, cfg.threads_batch_size)):
+        job = outbox.claim(cfg.threads_user_id)
+        if job is None:
+            break
         try:
             candidate, post = _job_item(store, job['post_id'])
             if not event_allowed(store, candidate.event):
                 outbox.failed(job, 'Excluded or withdrawn before delivery')
                 continue
-            text = threads.format_text(candidate, post)
+            text = threads.format_text(cfg, post)
             outbox.payload(job, text)
             job = outbox.conn.execute('SELECT * FROM threads_jobs WHERE id=?', (job['id'],)).fetchone()
         except Exception as exc:
@@ -219,7 +261,7 @@ def deliver_pending(cfg: Config, store: Store) -> dict[str, str]:
             if latest is None or not event_allowed(store, latest):
                 outbox.failed(job, 'Excluded or withdrawn before transport')
                 continue
-            thread_id = _normalize_thread_id(publish_post(cfg, job['target'], job['payload'] and json.loads(job['payload'])['text']))
+            thread_id = _normalize_thread_id(publish_post(cfg, job['target'], json.loads(job['payload'])['text']))
         except threads.ThreadsRejected as exc:
             outbox.failed(job, str(exc), retry_after=(exc.retry_after or 60) if exc.status == 429 else None)
             log.warning('Threads job %s explicitly rejected (%s)', job['id'], exc.status)
@@ -231,7 +273,13 @@ def deliver_pending(cfg: Config, store: Store) -> dict[str, str]:
             log.error('Threads job %s has unknown delivery; manual reconciliation required', job['id'])
             continue
         try:
-            outbox.sent(job, thread_id)
+            remote = threads.get_post(cfg, thread_id)
+            permalink = remote.get('permalink')
+            if (str(remote.get('id')) != thread_id or
+                    remote.get('text') != json.loads(job['payload'])['text'] or
+                    not permalink or not threads._valid_url(permalink)):
+                raise RuntimeError('Threads post verification is incomplete')
+            outbox.sent(job, thread_id, permalink)
         except Exception:
             try:
                 outbox.failed(job, f'Remote send succeeded (thread {thread_id}); local commit failed', unknown=True)
