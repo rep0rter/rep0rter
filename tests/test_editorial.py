@@ -97,3 +97,43 @@ def test_replay_uses_saved_time_and_counters(tmp_path):
         store.upsert_events([e])
         replay=replay_decision(store,key)
         assert replay['replayed']==replay['recorded']
+
+
+def test_observation_window_requires_current_version_shadow_days(tmp_path):
+    e=event('工作坊開放報名，歡迎一起來參與 https://example.test')
+    with Store(tmp_path/'db') as store:
+        for day in range(15):
+            when=NOW+day*86400
+            e.ts=when-60
+            decision=evaluate(e,None,CFG,when)
+            record_decision(store,e,None,CFG,when,decision,True,mode='active')
+        report=evaluation_report(store,NOW+30*86400)
+        assert not report['observation_complete']
+        assert report['shadow_observations']==0
+        assert report['observation_span_days']==14
+        store.conn.execute("UPDATE editorial_decisions SET mode='shadow',score_version='old-version'")
+        store.conn.commit()
+        report=evaluation_report(store,NOW+30*86400)
+        assert not report['observation_complete'] and report['events']==0
+        assert report['other_version_observations']==15
+        for day in range(15):
+            when=NOW+day*86400
+            e.ts=when-60
+            record_decision(store,e,None,CFG,when,evaluate(e,None,CFG,when),True,mode='shadow')
+        report=evaluation_report(store,NOW+30*86400)
+        assert report['observation_complete']
+        assert report['shadow_observation_dates']==15
+        assert report['shadow_observation_span_days']==14
+        assert report['reviewed_events']==0  # Duration alone is never accuracy evidence.
+
+
+def test_two_sparse_shadow_dates_do_not_qualify_two_weeks(tmp_path):
+    e=event('工作坊開放報名，歡迎一起來參與 https://example.test')
+    with Store(tmp_path/'db') as store:
+        for day in [0,14]:
+            when=NOW+day*86400
+            e.ts=when-60
+            record_decision(store,e,None,CFG,when,evaluate(e,None,CFG,when),True,mode='shadow')
+        report=evaluation_report(store,NOW+30*86400)
+        assert report['shadow_observation_span_days']==14
+        assert not report['observation_complete']

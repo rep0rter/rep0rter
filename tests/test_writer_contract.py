@@ -285,3 +285,81 @@ def test_retry_includes_previous_rejected_copy_for_concrete_rewrite():
     payload=json.loads(llm.chat_json.call_args.args[1])
     assert payload['previous_output']['translations']['en']['headline']=='A'*31
     assert 'en:headline:length' in payload['rewrite_required']
+
+
+def test_info_link_is_not_invented_as_participation_method():
+    c=candidate('9/19 工作坊主題介紹 https://example.test/info')
+    data=response();data['participation_url']='https://example.test/info'
+    valid,errors=validate_response(data,evidence_bundle(c,NOW))
+    assert not valid
+    assert 'participation_url:not_explicitly_offered' in errors
+
+
+def test_fallback_keeps_date_and_explicit_long_registration_url_structurally():
+    link='https://example.test/register?token='+('a'*200)
+    c=candidate('9/19 工作坊開放報名，歡迎一起參與。報名連結：'+link)
+    result=write(c,None,NOW)
+    assert not result.needs_review
+    assert result.event_date=='2026-09-19'
+    assert result.participation_url==link
+    assert link not in result.summary
+    assert len(result.summary)<=90
+
+
+@pytest.mark.parametrize('cue', ['報名網址：','Register here: ','お申し込み：','참가 신청: '])
+def test_explicit_participation_cues_are_supported_in_all_locales(cue):
+    from rep0rter.writer_contract import participation_urls
+    link='https://example.test/form?id=123'
+    bundle=evidence_bundle(candidate('9/19 工作坊。'+cue+link),NOW)
+    assert participation_urls(bundle)==[link]
+
+
+def test_later_closed_correction_suppresses_root_registration_url():
+    from rep0rter.writer_contract import participation_urls
+    c=candidate('9/19 工作坊開放報名 https://example.test/register')
+    c.thread_events=[Event('closed','slack','thread_reply','slack:C',NOW,
+                           text='更正，這是閉門活動，沒有開放報名',parent_id='e1')]
+    bundle=evidence_bundle(c,NOW)
+    assert participation_urls(bundle)==[]
+    result=write(c,None,NOW)
+    assert result.participation_url is None
+    assert result.needs_review and not result.headline
+
+
+def recovered_context_candidate():
+    c=candidate('雲林縣國小學區產製課題：其中81所國小學區可以由村里地理範圍組合而成\n國小學區範圍描述清單 https://example.test/schools')
+    root=c.event
+    c.event=Event('story-update:4:recovered','slack','story_update','slack:C',root.ts,
+                  text=root.text,meta={'source_context_recovered':True,'recovery_previous_post_ids':[4]})
+    c.evidence_events=[root]
+    return c
+
+
+def test_recovered_root_is_editorial_correction_not_new_source_update():
+    c=recovered_context_candidate()
+    result=write(c,None,NOW)
+    assert not result.needs_review
+    assert result.headline=='本報更正：補上原文脈絡'
+    assert result.summary.startswith('來源原文指出：雲林縣國小學區產製課題')
+    assert '81所國小' in result.summary
+    assert result.evidence_ids==['e1']
+    assert result.bundle['metadata']['source_context_recovered']
+    assert result.bundle['metadata']['source_time'].startswith('2026-09-18')
+    assert result.event_date is None
+    assert not text_errors(result.headline,result.summary)
+
+
+def test_recovered_root_model_must_label_correction_and_attribute_source():
+    c=recovered_context_candidate();bundle=evidence_bundle(c,NOW)
+    data=response();data['event_date']=None
+    for edition in data['translations'].values():
+        edition['headline']='School district list released'
+        edition['summary']='The project released a school district list'
+    valid,errors=validate_response(data,bundle)
+    assert not valid
+    assert any('recovered_context_requires_editorial_correction' in error for error in errors)
+    for edition in data['translations'].values():
+        edition['headline']='Correction: source context'
+        edition['summary']='The source describes school district boundaries'
+    valid,errors=validate_response(data,bundle)
+    assert len(valid)==4 and not errors
