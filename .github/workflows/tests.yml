@@ -25,3 +25,26 @@ jobs:
         run: python -m pytest -q
         env:
           PYTHONDONTWRITEBYTECODE: '1'
+
+  client-scripts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - name: Install the pinned compiler
+        run: npm ci
+        working-directory: client
+      - name: Type-check the client scripts
+        run: npm run check
+        working-directory: client
+      # The published .js is generated. Without this, a hand edit or a stale
+      # artifact would ship and be silently overwritten by the next build.
+      - name: Rebuild and fail if the committed output differs
+        run: |
+          npm run build
+          git --no-pager diff --exit-code -- ../rep0rter/templates
+        working-directory: client
