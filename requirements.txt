@@ -6,3 +6,6 @@ Pillow>=11,<13
 playwright>=1.50,<2
 urllib3>=2.2,<3
 certifi>=2024.2.2
+Flask>=3.1,<4
+Authlib>=1.8,<2
+gunicorn>=23,<24

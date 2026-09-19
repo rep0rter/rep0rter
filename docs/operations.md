@@ -8,6 +8,10 @@ is not evidence of healthy collection: the collector must explicitly persist
 
 ## Deployment
 
+Singa automatically deploys tested pushes to `main` using a host-side systemd
+timer. See [automatic deployment](deployment.md) for setup, health checks,
+rollback behavior and operator commands.
+
 Compose declares worker and web healthchecks and the existing log policy
 (`local`, `max-size=20m`, `max-file=3`). An unhealthy status is monitoring evidence;
 Docker does not automatically restart a running unhealthy worker. The separate

@@ -123,7 +123,7 @@
   </div>
 </dialog>
 <footer class="site-footer page-shell">
-  <div class="footer-top"><a class="footer-brand" href="{{ prefix }}{{ page_name(language) }}">{{ cfg.site_title }}<span>{{ copy.brand_note }}</span></a><nav class="links" aria-label="{{ copy.resources }}"><a href="{{ prefix }}{{ feed }}">RSS {{ ui.icon('external') }}</a><a href="https://github.com/rep0rter/rep0rter">{{ copy.code }} {{ ui.icon('external') }}</a><a href="https://g0v-slack-archive.g0v.ronny.tw/">{{ copy.archive }} {{ ui.icon('external') }}</a></nav></div>
+  <div class="footer-top"><a class="footer-brand" href="{{ prefix }}{{ page_name(language) }}">{{ cfg.site_title }}<span>{{ copy.brand_note }}</span></a><nav class="links" aria-label="{{ copy.resources }}"><a href="{{ prefix }}{{ feed }}">RSS {{ ui.icon('external') }}</a>{% if cfg.google_login_enabled %}<a href="{{ prefix }}submit">{{ copy.submit_project }}</a>{% endif %}<a href="https://github.com/rep0rter/rep0rter">{{ copy.code }} {{ ui.icon('external') }}</a><a href="https://g0v-slack-archive.g0v.ronny.tw/">{{ copy.archive }} {{ ui.icon('external') }}</a></nav></div>
   <p class="footer-explanation">{{ copy.footer }}</p>
   <div class="footer-status"><p>{{ stats }}<br>{{ copy.updated }} {{ generated_local }}{% if last_healthy %}<br>{{ copy.healthy }} {{ last_healthy }}{% endif %}</p><p>{{ copy.optout }} <a href="https://g0v-slack-archive.g0v.ronny.tw/index/channel/C069ARZJNE9">#rep0rter {{ ui.icon('external') }}</a></p></div>
   {% if not collection_complete %}<p class="source-update-status">{{ copy.collection_delayed }}</p>{% endif %}

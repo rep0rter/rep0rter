@@ -3,6 +3,7 @@
     <a class="channel" href="{{ prefix }}{{ it.source_path }}{{ page_name(language) }}"><span class="source-dot" data-source="{{ it.event.source }}" aria-hidden="true"></span>{{ it.source_label }}</a>
     <a class="permalink" href="{{ prefix }}{{ it.story_path }}" aria-label="{{ copy.read }}: {{ it.headline }}">{{ ui.icon('external') }}</a>
   </div>
+  {% if it.event.meta.get('owner_submitted') %}<p class="translation-note">{{ copy.owner_submission }}</p>{% endif %}
   {% if it.content_warning %}<p class="translation-note">{{ it.content_warning }}</p>{% endif %}
   {% if it.latest_path %}<p class="revision-notice"><strong>{{ copy.superseded }}</strong> <a href="{{ prefix }}{{ it.latest_path }}">{{ copy.latest_report }} {{ ui.icon('arrow') }}</a></p>{% endif %}
   <div class="story-content">
@@ -20,7 +21,7 @@
     </div>
     <figure class="report-figure">
       <button type="button" class="image-link" data-image-view data-image-src="{{ prefix }}{{ it.image }}" aria-haspopup="dialog" aria-controls="image-viewer" aria-label="{{ copy.view_image }}: {{ it.headline }}" disabled><img class="source-card" src="{{ prefix }}{{ it.image }}" width="1200" height="630" loading="lazy" alt="{{ copy.report_image_alt if language == 'en' else copy.image_alt }}{{ it.event.author_name or it.channel }}"></button>
-      <figcaption><span>{{ copy.report_card_label if language == 'en' else copy.card_label }}</span><a href="{{ prefix }}{{ it.image }}" download aria-label="{{ copy.download }}: {{ it.headline }}">{{ ui.icon('download') }}<span>{{ copy.download }}</span></a></figcaption>
+      <figcaption><span>{{ copy.owner_submission if it.event.meta.get('owner_submitted') else (copy.report_card_label if language == 'en' else copy.card_label) }}</span><a href="{{ prefix }}{{ it.image }}" download aria-label="{{ copy.download }}: {{ it.headline }}">{{ ui.icon('download') }}<span>{{ copy.download }}</span></a></figcaption>
     </figure>
   </div>
   {% if detail %}

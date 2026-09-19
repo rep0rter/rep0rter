@@ -428,3 +428,49 @@ body > main, body > .site-footer { transform: scale(calc(1 - .015 * var(--viewer
   .ambient, .masthead::before, .masthead::after, .story-card::before, .story-card::after, .about-card::before, .about-card::after, .subscribe-card::before, .subscribe-card::after, .image-viewer-panel::before, .image-viewer-panel::after { display: none; }
   .hero h1 span { background: none; color: CanvasText; }
 }
+
+/* Server-rendered account forms stay script-free and follow device appearance. */
+.account-page > header, .account-page > main, .account-page > footer { width: min(100% - 40px, 920px); margin-inline: auto; }
+.account-page > header { padding-block: 24px 32px; }
+.account-page .masthead { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 24px; margin-bottom: 32px; }
+.account-page .edition { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .1em; }
+.account-page h1 { max-width: 760px; font-size: clamp(32px, 5vw, 52px); line-height: 1.15; }
+.account-page .tagline { max-width: 680px; margin-top: 16px; color: var(--muted); }
+.account-page header .links { margin-top: 16px; }
+.account-page header .links a { font-size: 14px; }
+.account-page main > article, .account-page main > section { padding: clamp(20px, 4vw, 40px); margin-bottom: 24px; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-card); }
+.account-page h2 { margin-bottom: 16px; font-size: clamp(22px, 3vw, 28px); }
+.account-page h3 { margin-block: 16px 12px; font-size: 20px; }
+.account-page article > p + p { margin-top: 12px; }
+.account-page .project-form label { display: block; margin-top: 24px; font-weight: 600; }
+.account-page .project-form input:not([type=hidden]):not([type=checkbox]), .account-page .project-form textarea, .account-page .project-form select { display: block; width: 100%; min-width: 0; min-height: 52px; margin-top: 8px; padding: 12px 16px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--recess); color: var(--ink); font: inherit; box-shadow: var(--shadow-pressed); }
+.account-page .project-form textarea { resize: vertical; }
+.account-page .project-form input::placeholder, .account-page .project-form textarea::placeholder { color: var(--muted); opacity: 1; }
+.account-page button { min-height: 44px; padding: 12px 20px; border: 1px solid transparent; border-radius: var(--radius-control); background: #315c8f; color: #fff; font: 600 16px/1.5 var(--font-body); box-shadow: var(--shadow-button); }
+.account-page button:focus-visible, .account-page input:focus-visible, .account-page textarea:focus-visible, .account-page select:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
+.account-page .quiet-button { border-color: var(--line); background: var(--surface); color: var(--ink); }
+.account-page .google-login { border-color: #747775; background: #fff; color: #1f1f1f; }
+.account-page .project-form button { margin-top: 24px; }
+.account-page .form-help { margin-top: 10px; color: var(--muted); font-size: 14px; }
+.account-page .project-form .owner-confirmation { display: flex; align-items: flex-start; gap: 12px; min-height: 44px; font-size: 14px; font-weight: 400; }
+.account-page .owner-confirmation input { flex: 0 0 auto; width: 20px; height: 20px; margin: 3px 0 0; accent-color: var(--accent); }
+.account-page .form-notice { margin-bottom: 24px; padding: 20px 24px; border: 1px solid var(--line); border-radius: var(--radius-nested); background: var(--accent-soft); color: var(--ink); }
+.account-page .account-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 24px; margin-bottom: 24px; }
+.account-page .account-bar > span { min-width: 0; overflow-wrap: anywhere; }
+.account-page .project-list { margin: 0; padding: 0; list-style: none; }
+.account-page .project-list li { padding-block: 16px; border-bottom: 1px solid var(--line); }
+.account-page .project-list li:last-child { padding-bottom: 0; border-bottom: 0; }
+.account-page .project-list li > a { display: inline-flex; align-items: center; min-height: 44px; }
+.account-page .project-list li > span { display: block; color: var(--muted); font-size: 14px; }
+.account-page .project-preview { white-space: pre-wrap; overflow-wrap: anywhere; }
+.account-page .form-actions { display: flex; flex-wrap: wrap; gap: 12px; }
+.account-page > footer { margin-top: 40px; padding-block: 24px 40px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+@media (max-width: 480px) {
+  .account-page > header, .account-page > main, .account-page > footer { width: calc(100% - 32px); }
+  .account-page .masthead { align-items: flex-start; flex-direction: column; padding: 16px; }
+  .account-page .form-actions { gap: 0; }
+  .account-page .project-form button { width: 100%; }
+}
+@media (forced-colors: active) {
+  .account-page main > article, .account-page main > section, .account-page button, .account-page .form-notice, .account-page .project-form input:not([type=hidden]), .account-page .project-form textarea, .account-page .project-form select { border: 1px solid CanvasText; background: Canvas; color: CanvasText; box-shadow: none; }
+}
