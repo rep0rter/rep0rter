@@ -44,6 +44,32 @@ def test_commits_are_remote_before_return_and_unchanged_pages_are_omitted(tmp_pa
         services.reset(token)
 
 
+def test_threads_secret_overlay_preserves_telegram_configuration(monkeypatch):
+    for name in ('TELEGRAM_BOT_TOKEN', 'REP0RTER_THREADS_ENABLED', 'REP0RTER_THREADS_ACCESS_TOKEN',
+                 'REP0RTER_THREADS_USER_ID', 'REP0RTER_THREADS_BATCH_SIZE'):
+        monkeypatch.setenv(name, '')
+    monkeypatch.setenv('REP0RTER_CONFIG', json.dumps({'TELEGRAM_BOT_TOKEN': 'telegram-test',
+                                                     'REP0RTER_THREADS_ENABLED': '0'}))
+    monkeypatch.setenv('THREADS_ENABLED', '1')
+    monkeypatch.setenv('THREADS_ACCESS_TOKEN', 'threads-test')
+    monkeypatch.setenv('THREADS_USER_ID', 'account-42')
+    monkeypatch.setenv('THREADS_BATCH_SIZE', '10')
+    module.install_configuration()
+    import os
+    assert os.environ['TELEGRAM_BOT_TOKEN'] == 'telegram-test'
+    assert os.environ['REP0RTER_THREADS_ENABLED'] == '1'
+    assert os.environ['REP0RTER_THREADS_ACCESS_TOKEN'] == 'threads-test'
+    assert os.environ['REP0RTER_THREADS_USER_ID'] == 'account-42'
+
+
+def test_threads_activation_requires_complete_bounded_settings(monkeypatch):
+    monkeypatch.setenv('REP0RTER_CONFIG', '{}')
+    monkeypatch.setenv('THREADS_ENABLED', '1')
+    monkeypatch.setenv('THREADS_ACCESS_TOKEN', '')
+    with pytest.raises(ValueError, match='Threads requires'):
+        module.install_configuration()
+
+
 def test_unacknowledged_checkpoint_poisoning_prevents_further_work(tmp_path):
     runtime = module.RunnerRuntime('https://example.test', 'private', tmp_path, 'lease')
     runtime.request = lambda *a: b'{"committed":0}'

@@ -91,6 +91,25 @@ class RunnerRuntime:
         self.request('finish', json.dumps({'success': success, 'collection_healthy': collection_healthy}).encode())
 
 
+def install_configuration():
+    """Add Threads to the existing reporting job without replacing shared secrets."""
+    configuration = json.loads(os.environ['REP0RTER_CONFIG'])
+    for key, value in configuration.items():
+        if key.startswith(('REP0RTER_', 'TELEGRAM_', 'AI_')) and isinstance(value, str):
+            os.environ[key] = value
+    if 'THREADS_ENABLED' in os.environ:
+        enabled = os.environ['THREADS_ENABLED'].lower() in ('1', 'true', 'yes')
+        token = os.environ.get('THREADS_ACCESS_TOKEN', '')
+        target = os.environ.get('THREADS_USER_ID', '')
+        batch = int(os.environ.get('THREADS_BATCH_SIZE', '10'))
+        if enabled and (not token or not target or not 1 <= batch <= 10):
+            raise ValueError('Threads requires a token, user ID and batch size from 1 to 10')
+        os.environ.update(REP0RTER_THREADS_ENABLED='1' if enabled else '0',
+                          REP0RTER_THREADS_ACCESS_TOKEN=token,
+                          REP0RTER_THREADS_USER_ID=target,
+                          REP0RTER_THREADS_BATCH_SIZE=str(batch))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--mode', choices=('build', 'report', 'deliver'), default='report')
@@ -101,10 +120,7 @@ def main():
     if args.mode != 'deliver' and args.post_id is not None:
         parser.error('--post-id requires deliver mode')
     os.umask(0o077)
-    configuration = json.loads(os.environ['REP0RTER_CONFIG'])
-    for key, value in configuration.items():
-        if key.startswith(('REP0RTER_', 'TELEGRAM_', 'AI_')) and isinstance(value, str):
-            os.environ[key] = value
+    install_configuration()
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
     with tempfile.TemporaryDirectory(prefix='rep0rter-run-') as folder:
         os.environ['REP0RTER_DATA_DIR'] = folder
