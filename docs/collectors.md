@@ -56,7 +56,9 @@ ID 固定為 `notion:<page-uuid>`，不同 URL slug／重複 view 不新增同�
 
 首頁訊息數或 last-posted 改變會觸發增量，不以 last-synced 代表可見性。近期頻道每六小時回掃 48 小時；另以固定上限每輪挑兩個最久未檢查的舊頻道回掃七天。未解析的 thread parent 與近期／較舊 root 共用持久 bounded queue，每輪最多 4 次精確 timestamp 補抓；已排除或刪除的 root 不占請求名額。補抓用下一個整秒作為 before 邊界，回應仍必須完全匹配原始 timestamp；找不到 root 留 `context_incomplete`，不拿鄰近訊息替代。已觀測的 reaction 可以下降，歷史高點另存在 `engagement_high_water`。
 
-上游在 SQL limit 之後才移除 subtype，而且沒有提供 raw-page bounds：空頁無法區分真正結尾與「整頁被過濾」。這種情況會保存已看到的事件、記錄 gap、不推高水位，來源健康顯示 degraded。重複同時間戳群、無進展頁亦然。這是上游協定限制，無法靠客戶端保證穿越；需要上游提供 stable opaque cursor 或 raw bounds。有限重疊／七天抽查也不能保證找到任意晚到、從未觀測過的舊訊息。
+上游在 SQL limit 之後才移除 subtype，而且沒有提供 raw-page bounds：空頁無法區分真正結尾與「整頁被過濾」。初次 after 查詢與無界 head 都空白時，額外讀取該頻道的最新月份 HTML；其月份索引與訊息 JSON 包含未過濾的加入頻道通知。只有確認相同頻道、最新月份、有效原始訊息時間，而且整個最新月份早於採集下界，才證明該窗口沒有消息並清除 gap。這次額外 GET 仍受共用 budget 限制，不把加入通知存成新聞，也不將游標跳到現在。
+
+HTML 缺失／改版、最新月份仍與窗口重疊、續頁中途空白、重複同時間戳群或無進展時，仍保存已看到的事件、記錄 gap、不推高水位，來源健康顯示 degraded。一般的過濾頁缺口仍需要上游提供 stable opaque cursor 或 raw bounds；有限重疊／七天抽查不能保證找到任意晚到、從未觀測過的舊訊息。
 
 ## 節流、健康及延遲量測
 

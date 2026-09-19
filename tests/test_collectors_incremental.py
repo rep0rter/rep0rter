@@ -1,5 +1,6 @@
 import json
 from decimal import Decimal
+from pathlib import Path
 from unittest.mock import Mock
 import pytest
 from rep0rter.store import Store, Event
@@ -163,6 +164,7 @@ def test_initial_empty_after_verified_by_unbounded_older_head(monkeypatch):
 def test_persisted_gap_has_reason_and_available_history_split(tmp_path,monkeypatch):
     channel=inc.api.ChannelRow('C','public','','',10,100,None)
     monkeypatch.setattr(inc.api,'fetch_channels',lambda session:[channel])
+    monkeypatch.setattr(inc.api, 'channel_is_older_than', lambda *args: False)
     pages(monkeypatch,[[],[]])
     with Store(tmp_path/'db') as store:
         inc.collect(store,session=Mock(headers={}))
@@ -170,6 +172,81 @@ def test_persisted_gap_has_reason_and_available_history_split(tmp_path,monkeypat
         assert health['available'] and not health['history_complete'] and not health['healthy']
         assert 'ambiguous empty page' in health['reasons']['slack:C']
         assert 'ambiguous empty page' in json.loads(store.get_kv('collector_errors'))['slack:C']['error']
+
+
+def quiet_html():
+    return (Path(__file__).parent / 'fixtures/slack_archive/quiet_channel.html').read_text()
+
+
+def test_filtered_empty_head_verified_by_unfiltered_old_month(monkeypatch):
+    get = Mock(side_effect=[Mock(json=lambda: {'messages': []}),
+                           Mock(json=lambda: {'messages': []}), Mock(text=quiet_html())])
+    monkeypatch.setattr(inc.api, '_get', get)
+    lower = Decimal('1789603200')
+    assert inc.scan(Mock(), 'CQUIET', lower) == ([], True, '', None)
+    assert get.call_count == 3
+    assert get.call_args.args[1].endswith('/index/channel/CQUIET')
+
+
+@pytest.mark.parametrize('html', [
+    '<html>Login required</html>',
+    quiet_html().replace('CQUIET', 'OTHER'),
+    quiet_html().replace('2025-11', '2026-09'),
+    quiet_html().replace('class="message"', 'class="unknown"'),
+    quiet_html().replace('&quot;ts&quot;', '&quot;missing_timestamp&quot;'),
+    quiet_html().replace('class="nav-link active"', 'class="nav-link"'),
+    quiet_html().replace('id="ts-1763598768.516209"', 'id="ts-1763598768.516210"'),
+    quiet_html().replace('class="dropdown-item" href="/index/channel/CQUIET/2025-10"',
+                         'class="dropdown-item" href="/index/channel/CQUIET/2026-08"'),
+])
+def test_missing_or_inconsistent_html_keeps_empty_head_gap(monkeypatch, html):
+    monkeypatch.setattr(inc.api, '_get', Mock(side_effect=[
+        Mock(json=lambda: {'messages': []}), Mock(json=lambda: {'messages': []}), Mock(text=html)]))
+    _, complete, error, _ = inc.scan(Mock(), 'CQUIET', Decimal('1789603200'))
+    assert not complete and 'ambiguous empty page' in error
+
+
+def test_recent_month_cannot_prove_quiet_even_if_visible_message_is_old(monkeypatch):
+    monkeypatch.setattr(inc.api, '_get', Mock(return_value=Mock(text=quiet_html())))
+    # A lower bound within the displayed month requires actual pagination,
+    # not an assumption based on the visible sample or homepage date.
+    assert not inc.api.channel_is_older_than(Mock(), 'CQUIET', Decimal('1763685168'))
+
+
+def test_quiet_html_proof_clears_persisted_gap_without_ingesting_join(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    from rep0rter.collectors.state import write_state
+    now = 1789776000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    channel = inc.api.ChannelRow('CQUIET', 'quiet', '', '', 10, 362,
+                                datetime.fromtimestamp(1763598768, timezone.utc))
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda session: [channel])
+    session, transport = _budgeted_pages(monkeypatch, [], 3)
+    session.get.side_effect = [Mock(content=b'{}', json=lambda: {'messages': []}),
+                              Mock(content=b'{}', json=lambda: {'messages': []}),
+                              Mock(content=quiet_html().encode(), text=quiet_html())]
+    with Store(tmp_path / 'db') as store:
+        with store.conn:
+            write_state(store, 'slack:CQUIET', {'last_attempt': now - 7200,
+                'gap': True, 'error': 'ambiguous empty page: upstream exposes no raw cursor',
+                'last_posted': 1763598768, 'total_messages': 362})
+        assert inc.collect(store, session=transport) == 0
+        state = read_state(store, 'slack:CQUIET')
+        assert state['gap'] is False and state['error'] == ''
+        assert state['last_success'] == now and state['last_reconciliation'] == now
+        assert Decimal(state['last_complete_ts']) == Decimal(now - 2 * 86400)
+        assert read_state(store, 'slack:health')['healthy']
+        assert not store.event_count()
+        assert transport.metrics.requests == 3
+        assert inc.collect(store, session=transport) == 0
+        assert session.get.call_count == 3  # No new hourly probe of the quiet channel.
+
+
+def test_quiet_html_verification_respects_shared_budget(monkeypatch):
+    session, transport = _budgeted_pages(monkeypatch, [[], []], 2)
+    _, complete, error, _ = inc.scan(transport, 'CQUIET', Decimal('1789603200'))
+    assert not complete and 'request budget exhausted' in error
+    assert session.get.call_count == 2
 
 
 def test_slack_tombstone_root_is_not_refreshed(tmp_path,monkeypatch):
