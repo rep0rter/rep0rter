@@ -137,6 +137,16 @@ class ThreadsOutbox:
                                    'permalink': permalink, 'outbox_id': job['id']}
             self.conn.execute('UPDATE posts SET delivery=? WHERE id=?', (json.dumps(delivery), job['post_id']))
 
+    def remember_remote(self, job, thread_id: str) -> None:
+        """Checkpoint the accepted remote ID before another network request."""
+        with self.conn:
+            cursor = self.conn.execute(
+                "UPDATE threads_jobs SET thread_id=?,updated_at=? "
+                "WHERE id=? AND status='sending' AND lease_token=?",
+                (thread_id, time.time(), job['id'], job['lease_token']))
+            if cursor.rowcount != 1:
+                raise RuntimeError('Threads lease lost after publication')
+
     def reconcile(self, job_id: int, *, thread_id: str | None = None,
                   permalink: str | None = None, retry: bool = False) -> None:
         if (thread_id is not None) == retry:
@@ -265,7 +275,7 @@ def deliver_pending(cfg: Config, store: Store) -> dict[str, str]:
         except threads.ThreadsRejected as exc:
             outbox.failed(job, str(exc), retry_after=(exc.retry_after or 60) if exc.status == 429 else None)
             log.warning('Threads job %s explicitly rejected (%s)', job['id'], exc.status)
-            if exc.status == 429:
+            if exc.status in (401, 403, 429):
                 break
             continue
         except Exception as exc:
@@ -273,6 +283,7 @@ def deliver_pending(cfg: Config, store: Store) -> dict[str, str]:
             log.error('Threads job %s has unknown delivery; manual reconciliation required', job['id'])
             continue
         try:
+            outbox.remember_remote(job, thread_id)
             remote = threads.get_post(cfg, thread_id)
             permalink = remote.get('permalink')
             if (str(remote.get('id')) != thread_id or
@@ -288,4 +299,7 @@ def deliver_pending(cfg: Config, store: Store) -> dict[str, str]:
             log.error('Threads job %s sent as thread %s but save failed; reconcile before retry', job['id'], thread_id)
             raise RuntimeError('Threads sent but delivery commit failed; manual reconciliation required') from None
         delivered[candidate.event.id] = thread_id
+    statuses = {row['status']: row['count'] for row in store.conn.execute(
+        'SELECT status,COUNT(*) AS count FROM threads_jobs GROUP BY status')}
+    log.info('Threads batch complete: delivered=%d statuses=%s', len(delivered), statuses)
     return delivered

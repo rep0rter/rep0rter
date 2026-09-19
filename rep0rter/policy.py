@@ -438,6 +438,9 @@ def _scrub(store, event_id):
     if 'delivery_jobs' in tables:
         store.conn.execute("UPDATE delivery_jobs SET payload='{}',content_hash=NULL WHERE post_id IN (SELECT id FROM posts WHERE event_id=?)", (event_id,))
         store.conn.execute("UPDATE delivery_jobs SET status=CASE WHEN status='unknown' THEN 'unknown' ELSE 'failed' END,error='withdrawn',next_attempt=NULL,payload='{}' WHERE post_id IN (SELECT id FROM posts WHERE event_id=?) AND status!='sent'",(event_id,))
+    if 'threads_jobs' in tables:
+        store.conn.execute("UPDATE threads_jobs SET payload='{}',content_hash=NULL WHERE post_id IN (SELECT id FROM posts WHERE event_id=?)", (event_id,))
+        store.conn.execute("UPDATE threads_jobs SET status=CASE WHEN status IN ('unknown','sending') THEN 'unknown' ELSE 'failed' END,error='withdrawn; inspect remote Threads post manually',next_attempt=NULL WHERE post_id IN (SELECT id FROM posts WHERE event_id=?) AND status!='sent'", (event_id,))
     if 'telegram_mutations' in tables:
         # Pending saved bodies can contain peers that were excluded later. The
         # transport reconstructs them before sending, so retaining text is unnecessary.

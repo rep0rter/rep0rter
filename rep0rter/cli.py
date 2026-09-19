@@ -224,14 +224,18 @@ def cmd_threads(cfg: Config, args) -> int:
             for row in store.conn.execute('SELECT id,post_id,status,thread_id,permalink,error FROM threads_jobs ORDER BY id'):
                 print(dict(row))
         elif args.threads_command == 'reconcile':
-            row = store.conn.execute('SELECT id,status,payload FROM threads_jobs WHERE post_id=?', (args.post,)).fetchone()
+            row = store.conn.execute('SELECT id,status,payload,target FROM threads_jobs WHERE post_id=?', (args.post,)).fetchone()
             if row is None:
                 raise ValueError('Post has no Threads job')
             if args.remote_id:
+                account = threads.get_account(cfg)
+                if str(account.get('id')) != row['target'] or row['target'] != cfg.threads_user_id:
+                    raise ValueError('Threads reconciliation account does not match the queued target')
                 remote = threads.get_post(cfg, args.remote_id)
                 permalink = remote.get('permalink')
                 expected = json.loads(row['payload'] or '{}').get('text')
-                if (str(remote.get('id')) != args.remote_id or not expected or remote.get('text') != expected or
+                if (not account.get('username') or remote.get('username') != account['username'] or
+                        str(remote.get('id')) != args.remote_id or not expected or remote.get('text') != expected or
                         not permalink or not threads._valid_url(permalink)):
                     raise ValueError('Remote Threads post could not be verified')
                 outbox.reconcile(row['id'], thread_id=args.remote_id, permalink=permalink)

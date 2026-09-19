@@ -47,6 +47,10 @@ jobs:
         env:
           REP0RTER_CONFIG: ${{ secrets.REP0RTER_CONFIG }}
           REP0RTER_RUNNER_TOKEN: ${{ secrets.REP0RTER_RUNNER_TOKEN }}
+          THREADS_ACCESS_TOKEN: ${{ secrets.REP0RTER_THREADS_ACCESS_TOKEN }}
+          THREADS_ENABLED: ${{ vars.REP0RTER_THREADS_ENABLED || '0' }}
+          THREADS_USER_ID: ${{ vars.REP0RTER_THREADS_USER_ID }}
+          THREADS_BATCH_SIZE: ${{ vars.REP0RTER_THREADS_BATCH_SIZE || '10' }}
           REP0RTER_WORKER_URL: https://rep0rter-engine.sky-hong.workers.dev
           REPORT_MODE: ${{ inputs.mode || 'report' }}
           PYTHONPATH: .

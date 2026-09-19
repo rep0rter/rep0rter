@@ -6,7 +6,7 @@ from urllib.parse import quote, urlsplit
 import requests
 
 from ..config import Config
-from ..i18n import page_name
+from ..i18n import page_name, post_text
 from ..store import Post
 
 API = "https://graph.threads.net/v1.0"
@@ -47,7 +47,8 @@ def format_text(cfg: Config, post: Post) -> str:
     url = f"{root}/posts/{post.id}/{page_name('zh-TW')}"
     if post.id is None or not _valid_url(url):
         raise ValueError("A saved post and HTTPS site URL are required for Threads")
-    body = "\n\n".join(part for part in ((post.headline or "").strip(), (post.summary or "").strip()) if part)
+    headline, summary, _ = post_text(post, 'zh-TW')
+    body = "\n\n".join(part for part in ((headline or "").strip(), (summary or "").strip()) if part)
     if not body:
         raise ValueError("Threads post has no title or summary")
     suffix = "\n\n" + url
@@ -57,9 +58,11 @@ def format_text(cfg: Config, post: Post) -> str:
 def _request(method: str, url: str, token: str, **kwargs) -> dict:
     try:
         response = requests.request(method, url, headers={"Authorization": f"Bearer {token}"},
-                                    timeout=(10, 40), **kwargs)
+                                    timeout=(10, 40), allow_redirects=False, **kwargs)
     except requests.RequestException as exc:
         raise RuntimeError("Threads transport result is unknown") from exc
+    if response.status_code >= 500 or 300 <= response.status_code < 400:
+        raise RuntimeError('Threads returned an uncertain server response')
     if response.status_code >= 400:
         retry = response.headers.get("Retry-After")
         raise ThreadsRejected(response.status_code, int(retry) if retry and retry.isdigit() else None)
@@ -82,7 +85,7 @@ def get_post(cfg: Config, remote_id: str) -> dict:
     if not cfg.threads_access_token:
         raise ValueError("Threads token is required")
     return _request("GET", API + "/" + quote(remote_id, safe=""), cfg.threads_access_token,
-                    params={"fields": "id,text,permalink"})
+                    params={"fields": "id,text,permalink,username"})
 
 
 def publish_post(cfg: Config, target: str, text: str) -> str:

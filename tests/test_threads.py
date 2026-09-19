@@ -1,4 +1,5 @@
 import json
+import pytest
 from dataclasses import replace
 
 from rep0rter.config import Config
@@ -134,3 +135,52 @@ def test_threads_format_counts_utf16_units(tmp_path, monkeypatch):
     text = threads.format_text(cfg, post)
     assert threads._units(text) <= 500
     assert text.endswith('/posts/12/' + threads.page_name('zh-TW'))
+
+
+def test_remote_id_survives_permalink_failure_without_resending(tmp_path, monkeypatch):
+    cfg, store, candidate, post = _setup(tmp_path, monkeypatch)
+    threads_delivery.prepare_posts(cfg, store, [(candidate, post)])
+    monkeypatch.setattr(threads, 'get_account', lambda cfg: {'id': cfg.threads_user_id})
+    calls = []
+    monkeypatch.setattr(threads_delivery, 'publish_post', lambda *args: calls.append(1) or 'known-remote')
+    def failed_read(*args):
+        assert store.conn.execute('SELECT thread_id FROM threads_jobs').fetchone()[0] == 'known-remote'
+        raise TimeoutError()
+    monkeypatch.setattr(threads, 'get_post', failed_read)
+    with pytest.raises(RuntimeError, match='manual reconciliation'):
+        threads_delivery.deliver_pending(cfg, store)
+    job = store.conn.execute('SELECT * FROM threads_jobs').fetchone()
+    assert job['status'] == 'unknown' and job['thread_id'] == 'known-remote'
+    assert threads_delivery.deliver_pending(cfg, store) == {}
+    assert calls == [1]
+
+
+def test_server_error_is_ambiguous_and_token_is_not_in_repr(monkeypatch):
+    from types import SimpleNamespace
+    cfg = replace(Config(), threads_access_token='secret-do-not-show')
+    assert 'secret-do-not-show' not in repr(cfg)
+    monkeypatch.setattr(threads.requests, 'request', lambda *args, **kwargs: SimpleNamespace(status_code=503))
+    with pytest.raises(RuntimeError, match='uncertain') as error:
+        threads.publish_post(cfg, '123', 'hello')
+    assert not isinstance(error.value, threads.ThreadsRejected)
+
+
+def test_format_prefers_traditional_chinese_edition(tmp_path, monkeypatch):
+    cfg, store, candidate, post = _setup(tmp_path, monkeypatch)
+    post.id = 12
+    post.translations = {'zh-TW': {'headline': '繁體中文標題', 'summary': '繁體中文摘要'}}
+    assert threads.format_text(cfg, post).startswith('繁體中文標題\n\n繁體中文摘要')
+
+
+def test_withdrawal_scrubs_threads_queue(tmp_path, monkeypatch):
+    from rep0rter.policy import _scrub
+    cfg, store, candidate, post = _setup(tmp_path, monkeypatch)
+    threads_delivery.prepare_posts(cfg, store, [(candidate, post)])
+    box = threads_delivery.ThreadsOutbox(store)
+    job = box.claim(cfg.threads_user_id)
+    box.payload(job, 'private after withdrawal')
+    with store.conn:
+        _scrub(store, candidate.event.id)
+    row = store.conn.execute('SELECT * FROM threads_jobs').fetchone()
+    assert row['payload'] == '{}' and row['status'] == 'unknown'
+    assert box.claim(cfg.threads_user_id) is None
