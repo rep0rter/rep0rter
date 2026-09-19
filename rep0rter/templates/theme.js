@@ -1,6 +1,36 @@
 // Apply the saved appearance before CSS paints. Storage is optional.
 (() => {
   const root = document.documentElement;
+  // The circle and glyph animation overlap; either owner may finish first.
+  const scrollOwners = new Set();
+  const scrollKeys = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End', ' ']);
+  const isScrollKey = event => {
+    if (!scrollKeys.has(event.key) || event.ctrlKey || event.metaKey || event.altKey) return false;
+    const target = event.target;
+    if (target?.closest?.('input,textarea,select,[contenteditable]:not([contenteditable="false"])')) return false;
+    return !(event.key === ' ' && target?.closest?.('a,button,summary'));
+  };
+  const acquireScroll = () => {
+    const owner = {};
+    if (!scrollOwners.size) {
+      // stable gutters preserve layout on scrollbar-based desktop browsers.
+      // Older engines use the measured gutter without changing scroll position.
+      const gap = window.CSS?.supports('scrollbar-gutter: stable') ? 0 : Math.max(0, window.innerWidth - root.clientWidth);
+      root.style.setProperty('--animation-scrollbar-gap', `${gap}px`);
+      root.dataset.animationScrollLock = '';
+    }
+    scrollOwners.add(owner);
+    return () => {
+      if (!scrollOwners.delete(owner) || scrollOwners.size) return;
+      delete root.dataset.animationScrollLock;
+      root.style.removeProperty('--animation-scrollbar-gap');
+    };
+  };
+  window.Rep0rterScrollLock = Object.freeze({ acquire: acquireScroll, isLocked: () => scrollOwners.size > 0, isScrollKey });
+  const preventScroll = event => { if (scrollOwners.size && event.cancelable) event.preventDefault(); };
+  window.addEventListener('wheel', preventScroll, { passive: false });
+  window.addEventListener('touchmove', preventScroll, { passive: false });
+  document.addEventListener('keydown', event => { if (isScrollKey(event)) preventScroll(event); }, { capture: true });
   const key = 'rep0rter-theme';
   const modes = ['light', 'dark', 'system'];
   const system = window.matchMedia('(prefers-color-scheme: dark)');
@@ -39,6 +69,7 @@
     // A skipped transition can finish after the next one has already started.
     if (activeReveal !== reveal) return;
     reveal.animation?.cancel();
+    reveal.releaseScroll();
     activeReveal = null;
     delete root.dataset.themeTransition;
     root.style.removeProperty('--theme-reveal-x');
@@ -72,7 +103,7 @@
       Math.max(x, window.innerWidth - x),
       Math.max(y, window.innerHeight - y)
     );
-    const reveal = { revision, transition: null, animation: null };
+    const reveal = { revision, transition: null, animation: null, releaseScroll: acquireScroll() };
     activeReveal = reveal;
     // Suppress separately named snapshots before BOTH captures, not just after
     // the theme changes. Article navigation keeps its own transition rules.
