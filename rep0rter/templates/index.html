@@ -60,7 +60,6 @@
         {% for it in recent %}
         <li class="latest-item{% if loop.first %} latest-item--lead{% endif %}" data-preview-post-id="{{ it.post.id }}">
           <p class="latest-meta"><span>{{ it.source_label }}</span><time datetime="{{ it.day }}">{{ it.published_local }}</time></p>
-          {% if 'source_example' in it.post.reasons %}<p class="translation-note">{{ copy.source_example_note }}</p>{% endif %}
           {% if it.content_warning %}<p class="translation-note">{{ it.content_warning }}</p>{% endif %}
           {% if it.event.meta.get('owner_submitted') %}<p class="translation-note">{{ copy.owner_submission }}</p>{% endif %}
           <h3 lang="{{ language if it.translated or language == 'en' else 'und' }}"><a href="{{ prefix }}{{ it.story_path }}">{{ it.headline }}</a></h3>

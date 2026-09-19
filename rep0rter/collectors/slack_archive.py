@@ -196,6 +196,61 @@ def channel_is_older_than(session, channel_id: str, lower: Decimal) -> bool:
     return True
 
 
+def channel_window_is_complete(session, channel_id: str, lower: Decimal, collected) -> bool:
+    """Prove a recent JSON window against the complete raw latest-month HTML.
+
+    A widened fractional cursor can repeat the only non-subtype message. The
+    month's raw count and timestamps must agree, and every eligible HTML row
+    must already be collected. Missing markup or older-month overlap is a gap.
+    """
+    soup = BeautifulSoup(_get(session, BASE_URL + '/index/channel/' + channel_id).text, 'html.parser')
+    feed, nav = soup.select_one('section[role="feed"]'), soup.select_one('nav[role="pagination"]')
+    if feed is None or nav is None:
+        return False
+    pattern = re.compile(r'/index/channel/' + re.escape(channel_id) + r'/(\d{4}-\d{2})')
+    months = {}
+    try:
+        for link in nav.select('a.dropdown-item'):
+            match = pattern.fullmatch(link.get('href', ''))
+            if not match:
+                return False
+            month = datetime.strptime(match[1], '%Y-%m').replace(tzinfo=ARCHIVE_TZ)
+            months[month] = link
+        active = nav.select('a.nav-link.active')
+        if not months or len(active) != 1:
+            return False
+        latest = max(months)
+        if active[0].get('href') != months[latest].get('href'):
+            return False
+        end = latest.replace(year=latest.year + 1, month=1) if latest.month == 12 else latest.replace(month=latest.month + 1)
+        start_ts, end_ts = Decimal(str(latest.timestamp())), Decimal(str(end.timestamp()))
+        if not start_ts <= lower < end_ts:
+            return False
+        badge = months[latest].select_one('.badge')
+        if badge is None:
+            return False
+        expected = int(badge.get_text(strip=True))
+        rows = [n for n in feed.select('.message[id]') if n.find_parent(class_='message') is None]
+        if not rows or len(rows) != expected:
+            return False
+        for node in rows:
+            metadata = node.select_one('.message-time[title]')
+            if metadata is None or metadata.find_parent(class_='message') is not node:
+                return False
+            raw = json.loads(metadata['title'])
+            stamp = _timestamp(raw['ts'])
+            # PHP formats the numeric row ID with 14 significant digits; the
+            # embedded Slack JSON retains the authoritative microseconds.
+            valid_ids = {'ts-' + str(raw['ts']), 'ts-' + format(stamp, '.14g')}
+            if node.get('id') not in valid_ids or not start_ts <= stamp < end_ts:
+                return False
+            if not raw.get('subtype') and stamp >= lower and stamp not in collected:
+                return False
+        return True
+    except (ValueError, KeyError, TypeError, RuntimeError):
+        return False
+
+
 def _merge_duplicate(left: dict, right: dict) -> dict:
     """Prefer explicit edit time, then richer snapshots; fill only missing fields.
 

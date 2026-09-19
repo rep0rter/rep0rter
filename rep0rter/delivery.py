@@ -175,6 +175,28 @@ def _job_item(store: Store, post_id: int):
     return Candidate(event=event, container=store.get_container(event.container_id), score=post.score), post
 
 
+def enqueue_existing(cfg: Config, store: Store, post_id: int) -> int:
+    """Operator-requested delivery of a published post, without replaying old jobs."""
+    from .policy import event_allowed
+    if not cfg.telegram_bot_token or not cfg.telegram_target:
+        raise ValueError('Telegram is not configured')
+    DeliveryOutbox(store)
+    candidate, post = _job_item(store, post_id)
+    if not event_allowed(store, candidate.event):
+        raise ValueError('Post is excluded or withdrawn')
+    telegram.format_caption(cfg, candidate, post)  # Require the configured edition.
+    now = time.time()
+    with store.conn:
+        store.conn.execute('''INSERT INTO delivery_jobs(post_id,target,created_at,updated_at)
+            VALUES(?,?,?,?) ON CONFLICT(post_id,publisher) DO NOTHING''',
+            (post_id, cfg.telegram_target, now, now))
+    job = store.conn.execute('SELECT * FROM delivery_jobs WHERE post_id=? AND publisher=?',
+                             (post_id, 'telegram')).fetchone()
+    if job['target'] != cfg.telegram_target:
+        raise ValueError('Existing delivery belongs to another target; reconcile it explicitly')
+    return job['id']
+
+
 def deliver_pending(cfg: Config, store: Store) -> dict[int, int]:
     """Attempt due jobs once; completed/ambiguous jobs are never auto-replayed."""
     outbox = DeliveryOutbox(store)

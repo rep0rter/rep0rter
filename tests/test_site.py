@@ -747,7 +747,6 @@ def test_source_examples_keep_original_dates_links_and_survive_withdrawal(publis
         assert article
         assert '2023-11-15' in article.get_text()
         assert article.find('a', href=event.url)
-        assert site.COPY[language]['source_example_note'] in article.get_text()
         home = html(cfg.site_dir / page)
         assert home.find('a', href='examples/' + page)
     policy.redact(store, [event.id])

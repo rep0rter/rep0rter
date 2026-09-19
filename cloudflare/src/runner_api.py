@@ -40,7 +40,7 @@ async def handle(owner, request, path):
         if float(runtime.meta('runner_until', '0')) > now:
             return Response('Another reporting job is active', status=409)
         lease = data.get('lease', '')
-        if not isinstance(lease, str) or len(lease) != 32 or data.get('mode') not in ('build', 'report'):
+        if not isinstance(lease, str) or len(lease) != 32 or data.get('mode') not in ('build', 'report', 'deliver'):
             return Response('Invalid lease', status=400)
         runtime.set_meta('runner_lease', lease)
         runtime.set_meta('runner_until', now + 1200)

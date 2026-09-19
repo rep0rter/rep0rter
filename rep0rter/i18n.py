@@ -280,10 +280,10 @@ for _language, _values in {
                                'self_reported', 'no_evidence', 'take_part'), _values))
 
 
-for _language, _values in {
-    'en': ('Source examples', 'Historical source example · original date shown below'),
-    'zh-TW': ('來源範例', '歷史來源範例・原始日期列於下方'),
-    'ja': ('情報源の実例', '過去の情報源の実例・原文の日付は下記に表示'),
-    'ko': ('출처별 실제 사례', '과거 출처의 실제 사례 · 원문 날짜는 아래에 표시'),
+for _language, _label in {
+    'en': 'Source examples',
+    'zh-TW': '來源範例',
+    'ja': '情報源の実例',
+    'ko': '출처별 실제 사례',
 }.items():
-    COPY[_language].update(zip(('source_examples', 'source_example_note'), _values))
+    COPY[_language]['source_examples'] = _label
