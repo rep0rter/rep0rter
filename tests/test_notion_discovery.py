@@ -277,11 +277,11 @@ def test_a_github_token_is_optional_and_never_leaks_into_the_report(monkeypatch)
                          'stargazers_count': 1, 'description': ''})
 
     session.get = Mock(side_effect=capture)
-    monkeypatch.delenv('GITHUB_TOKEN', raising=False)
+    monkeypatch.delenv('REP0RTER_GITHUB_TOKEN', raising=False)
     report = notion_discovery.discover(session, PORTAL, now=1789785600.0)
     assert 'Authorization' not in sent and report['candidates'][0]['repository'] == 'example/civic'
 
-    monkeypatch.setenv('GITHUB_TOKEN', 'secret-value')
+    monkeypatch.setenv('REP0RTER_GITHUB_TOKEN', 'secret-value')
     report = notion_discovery.discover(session, PORTAL, now=1789785600.0)
     assert sent['Authorization'] == 'Bearer secret-value'
     assert 'secret-value' not in json.dumps(report, ensure_ascii=False)

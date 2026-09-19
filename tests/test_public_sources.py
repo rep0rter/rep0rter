@@ -215,3 +215,24 @@ def test_lifecycle_source_facts_preserved_for_writer_evidence():
     assert event.meta['lifecycle']['state']=='closed'
     assert event.meta['lifecycle']['merged_at']=='2026-09-18T00:00:00Z'
     assert 'draft' in event.meta['lifecycle']
+
+
+def test_github_token_is_optional_and_only_raises_the_rate_ceiling(monkeypatch):
+    """Unauthenticated reads must keep working; a token adds only quota."""
+    seen = []
+
+    def capture(url, params=None, timeout=None, headers=None):
+        seen.append(headers or {})
+        return response([])
+
+    session = Mock(get=Mock(side_effect=capture))
+    monkeypatch.delenv('REP0RTER_GITHUB_TOKEN', raising=False)
+    github.get(session, '/repos/example/civic')
+    assert 'Authorization' not in seen[-1]
+    assert seen[-1]['Accept'] == 'application/vnd.github+json'
+
+    monkeypatch.setenv('REP0RTER_GITHUB_TOKEN', 'secret-value')
+    github.get(session, '/repos/example/civic')
+    assert seen[-1]['Authorization'] == 'Bearer secret-value'
+    # A token never widens what is collected; visibility is still checked.
+    assert seen[-1]['X-GitHub-Api-Version'] == '2022-11-28'

@@ -72,8 +72,15 @@ def to_event(raw, repo, kind, *, editorial_override=False):
 
 
 def get(session, path, **params):
-    response = session.get(API + path, params=params, timeout=30, headers={
-        'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'})
+    headers = {'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'}
+    # Optional. Unauthenticated GitHub allows 60 requests an hour per address,
+    # which a handful of repositories spends on the hourly cycle alone; a token
+    # raises the ceiling to 5,000. It changes no repository's visibility: only
+    # explicitly public repositories are read either way.
+    token = os.getenv('REP0RTER_GITHUB_TOKEN')
+    if token:
+        headers['Authorization'] = 'Bearer ' + token
+    response = session.get(API + path, params=params, timeout=30, headers=headers)
     check_response(response)
     return response.json()
 

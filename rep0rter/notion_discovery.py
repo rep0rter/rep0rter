@@ -199,10 +199,10 @@ def verify_repo(session, repo):
     dead repository would quietly drop real candidates from the proposal.
     """
     headers = {'Accept': 'application/vnd.github+json'}
-    # Optional: unauthenticated GitHub allows 60 requests an hour, which a portal
-    # of this size exhausts. A token only raises that ceiling; it is never
-    # required and never read from the collector configuration.
-    token = os.environ.get('GITHUB_TOKEN')
+    # Optional, and the same setting the GitHub collector uses: unauthenticated
+    # GitHub allows 60 requests an hour, which verifying a portal of this size
+    # exhausts. A token only raises that ceiling.
+    token = os.environ.get('REP0RTER_GITHUB_TOKEN')
     if token:
         headers['Authorization'] = 'Bearer ' + token
     response = session.get('https://api.github.com/repos/' + repo, timeout=30, headers=headers)
