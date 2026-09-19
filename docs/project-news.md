@@ -24,9 +24,13 @@ are labeled as owner submissions. They do not create Telegram delivery jobs.
    Generate the session secret with
    `python -c 'import secrets; print(secrets.token_urlsafe(48))'`.
    Keep it consistent across accounts-service processes and restarts.
-4. Run `docker compose up -d --build` and rebuild the site with
-   `docker compose exec worker python -m rep0rter build-site` to show its posting
-   link. The new `accounts` service handles `/auth/*`, `/projects`, and `/submit`
+4. On Singa, apply the environment through the controller's
+   [`--redeploy` command](deployment.md#apply-host-environment-changes), which
+   recreates services and rebuilds the site under the deployment lock.
+   Only on a new host without automatic deployment, run
+   `docker compose up -d --build` followed by
+   `docker compose exec worker python -m rep0rter build-site`.
+   The `accounts` service handles `/auth/*`, `/projects`, and `/submit`
    behind Caddy. The worker handles scheduled project updates as part of its
    existing hourly cycle.
 5. Visit `/projects`, sign in, preview a template, and save the project settings.
@@ -61,13 +65,12 @@ register the same callback above. Separate consent-screen branding requires a
 separate Cloud project. Download and securely save the new client credentials
 when creating them; Google may not show the client secret again later.
 
-After changing local environment settings, recreate `accounts` and `worker` so
-they receive them, reload Caddy, and rebuild the feed navigation:
+After changing production environment settings on Singa, reload them through
+the controller so services and the site are updated under the deployment lock:
 
 ```sh
-docker compose up -d --build accounts worker
-docker compose exec web caddy reload --config /etc/caddy/Caddyfile
-docker compose exec accounts python -m rep0rter build-site
+python3 ~/.local/share/rep0rter-deploy/deploy.py \
+  --config ~/.local/share/rep0rter-deploy/config.json --redeploy
 ```
 
 Changing a registered Google callback alone does not require restarting the app.

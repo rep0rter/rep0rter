@@ -65,14 +65,16 @@ sources are included in `.env.example`; historical archives remain available sep
 Archive publication dates describe archive entries, not necessarily project launches.
 See [collector limits](docs/collectors.md).
 
-Production runs with `docker compose up -d --build`: a `worker` (hourly cycle),
+The Compose stack runs a `worker` (hourly cycle),
 `maintenance` (backups, health checks), `accounts` (Google login and owner project
 news), and `web` (Caddy, static files on `127.0.0.1:18090`).
 
 On Singa, a systemd timer checks `main` every minute and deploys new commits after
 their GitHub **Offline tests** workflow passes. Contributors only need to push
 to `main`; machine access is unnecessary. See [automatic deployment](docs/deployment.md)
-for installation, status, retries and rollback.
+for installation, status, retries and rollback. Apply production `.env` changes
+through the controller's `--redeploy` option, which shares the timer's lock.
+Use `docker compose up -d --build` only for initial setup on an unmanaged host.
 
 ## Docs
 
