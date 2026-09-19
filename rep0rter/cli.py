@@ -321,8 +321,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--port", type=int, default=8000)
     p.set_defaults(func=cmd_serve)
 
-    from . import operations,policy,retractions,editorial,republish
-    for module in (operations,policy,retractions,editorial,republish):
+    from . import operations,policy,retractions,editorial,republish,feed_tools,notion_discovery,korea
+    for module in (operations,policy,retractions,editorial,republish,feed_tools,notion_discovery,korea):
         module.register_commands(sub)
 
     args = parser.parse_args(argv)

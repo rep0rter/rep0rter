@@ -1,9 +1,11 @@
 """Exercise the production deploy controller without Docker, GitHub or secrets."""
 
 import importlib.util
+import fcntl
 import json
 from pathlib import Path
 import subprocess
+import sys
 from unittest.mock import Mock
 
 import pytest
@@ -82,6 +84,51 @@ def test_failed_commit_requires_explicit_retry(deployer):
     deployer.deploy = Mock()
     deployer.tick(retry=True)
     deployer.deploy.assert_called_once_with(SHA)
+
+
+def test_redeploy_reapplies_current_main(deployer):
+    deployer.state = {'deployed_sha': SHA}
+    deployer.deploy = Mock()
+    deployer.tick(redeploy=True)
+    deployer.eligible.assert_called_once_with(SHA)
+    deployer.deploy.assert_called_once_with(SHA)
+
+
+@pytest.mark.parametrize('check,passed', [(True, True), (False, False)])
+def test_redeploy_still_requires_ci_and_honors_check_mode(deployer, check, passed):
+    deployer.state = {'deployed_sha': SHA}
+    deployer.deploy = Mock()
+    deployer.eligible.return_value = passed
+    deployer.tick(redeploy=True, check=check)
+    deployer.deploy.assert_not_called()
+
+
+def test_redeploy_does_not_bypass_failed_commit_hold(deployer):
+    deployer.state = {'deployed_sha': SHA, 'failed_sha': SHA}
+    deployer.deploy = Mock()
+    deployer.tick(redeploy=True)
+    deployer.deploy.assert_not_called()
+    deployer.tick(redeploy=True, retry=True)
+    deployer.deploy.assert_called_once_with(SHA)
+
+
+@pytest.mark.parametrize('flags,code', [([], 0), (['--redeploy'], 75), (['--retry'], 75)])
+def test_cli_does_not_touch_production_while_another_deployment_holds_lock(tmp_path, flags, code):
+    config = tmp_path / 'config.json'
+    config.write_text(json.dumps({'state_dir': str(tmp_path)}))
+    state = tmp_path / 'state.json'
+    state.write_text('{"deployed_sha": "unchanged"}')
+    with (tmp_path / 'deploy.lock').open('w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        # A real child process must fail to acquire the timer's lock before it
+        # reads deployment state or attempts Docker/GitHub operations.
+        result = subprocess.run(
+            [sys.executable, str(Path(deployment.__file__)), '--config', str(config), *flags],
+            capture_output=True, text=True, timeout=10,
+        )
+    assert result.returncode == code
+    assert 'no changes applied' in result.stdout
+    assert state.read_text() == '{"deployed_sha": "unchanged"}'
 
 
 def prepare_deployment(deployer):

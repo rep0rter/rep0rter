@@ -1,14 +1,15 @@
 """Opt-in public GitHub releases, collaboration issues and explained merged PRs."""
 from __future__ import annotations
-import re
+import json
 import os
+import re
 import time
 from datetime import datetime, timezone
 from urllib.parse import quote
 
 from ..sources import normalize_text
 from ..store import Container, Event
-from .state import check_response, persist, read_state
+from .state import BudgetExceeded, check_response, persist, read_state
 
 API = 'https://api.github.com'
 COLLABORATION_LABELS = {'help wanted', 'good first issue', 'collaboration', 'call for participation', '徵求協作', '協作邀請'}
@@ -72,8 +73,15 @@ def to_event(raw, repo, kind, *, editorial_override=False):
 
 
 def get(session, path, **params):
-    response = session.get(API + path, params=params, timeout=30, headers={
-        'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'})
+    headers = {'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'}
+    # Optional. Unauthenticated GitHub allows 60 requests an hour per address,
+    # which a handful of repositories spends on the hourly cycle alone; a token
+    # raises the ceiling to 5,000. It changes no repository's visibility: only
+    # explicitly public repositories are read either way.
+    token = os.getenv('REP0RTER_GITHUB_TOKEN')
+    if token:
+        headers['Authorization'] = 'Bearer ' + token
+    response = session.get(API + path, params=params, timeout=30, headers=headers)
     check_response(response)
     return response.json()
 
@@ -84,6 +92,13 @@ def collect(store, repos, session, metrics, days=2):
     for repo in repos:
         if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repo):
             raise ValueError('GitHub allowlist entries must be owner/repository')
+    # Least recently attempted first, as Slack orders its channels. Each
+    # repository costs at least four requests, with more for pagination. Rotate
+    # attempted repositories so a long allowlist or a busy repository cannot
+    # monopolize every round's share.
+    repos = sorted(repos, key=lambda name: read_state(store, 'github:' + name.lower()).get('last_attempt', 0))
+    deferred = []
+    for repo in repos:
         cid = 'github:' + repo.lower()
         if not container_allowed(store, cid):
             continue
@@ -93,6 +108,7 @@ def collect(store, repos, session, metrics, days=2):
             from .registry import record_source_error
             record_source_error(store, cid, 'waiting for upstream rate limit reset')
             continue
+        requests_before = metrics.requests
         try:
             info = get(session, '/repos/' + repo)
             if info.get('private') is not False or info.get('visibility', 'public') != 'public':
@@ -136,9 +152,23 @@ def collect(store, repos, session, metrics, days=2):
             if new_state['error']:
                 from .registry import record_source_error
                 record_source_error(store, cid, new_state['error'])
+        except BudgetExceeded as exc:
+            # Running out of budget is pending work, not a failure. Only keep
+            # the earlier attempt time when this repository issued no requests.
+            # Pagination may exhaust the budget after making progress; rotate
+            # that repository so it cannot monopolize the next round too.
+            # Reporting it as a source error would hold collector_health false
+            # every round, freeze last_healthy_at, and restart the worker over
+            # work that the next round picks up.
+            attempt = {'last_attempt': now} if metrics.requests > requests_before else {}
+            persist(store, cid, dict(state, **attempt, error=str(exc), retry_at=0), [], metrics, now)
+            deferred.append(repo)
+            continue
         except Exception as exc:
             persist(store, cid, dict(state, last_attempt=now, error=str(exc), retry_at=getattr(exc, 'retry_at', 0)), [], metrics, now)
             # Independent repository failures must not block the remaining allowlist.
             from .registry import record_source_error
             record_source_error(store, cid, exc)
+    # Deferred work stays observable without being an alert.
+    store.set_kv('github_deferred', json.dumps({'at': time.time(), 'repositories': deferred}))
     return total

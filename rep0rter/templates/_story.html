@@ -1,9 +1,11 @@
-<article id="{{ it.post.id }}" class="story-card{% if featured %} story-card--featured{% endif %}" style="view-transition-name: report-{{ it.post.id }}" data-post-id="{{ it.post.id }}" data-date="{{ it.day }}" data-timestamp="{{ it.post.published_at }}" data-author="{{ it.filter_author }}" data-author-label="{{ it.filter_author_label }}" data-source="{{ it.filter_source }}" data-source-label="{{ it.source_label }}" data-topics='{{ it.filter_topics | tojson }}' data-search="{{ it.headline }} {{ it.summary }} {{ it.source_label }} {{ it.event.author_name }}">
+<article id="{{ it.post.id }}" class="story-card{% if featured %} story-card--featured{% endif %}" style="view-transition-name: report-{{ it.post.id }}" data-post-id="{{ it.post.id }}" data-date="{{ it.day }}" data-timestamp="{{ it.event.ts if timeline else it.post.published_at }}" data-author="{{ it.filter_author }}" data-author-label="{{ it.filter_author_label }}" data-source="{{ it.filter_source }}" data-source-label="{{ it.source_label }}" data-topics='{{ it.filter_topics | tojson }}' data-search="{{ it.headline }} {{ it.summary }} {{ it.source_label }} {{ it.event.author_name }} {{ it.hashtags | join(" ") }}">
   <div class="story-top">
     <a class="channel" href="{{ prefix }}{{ it.source_path }}{{ page_name(language) }}"><span class="source-dot" data-source="{{ it.event.source }}" aria-hidden="true"></span>{{ it.source_label }}</a>
     <a class="permalink" href="{{ prefix }}{{ it.story_path }}" aria-label="{{ copy.read }}: {{ it.headline }}">{{ ui.icon('external') }}</a>
   </div>
-  {% if it.event.meta.get('owner_submitted') %}<p class="translation-note">{{ copy.owner_submission }}</p>{% endif %}
+  {% if it.event.meta.get('self_reported') %}<p class="translation-note">{{ copy.self_reported }}{% if it.event.meta.get('project_name') %} · {{ it.event.meta.project_name }}{% endif %}{% if not it.source_url %} · {{ copy.no_evidence }}{% endif %}</p>{% elif it.event.meta.get('owner_submitted') %}<p class="translation-note">{{ copy.owner_submission }}</p>{% endif %}
+  {% if 'archive_import' in it.post.reasons %}<p class="translation-note">{{ copy.archive_import }}</p>{% endif %}
+  {% if 'source_excerpt' in it.post.reasons %}<p class="translation-note">{{ copy.source_excerpt }}</p>{% endif %}
   {% if it.content_warning %}<p class="translation-note">{{ it.content_warning }}</p>{% endif %}
   {% if it.latest_path %}<p class="revision-notice"><strong>{{ copy.superseded }}</strong> <a href="{{ prefix }}{{ it.latest_path }}">{{ copy.latest_report }} {{ ui.icon('arrow') }}</a></p>{% endif %}
   <div class="story-content">
@@ -13,15 +15,18 @@
       <p class="summary" lang="{{ language if it.translated or language == 'en' else 'und' }}">{{ it.summary }}</p>
       {% if it.latest_path %}</details>{% endif %}
       {% if not it.translated and language != 'en' %}<p class="translation-note">{{ copy.missing }}</p>{% endif %}
+      {% if it.event.meta.get('take_part') %}<p class="take-part"><strong>{{ copy.take_part }}</strong> {{ it.event.meta.take_part }}</p>{% endif %}
+      {% if it.hashtags %}<nav class="hashtag-list" aria-label="{{ copy.hashtags }}">{% for name in it.hashtags %}<a class="hashtag" href="{{ prefix }}{{ tag_path(name) }}{{ page_name(language) }}" rel="tag">#{{ name }}</a>{% endfor %}</nav>{% endif %}
       <p class="byline"><span class="avatar-initial" aria-hidden="true">{{ (it.event.author_name or it.channel)[:1] }}</span><span>{{ it.event.author_name or it.channel }}</span></p>
       <p class="meta"><span>{{ copy.published }} <time>{{ it.event_local }}</time></span>
         {% if it.event.reply_count %}<span aria-label="{{ copy.replies }}: {{ it.event.reply_count }}">{{ ui.icon('chat') }} {{ it.event.reply_count }}</span>{% endif %}
         {% if it.source_url %}<a href="{{ it.source_url }}" rel="noopener">{{ copy.source }} {{ ui.icon('external') }}</a>{% endif %}
       </p>
+      {% if it.evidence | length > 1 %}<p class="meta">{{ copy.sources }}: {% for link in it.evidence %}<a href="{{ link }}" rel="noopener">{{ loop.index }}</a>{% endfor %}</p>{% endif %}
     </div>
     <figure class="report-figure">
       <button type="button" class="image-link" data-image-view data-image-src="{{ prefix }}{{ it.image }}" aria-haspopup="dialog" aria-controls="image-viewer" aria-label="{{ copy.view_image }}: {{ it.headline }}" disabled><img class="source-card" src="{{ prefix }}{{ it.image }}" width="1200" height="630" loading="lazy" alt="{{ copy.report_image_alt if language == 'en' else copy.image_alt }}{{ it.event.author_name or it.channel }}"></button>
-      <figcaption><span>{{ copy.owner_submission if it.event.meta.get('owner_submitted') else (copy.report_card_label if language == 'en' else copy.card_label) }}</span><a href="{{ prefix }}{{ it.image }}" download aria-label="{{ copy.download }}: {{ it.headline }}">{{ ui.icon('download') }}<span>{{ copy.download }}</span></a></figcaption>
+      <figcaption><span>{{ copy.self_reported if it.event.meta.get('self_reported') else copy.owner_submission if it.event.meta.get('owner_submitted') else (copy.report_card_label if language == 'en' else copy.card_label) }}</span><a href="{{ prefix }}{{ it.image }}" download aria-label="{{ copy.download }}: {{ it.headline }}">{{ ui.icon('download') }}<span>{{ copy.download }}</span></a></figcaption>
     </figure>
   </div>
   {% if detail %}

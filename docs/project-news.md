@@ -24,9 +24,13 @@ are labeled as owner submissions. They do not create Telegram delivery jobs.
    Generate the session secret with
    `python -c 'import secrets; print(secrets.token_urlsafe(48))'`.
    Keep it consistent across accounts-service processes and restarts.
-4. Run `docker compose up -d --build` and rebuild the site with
-   `docker compose exec worker python -m rep0rter build-site` to show its posting
-   link. The new `accounts` service handles `/auth/*`, `/projects`, and `/submit`
+4. On Singa, apply the environment through the controller's
+   [`--redeploy` command](deployment.md#apply-host-environment-changes), which
+   recreates services and rebuilds the site under the deployment lock.
+   Only on a new host without automatic deployment, run
+   `docker compose up -d --build` followed by
+   `docker compose exec worker python -m rep0rter build-site`.
+   The `accounts` service handles `/auth/*`, `/projects`, and `/submit`
    behind Caddy. The worker handles scheduled project updates as part of its
    existing hourly cycle.
 5. Visit `/projects`, sign in, preview a template, and save the project settings.
@@ -61,13 +65,12 @@ register the same callback above. Separate consent-screen branding requires a
 separate Cloud project. Download and securely save the new client credentials
 when creating them; Google may not show the client secret again later.
 
-After changing local environment settings, recreate `accounts` and `worker` so
-they receive them, reload Caddy, and rebuild the feed navigation:
+After changing production environment settings on Singa, reload them through
+the controller so services and the site are updated under the deployment lock:
 
 ```sh
-docker compose up -d --build accounts worker
-docker compose exec web caddy reload --config /etc/caddy/Caddyfile
-docker compose exec accounts python -m rep0rter build-site
+python3 ~/.local/share/rep0rter-deploy/deploy.py \
+  --config ~/.local/share/rep0rter-deploy/config.json --redeploy
 ```
 
 Changing a registered Google callback alone does not require restarting the app.
@@ -168,3 +171,37 @@ Offline tests validate signed Google ID tokens with local test keys, request
 forgery defenses, account isolation, source fetching and duplicate-free
 publication. A real Google browser login requires your registered client and
 must be checked after deployment; no credentials are included with the project.
+
+## Community stories and hashtags
+
+Choose **Write a story** in the site header, or visit `/write`. Google sign-in
+returns to the writer (including a tag selected from a timeline). The existing
+Google client and callback above are reused; no additional scopes are needed.
+The writer supports an English headline and update, optional project name,
+participation details, up to five evidence links, original text in any language,
+and the date the work happened. Preview does not publish. Published stories are
+marked **Self-reported**, including their downloadable English cards. Stories
+without evidence explicitly say so. Other editions retain the existing honest
+translation fallback; submitting does not automatically translate the story.
+
+Add up to eight hashtags separated by spaces or commas. Tags are Unicode-aware,
+normalized for width and case, and deduplicated. Letters, numbers, underscores,
+and hyphens are supported (48 characters maximum, at least one letter). Hashtags
+in story text are also discovered; URL fragments and numeric issue references
+are excluded. Existing Slack channel names become tags when they meet these
+rules, so their historical stories are immediately discoverable.
+
+Each tag links to `/tags/<tag>/index.html` and the corresponding language pages.
+Timelines include all published, allowed stories, even outside the homepage's
+300-post window, sorted by their original event date, newest first. Source pages
+also use this dated timeline presentation. The existing date, author, source and
+sort filters work within each timeline. The main feed remains ordered by
+publication time. Tag counts appear in the discovery sidebar, and RSS includes
+hashtags as categories.
+
+Stories share the existing five-publications-per-account daily limit and the
+same transactional, account-bound retry protection as project submissions.
+They do not send Telegram messages. Exclusions and emergency withdrawal scrub
+stories, tag discovery and timeline headings from cached generations; rebuilding
+removes empty tag pages. No database migration or extra service is required.
+Caddy sends `/write` to the existing accounts service.

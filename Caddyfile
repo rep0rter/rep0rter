@@ -1,5 +1,5 @@
 :80 {
-	@accounts path /auth/* /submit /projects /projects/*
+	@accounts path /auth/* /submit /write /projects /projects/*
 	handle @accounts {
 		reverse_proxy accounts:8000
 	}

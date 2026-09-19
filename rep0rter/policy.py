@@ -325,6 +325,11 @@ def _sanitize_site(store, root, withdrawn_urls=()):
             continue
         document = BeautifulSoup(path.read_text(encoding='utf-8'), 'html.parser')
         removed = False
+        # Discovery counts/tags can reveal a withdrawn story even on pages
+        # whose own articles all survive. Rebuild these from allowed posts.
+        for discovery in document.select('.hashtag-discovery'):
+            discovery.decompose()
+            removed = True
         for article in list(document.find_all('article')):
             if str(article.get('id')) in withdrawn:
                 article.decompose()
@@ -348,6 +353,11 @@ def _sanitize_site(store, root, withdrawn_urls=()):
                 removed = True
         if not removed:
             continue
+        if relative.parts[0] == 'tags' and not document.find('article'):
+            _atomic_text(path, _withdrawn_page(document.html.get('lang', DEFAULT_LANGUAGE)))
+            continue
+        for context in document.select('.timeline-context'):
+            context.decompose()
         # A source page may have used a withdrawn source's name or headline in
         # metadata. Retain canonical/navigation links; never retain old previews.
         for meta in list(document.find_all('meta')):
@@ -464,7 +474,7 @@ def redact(store, event_ids, reason='withdrawn'):
 
 
 def register_commands(sub):
-    p=sub.add_parser('exclusion',help='manage stable-ID optouts; verify requester identity before adding')
+    p=sub.add_parser('exclusion',help='manage stable-ID optouts and editorial source exclusions; verify requester identity before adding an optout')
     p.add_argument('action',choices=('add','list','remove'))
     p.add_argument('--scope',choices=SCOPES)
     p.add_argument('--subject')

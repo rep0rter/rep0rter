@@ -13,7 +13,7 @@
   <div class="masthead"><a class="wordmark" href="/">{{ cfg.site_title }}</a><span class="edition">COMMUNITY PROJECTS</span></div>
   <h1>Share what you’re building.</h1>
   <p class="tagline">Post your civic-tech project to the rep0rter community feed.</p>
-  <nav class="links"><a href="/">← Back to the feed</a><a href="{{ url_for('managed_project') }}">Manage automatic project news</a></nav>
+  <nav class="links"><a href="/">← Back to the feed</a><a href="/write">Write a story</a><a href="{{ url_for('managed_project') }}">Manage automatic project news</a></nav>
 </header>
 <main>
 {% if error %}<p class="form-notice" role="alert">{{ error }}</p>{% endif %}

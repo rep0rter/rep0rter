@@ -3,7 +3,7 @@
 # rep0rter
 
 **An AI reporter for the g0v civic-tech community.** Every hour it reads public
-collaboration spaces (Slack, GitHub, Mastodon, RSS, public Notion), picks what matters, writes a short
+collaboration spaces (Slack, GitHub, Mastodon, RSS/Atom/JSON Feed, public Notion), picks what matters, writes a short
 story in four languages, and publishes it to a website, RSS and Telegram.
 
 - Site: https://rep0rter.observe.tw (English by default; 繁體中文 · 日本語 · 한국어 on request)
@@ -18,7 +18,7 @@ flowchart LR
         S[Slack public archive]
         G[GitHub repos]
         M[Mastodon accounts]
-        R[RSS news feeds]
+        R[RSS / Atom / JSON feeds]
         N[Public Notion pages]
     end
     S & G & M & R & N --> C[Collectors]
@@ -57,21 +57,24 @@ python -m pytest -q tests
 Other commands: `collect`, `report`, `build-site`, `translate`, `outbox`, `status`,
 `loop --interval 3600`, `export`.
 
-`REP0RTER_FEEDS` accepts a comma-separated mix of RSS 2.0 feeds and public Notion
-page/database URLs. Notion uses anonymous web JSON requests without an API token;
-these unofficial endpoints may change. Code for Korea's news and project archive
-feeds, plus the Code for Japan community portal, are included in `.env.example`.
+`REP0RTER_FEEDS` accepts RSS 2.0, RSS 1.0, Atom 1.0, JSON Feed 1/1.1, public Notion
+URLs, and the supported Code for Japan / Open Data Forum index URLs. Notion uses anonymous web JSON requests without an API token;
+these unofficial endpoints may change. Verified sources across Japan, Korea, Taiwan and global civic-tech organizations
+are recorded in the [source catalog](docs/source-research/README.md). Active monitoring
+sources are included in `.env.example`; historical archives remain available separately.
 Archive publication dates describe archive entries, not necessarily project launches.
 See [collector limits](docs/collectors.md).
 
-Production runs with `docker compose up -d --build`: a `worker` (hourly cycle),
+The Compose stack runs a `worker` (hourly cycle),
 `maintenance` (backups, health checks), `accounts` (Google login and owner project
 news), and `web` (Caddy, static files on `127.0.0.1:18090`).
 
 On Singa, a systemd timer checks `main` every minute and deploys new commits after
 their GitHub **Offline tests** workflow passes. Contributors only need to push
 to `main`; machine access is unnecessary. See [automatic deployment](docs/deployment.md)
-for installation, status, retries and rollback.
+for installation, status, retries and rollback. Apply production `.env` changes
+through the controller's `--redeploy` option, which shares the timer's lock.
+Use `docker compose up -d --build` only for initial setup on an unmanaged host.
 
 ## Docs
 

@@ -225,3 +225,29 @@ for _language, _label in {
     'ja': '日付で見る', 'ko': '날짜별로 보기',
 }.items():
     COPY[_language]['browse_by_date'] = _label
+
+for _language, _values in {
+    'en': {'archive_import': 'Archive entry · original source date', 'source_excerpt': 'Original feed text · may be an excerpt'},
+    'ko': {'archive_import': '지난 소식 · 원문 게시일 기준', 'source_excerpt': '피드 원문 · 일부 내용일 수 있습니다'},
+    'ja': {'archive_import': '過去の記事 · 原文の投稿日', 'source_excerpt': 'フィード原文 · 抜粋の場合があります'},
+    'zh-TW': {'archive_import': '歷史文章 · 依原文日期', 'source_excerpt': 'Feed 原文 · 可能為節錄'},
+}.items():
+    COPY[_language].update(_values)
+
+for _language, _values in {
+    'en': ('Write a story', 'Sign in with Google to share your own story', 'Hashtags', 'Explore hashtags',
+           'Hashtag timeline', 'Source timeline', 'Follow the story, update by update.', '{count} stories',
+           'Self-reported', 'No evidence link supplied', 'How to take part'),
+    'zh-TW': ('撰寫報導', '使用 Google 登入，分享你的故事', '主題標籤', '探索主題標籤',
+              '標籤時間軸', '來源時間軸', '沿著時間軸，了解每一步進展。', '{count} 篇報導',
+              '自行投稿', '未提供佐證連結', '如何參與'),
+    'ja': ('記事を書く', 'Google でログインして活動を共有', 'ハッシュタグ', 'タグから探す',
+           'タグのタイムライン', '情報源のタイムライン', '更新をたどり、活動の歩みを知る。', '{count} 件の記事',
+           '本人による投稿', '根拠となるリンクなし', '参加するには'),
+    'ko': ('소식 쓰기', 'Google로 로그인하고 소식을 공유하세요', '해시태그', '해시태그 둘러보기',
+           '해시태그 타임라인', '출처 타임라인', '업데이트를 따라 활동의 흐름을 살펴보세요.', '소식 {count}개',
+           '직접 작성한 소식', '근거 링크 없음', '참여 방법'),
+}.items():
+    COPY[_language].update(zip(('write_story', 'contribute', 'hashtags', 'explore_hashtags',
+                               'hashtag_timeline', 'source_timeline', 'timeline_intro', 'story_count',
+                               'self_reported', 'no_evidence', 'take_part'), _values))

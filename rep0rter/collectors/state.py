@@ -72,7 +72,8 @@ def persist(store, key, state, events, metrics, now=None):
                 (id,source,kind,container_id,author_id,author_name,text,html,url,ts,parent_id,reply_count,reaction_count,meta,first_seen,last_seen)
                 VALUES (:id,:source,:kind,:container_id,:author_id,:author_name,:text,:html,:url,:ts,:parent_id,:reply_count,:reaction_count,:meta,:now,:now)
                 ON CONFLICT(id) DO UPDATE SET text=excluded.text,html=excluded.html,author_name=excluded.author_name,
-                reply_count=excluded.reply_count,reaction_count=excluded.reaction_count,meta=excluded.meta,last_seen=excluded.last_seen''', values)
+                url=excluded.url,reply_count=excluded.reply_count,reaction_count=excluded.reaction_count,
+                meta=excluded.meta,last_seen=excluded.last_seen''', values)
         write_state(store, key, state)
     metrics.duplicate_payloads += delta.duplicate_payloads
     metrics.updated_events += delta.updated_events

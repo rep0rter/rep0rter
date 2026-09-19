@@ -215,3 +215,120 @@ def test_lifecycle_source_facts_preserved_for_writer_evidence():
     assert event.meta['lifecycle']['state']=='closed'
     assert event.meta['lifecycle']['merged_at']=='2026-09-18T00:00:00Z'
     assert 'draft' in event.meta['lifecycle']
+
+
+def test_github_token_is_optional_and_only_raises_the_rate_ceiling(monkeypatch):
+    """Unauthenticated reads must keep working; a token adds only quota."""
+    seen = []
+
+    def capture(url, params=None, timeout=None, headers=None):
+        seen.append(headers or {})
+        return response([])
+
+    session = Mock(get=Mock(side_effect=capture))
+    monkeypatch.delenv('REP0RTER_GITHUB_TOKEN', raising=False)
+    github.get(session, '/repos/example/civic')
+    assert 'Authorization' not in seen[-1]
+    assert seen[-1]['Accept'] == 'application/vnd.github+json'
+
+    monkeypatch.setenv('REP0RTER_GITHUB_TOKEN', 'secret-value')
+    github.get(session, '/repos/example/civic')
+    assert seen[-1]['Authorization'] == 'Bearer secret-value'
+    # A token never widens what is collected; visibility is still checked.
+    assert seen[-1]['X-GitHub-Api-Version'] == '2022-11-28'
+
+
+def test_github_rotates_so_a_long_allowlist_does_not_starve_its_tail(tmp_path, monkeypatch):
+    """Under budget pressure a fixed order would collect the same prefix forever."""
+    from rep0rter.collectors.state import read_state, write_state
+    names = ['example/one', 'example/two', 'example/three']
+    with Store(tmp_path / 'rotate.sqlite') as store:
+        write_state(store, 'github:example/one', {'last_attempt': 300})
+        write_state(store, 'github:example/two', {'last_attempt': 100})
+        attempted = []
+
+        def get(url, params=None, timeout=None, headers=None):
+            attempted.append(url.rsplit('/repos/', 1)[-1].split('/')[0:2])
+            raise RuntimeError('stop after the first call for each repository')
+
+        github.collect(store, names, Mock(get=Mock(side_effect=get)), Metrics(), days=2)
+    order = ['/'.join(pair) for pair in attempted]
+    # 'three' has never been attempted, then 'two' at 100, then 'one' at 300.
+    assert order == ['example/three', 'example/two', 'example/one']
+    assert sorted(order) == sorted(names)
+
+
+def test_a_budget_starved_repository_keeps_its_place_in_the_rotation(tmp_path):
+    """It issued no request, so it must not be pushed to the back of the queue."""
+    from rep0rter.collectors.state import BudgetSession, read_state, write_state
+
+    def reply(url, params=None, timeout=None, headers=None):
+        if '/repos/' in url and url.count('/') == 5:
+            return response({'id': 1, 'private': False, 'visibility': 'public',
+                             'html_url': 'https://example.test', 'description': ''})
+        return response([])
+
+    with Store(tmp_path / 'starve.sqlite') as store:
+        write_state(store, 'github:example/first', {'last_attempt': 100})
+        write_state(store, 'github:example/second', {'last_attempt': 200})
+        metrics = Metrics()
+        # Exactly one repository's worth of requests: the second one starves
+        # before it sends anything.
+        transport = BudgetSession(Mock(get=Mock(side_effect=reply)), metrics, limit=4, interval=0)
+        github.collect(store, ['example/first', 'example/second'], transport, metrics, days=2)
+        first = read_state(store, 'github:example/first')
+        second = read_state(store, 'github:example/second')
+    assert first['last_attempt'] > 100, 'the repository that ran should record an attempt'
+    assert second['last_attempt'] == 200, 'the starved repository must keep its older time'
+    assert second['last_attempt'] < first['last_attempt'], 'so it sorts first next round'
+
+
+def test_budget_shortfall_is_deferred_work_not_a_source_failure(tmp_path):
+    """Otherwise collector_health stays false every round and restarts the worker."""
+    import json as _json
+    from rep0rter.collectors.state import BudgetSession, read_state, write_state
+
+    def reply(url, params=None, timeout=None, headers=None):
+        if '/repos/' in url and url.count('/') == 5:
+            return response({'id': 1, 'private': False, 'visibility': 'public',
+                             'html_url': 'https://example.test', 'description': ''})
+        return response([])
+
+    with Store(tmp_path / 'defer.sqlite') as store:
+        write_state(store, 'github:example/first', {'last_attempt': 100})
+        write_state(store, 'github:example/second', {'last_attempt': 200})
+        metrics = Metrics()
+        transport = BudgetSession(Mock(get=Mock(side_effect=reply)), metrics, limit=4, interval=0)
+        github.collect(store, ['example/first', 'example/second'], transport, metrics, days=2)
+        errors = _json.loads(store.get_kv('collector_errors', '{}'))
+        deferred = _json.loads(store.get_kv('github_deferred', '{}'))
+    assert 'github:example/second' not in errors, 'a budget shortfall must not read as a failure'
+    assert deferred['repositories'] == ['example/second'], 'but it must stay observable'
+
+
+def test_paginated_repository_cannot_monopolize_later_rounds(tmp_path):
+    from rep0rter.collectors.state import BudgetSession, read_state, write_state
+    calls = []
+
+    def reply(url, params=None, **kwargs):
+        calls.append(url)
+        if url.endswith(('/busy', '/quiet')):
+            return response({'private': False, 'visibility': 'public',
+                             'html_url': 'https://github.com/example/quiet'})
+        if url.endswith('/busy/releases') and params['page'] == 1:
+            return response([{'id': n, 'created_at': '2000-01-01T00:00:00Z'} for n in range(100)])
+        return response([])
+
+    with Store(tmp_path / 'pagination.sqlite') as store:
+        write_state(store, 'github:example/busy', {'last_attempt': 100, 'last_complete_ts': 100})
+        write_state(store, 'github:example/quiet', {'last_attempt': 200})
+        for _ in range(2):
+            metrics = Metrics()
+            transport = BudgetSession(Mock(get=Mock(side_effect=reply)), metrics, limit=4, interval=0)
+            github.collect(store, ['example/busy', 'example/quiet'], transport, metrics)
+        busy = read_state(store, 'github:example/busy')
+        quiet = read_state(store, 'github:example/quiet')
+    assert busy['last_attempt'] > 100
+    assert busy['last_complete_ts'] == 100, 'partial work must not advance the collection cursor'
+    assert quiet['last_success'] > 200, 'the quiet repository must complete on the second round'
+    assert sum('/quiet' in url for url in calls) == 4

@@ -294,6 +294,8 @@ def test_all_local_links_and_branding_assets_exist(published_site):
         for node in doc.select("a[href], link[href], script[src], img[src]"):
             url = urljoin(page_url, node.get("href") or node.get("src"))
             if urlsplit(url).netloc == urlsplit(cfg.site_url).netloc:
+                if urlsplit(url).path == urlsplit(cfg.site_url).path.rstrip('/') + '/write':
+                    continue  # Dynamic Flask route, covered by test_community.
                 assert local_path(cfg, url).is_file(), (path, url)
         assert doc.select_one('link[rel="icon"]')
         assert doc.select_one("a.wordmark img")
@@ -319,6 +321,8 @@ def test_reading_assets_and_self_hosted_fonts_are_published(published_site):
         doc = html(path)
         theme = doc.select_one('script[src$="theme.js"]')
         stylesheet = doc.select_one('link[rel="stylesheet"]')
+        version = hashlib.sha256((cfg.site_dir / 'style.css').read_bytes()).hexdigest()[:12]
+        assert urlsplit(stylesheet['href']).query == f'v={version}'
         assert theme and not theme.has_attr("defer") and not theme.has_attr("async")
         assert list(doc.head.children).index(theme) < list(doc.head.children).index(stylesheet)
         reading = doc.select_one('script[src$="reading.js"]')
@@ -707,7 +711,7 @@ def test_facet_metadata_stays_in_removable_articles_and_selects_start_empty(publ
             assert all(node.name == 'article' for node in doc.select(f'[{attribute}]'))
         for article in doc.select('article'):
             post, event = posts[article['data-post-id']]
-            assert float(article['data-timestamp']) == post.published_at
+            assert float(article['data-timestamp']) == (event.ts if 'sources' in path.parts else post.published_at)
             assert article['data-author-label'] == event.author_name
             assert article['data-author']
             assert article['data-source']

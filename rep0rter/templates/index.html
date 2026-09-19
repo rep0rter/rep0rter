@@ -18,7 +18,7 @@
 <link rel="alternate" type="application/rss+xml" title="{{ cfg.site_title }} RSS · {{ languages[language] }}" href="{{ prefix }}{{ feed }}">
 {% for lang in languages %}<link rel="alternate" hreflang="{{ lang }}" href="{{ canonical.rsplit('/', 1)[0] }}/{{ page_name(lang) }}">{% endfor %}
 <script src="{{ prefix }}theme.js"></script>
-<link rel="stylesheet" href="{{ prefix }}style.css">
+<link rel="stylesheet" href="{{ prefix }}style.css{% if style_version %}?v={{ style_version }}{% endif %}">
 <link rel="stylesheet" href="{{ prefix }}theme-transition.css">
 <link rel="stylesheet" href="{{ prefix }}enchantment.css">
 <link rel="stylesheet" href="{{ prefix }}language.css">
@@ -38,7 +38,7 @@
       <label class="search-field" for="story-search">{{ ui.icon('search') }}<span class="visually-hidden">{{ copy.search_label }}</span><input id="story-search" name="q" type="search" autocomplete="off" placeholder="{{ copy.search_placeholder }}"{% if not detail %} aria-describedby="search-status"{% endif %}></label>
       {% if not detail %}<button class="search-clear" type="button" data-search-clear aria-label="{{ copy.clear_search }}" title="{{ copy.clear_search }}" hidden>{{ ui.icon('close') }}</button>{% endif %}
     </form>
-    <div class="masthead-actions">{{ ui.language_links(copy, language, languages, page_name, compact=True) }}{{ ui.appearance(copy) }}</div>
+    <div class="masthead-actions"><a class="write-story-link" href="{{ prefix }}write">{{ copy.write_story }}</a>{{ ui.language_links(copy, language, languages, page_name, compact=True) }}{{ ui.appearance(copy) }}</div>
   </div>
 </header>
 <main id="main" class="page-shell" tabindex="-1">
@@ -50,6 +50,7 @@
       <p class="hero-intro">{{ copy.intro }}</p>
       <div class="hero-actions"><a class="button button-primary" href="#news">{{ copy.browse_by_date }} {{ ui.icon('arrow') }}</a><a class="button button-secondary" href="{{ feed }}">{{ ui.icon('rss') }} {{ copy.subscribe }}</a></div>
       <p class="hero-note">{{ ui.icon('check') }} {{ copy.hero_note }}</p>
+      <a class="contribute-link" href="write">{{ copy.contribute }} {{ ui.icon('arrow') }}</a>
     </div>
     <section class="hero-latest" aria-labelledby="latest-news-title">
       <div class="latest-heading"><span class="eyebrow-dot" aria-hidden="true"></span><h2 id="latest-news-title">{{ copy.latest }}</h2></div>
@@ -74,10 +75,17 @@
   {% else %}
   <section class="page-intro">
     <a class="back-link" href="{{ prefix }}{{ page_name(language) }}">{{ ui.icon('back') }} {{ copy.back_home }}</a>
+    {% if page_kind in ('tag', 'source') %}<div class="timeline-context">
+    <p class="eyebrow">{{ copy.hashtag_timeline if tag else copy.source_timeline }}</p>
+    <h1>{{ '#' ~ tag if tag else page_title }}</h1>
+    <p>{{ copy.timeline_intro }} · {{ copy.story_count.format(count=items | length) }}</p>
+    <a class="button button-secondary" href="{{ prefix }}write{% if tag %}?tag={{ tag | urlencode }}{% endif %}">{{ copy.write_story }} {{ ui.icon('arrow') }}</a>
+    </div>{% else %}
     <p class="eyebrow">{{ copy.story_heading if detail else copy.eyebrow }}</p>
     {# Keep source identity inside removable articles when privacy rules sanitize a cached page. #}
     <h1>{{ copy.detail_title if detail else copy.source_heading }}</h1>
     <p>{{ copy.detail_intro if detail else copy.source_intro }}</p>
+    {% endif %}
   </section>
   {% endif %}
   <div class="reading-layout{% if detail %} reading-layout--detail{% endif %}">
@@ -106,7 +114,7 @@
       {% endif %}
       {% if not items %}<div class="empty-state">{{ ui.icon('chat') }}<h2>{{ copy.empty_title }}</h2><p>{{ copy.empty }}</p></div>{% endif %}
       <div class="empty-state" data-no-results hidden>{{ ui.icon('search') }}<h2>{{ copy.no_results }}</h2><p>{{ copy.search_help }}</p><button class="button button-secondary" type="button" data-search-reset>{{ copy.reset_filters }}</button></div>
-      <div class="story-days">
+      <div class="story-days{% if page_kind in ('tag', 'source') %} story-timeline{% endif %}">
       {% for day, day_items in days.items() %}
       {% set first_day = loop.first %}
       <section class="day" aria-labelledby="day-{{ day }}">
@@ -119,6 +127,7 @@
       </div>
     </div>
     <aside class="reading-aside" aria-label="{{ copy.about }}">
+      {% if popular_tags %}<section class="about-card hashtag-discovery"><p class="eyebrow">{{ copy.hashtags }}</p><h2>{{ copy.explore_hashtags }}</h2><nav class="hashtag-list" aria-label="{{ copy.hashtags }}">{% for name, count in popular_tags %}<a class="hashtag" href="{{ prefix }}{{ tag_path(name) }}{{ page_name(language) }}"{% if name == tag %} aria-current="page"{% endif %}>#{{ name }} <span>{{ count }}</span></a>{% endfor %}</nav></section>{% endif %}
       <section class="about-card"><span class="icon-orb orb-violet">{{ ui.icon('spark') }}</span><p class="eyebrow">{{ copy.about_eyebrow }}</p><h2>{{ copy.about_title }}</h2><p>{{ copy.about_body }}</p><div class="about-principle">{{ ui.icon('check') }}<span>{{ copy.principle_sources }}</span></div><div class="about-principle">{{ ui.icon('globe') }}<span>{{ copy.principle_languages }}</span></div><div class="about-principle">{{ ui.icon('chat') }}<span>{{ copy.principle_people }}</span></div></section>
       <section class="subscribe-card"><span class="icon-orb orb-peach">{{ ui.icon('rss') }}</span><h2>{{ copy.subscribe_title }}</h2><p>{{ copy.subscribe_body }}</p><a class="button button-secondary" href="{{ prefix }}{{ feed }}">{{ copy.subscribe }} {{ ui.icon('arrow') }}</a></section>
       <p class="aside-note">{{ copy.aside_note }}</p>
@@ -133,7 +142,7 @@
   </div>
 </dialog>
 <footer class="site-footer page-shell">
-  <div class="footer-top"><a class="footer-brand" href="{{ prefix }}{{ page_name(language) }}">{{ cfg.site_title }}<span>{{ copy.brand_note }}</span></a><nav class="links" aria-label="{{ copy.resources }}"><a href="{{ prefix }}{{ feed }}">RSS {{ ui.icon('external') }}</a>{% if cfg.google_login_enabled %}<a href="{{ prefix }}submit">{{ copy.submit_project }}</a>{% endif %}<a href="https://github.com/rep0rter/rep0rter">{{ copy.code }} {{ ui.icon('external') }}</a><a href="https://g0v-slack-archive.g0v.ronny.tw/">{{ copy.archive }} {{ ui.icon('external') }}</a></nav></div>
+  <div class="footer-top"><a class="footer-brand" href="{{ prefix }}{{ page_name(language) }}">{{ cfg.site_title }}<span>{{ copy.brand_note }}</span></a><nav class="links" aria-label="{{ copy.resources }}"><a href="{{ prefix }}{{ feed }}">RSS {{ ui.icon('external') }}</a><a href="{{ prefix }}write">{{ copy.write_story }}</a>{% if cfg.google_login_enabled %}<a href="{{ prefix }}submit">{{ copy.submit_project }}</a>{% endif %}<a href="https://github.com/rep0rter/rep0rter">{{ copy.code }} {{ ui.icon('external') }}</a><a href="https://g0v-slack-archive.g0v.ronny.tw/">{{ copy.archive }} {{ ui.icon('external') }}</a></nav></div>
   <p class="footer-explanation">{{ copy.footer }}</p>
   <div class="footer-status"><p>{{ stats }}<br>{{ copy.updated }} {{ generated_local }}{% if last_healthy %}<br>{{ copy.healthy }} {{ last_healthy }}{% endif %}</p><p>{{ copy.optout }} <a href="https://g0v-slack-archive.g0v.ronny.tw/index/channel/C069ARZJNE9">#rep0rter {{ ui.icon('external') }}</a></p></div>
   {% if not collection_complete %}<p class="source-update-status">{{ copy.collection_delayed }}</p>{% endif %}

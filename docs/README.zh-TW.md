@@ -113,6 +113,13 @@ Docker 已包含 Chromium 與 Noto CJK 字型。本機若使用其他字型，�
 `data/site/` 的靜態檔在 `127.0.0.1:18090`。公開網址由 Cloudflare tunnel
 轉到這個 port。
 
+Singa 已啟用自動部署：推送到 `main` 並通過 GitHub 測試後，由主機定時器更新。
+修改正式環境 `.env` 時，請依[部署文件](deployment.md#apply-host-environment-changes)
+使用部署控制器的 `--redeploy`，與自動部署共用鎖定、備份及回復流程。
+不要直接執行 `docker compose up`，以免在自動部署期間重建容器。
+
+以下指令僅用於尚未安裝自動部署的新主機：
+
 ```sh
 cp .env.example .env && $EDITOR .env
 docker compose up -d --build

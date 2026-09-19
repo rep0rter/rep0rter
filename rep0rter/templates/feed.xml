@@ -14,7 +14,10 @@
     <guid isPermaLink="false">{{ it.post.id }}</guid>
     <pubDate>{{ it.published_rfc822 }}</pubDate>
     <category>{{ it.channel }}</category>
-    {% if it.event.meta.get('owner_submitted') %}<category>{{ copy.owner_submission }}</category>{% endif %}
+    {% for tag in it.hashtags %}<category>#{{ tag }}</category>{% endfor %}
+    {% if 'archive_import' in it.post.reasons %}<category>{{ copy.archive_import }}</category>{% endif %}
+    {% if 'source_excerpt' in it.post.reasons %}<category>{{ copy.source_excerpt }}</category>{% endif %}
+    {% if it.event.meta.get('self_reported') %}<category>{{ copy.self_reported }}</category>{% elif it.event.meta.get('owner_submitted') %}<category>{{ copy.owner_submission }}</category>{% endif %}
     <description>{% if it.latest_path %}{{ copy.superseded }} {{ copy.latest_report }}: {{ cfg.site_url.rstrip('/') }}/{{ it.latest_path }} {{ copy.previous_report }}: {% endif %}{{ it.summary }} （{{ it.source_label }} · {{ it.event.author_name }}）{% if not it.translated %} {{ copy.missing }}{% endif %} {{ copy.source }}: {{ it.source_url }}</description>
     <enclosure url="{{ cfg.site_url.rstrip('/') }}/{{ it.image }}" length="{{ it.image_size }}" type="image/png"/>
   </item>
