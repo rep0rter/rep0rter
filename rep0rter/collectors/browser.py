@@ -1,4 +1,5 @@
 """Single-document browser transport for explicitly configured public feeds."""
+import sys
 import os
 
 import requests
@@ -11,7 +12,7 @@ def sync_playwright():
 
 
 def get_document(url, timeout=30):
-    if services.get() is not None:
+    if services.get() is not None and sys.platform == 'emscripten':
         return services.get().browser_document(url, timeout)
     # No cookies, credentials, scripts, subresources, or cross-origin redirects.
     # One permitted document request is charged by BudgetSession.

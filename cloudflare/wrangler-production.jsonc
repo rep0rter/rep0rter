@@ -29,13 +29,12 @@
     "binding": "BROWSER"
   },
   "triggers": {
-    "crons": [
-      "7 * * * *"
-    ]
+    "crons": []
   },
   "vars": {
     "REP0RTER_SITE_URL": "https://rep0rter.observe.tw",
-    "RUN_ENABLED": "true"
+    "RUN_ENABLED": "false",
+    "RUNNER_ENABLED": "true"
   },
   "observability": {
     "enabled": true
