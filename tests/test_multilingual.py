@@ -81,7 +81,7 @@ def test_backfill_retries_only_rejected_editions_with_length_feedback():
     saved = {'ja': {'headline': '既存', 'summary': '既存の要約'}}
     post = Post('x', 1, 9, '既有標題', '既有摘要', translations=saved.copy())
     first = translations()
-    first['en'] = {'headline': 'A' * 46, 'summary': 'B' * 151}
+    first['en'] = {'headline': 'A' * 51, 'summary': 'B' * 151}
     corrected = {'headline': 'Traccar sync merged', 'summary': 'A merged PR adds automatic Traccar device creation during vehicle registration.'}
     second = {lang: {'headline': 'Unrequested change', 'summary': 'Do not replace saved text'} for lang in LANGUAGES}
     second['en'] = corrected
@@ -95,8 +95,8 @@ def test_backfill_retries_only_rejected_editions_with_length_feedback():
     assert retry['validation_feedback']['en'] == {
         'errors': ['headline:length', 'summary:length'],
         'rejected_text': first['en'],
-        'lengths': {'headline': 46, 'summary': 151},
-        'limits': {'headline': 45, 'summary': 150},
+        'lengths': {'headline': 51, 'summary': 151},
+        'limits': {'headline': 50, 'summary': 150},
     }
     assert post.translations['en'] == corrected
     assert post.translations['ja'] == saved['ja']
@@ -131,7 +131,7 @@ def test_backfill_dates_use_original_source_day_across_publication_midnight():
     post=Post('x',published_at,9,'今晚小松討論活動成效','今天晚上討論活動成果',
               translations={'ja':saved_ja.copy()},delivery={'telegram':123})
     llm=Mock()
-    bad=translations();bad['en']['headline']='x'*46
+    bad=translations();bad['en']['headline']='x'*51
     llm.chat_json.side_effect=[bad,{'en':{'headline':'2026-09-16 meetup','summary':'The meetup discusses activity results'}}]
     assert translate_post(post,llm,source_ts=source_ts)
     assert llm.chat_json.call_count==2
@@ -221,13 +221,13 @@ def test_backfill_does_not_invent_calendar_date_for_undated_source():
 
 def test_backfill_repairs_invalid_saved_editions_but_bounds_retries():
     post = Post('x', 1, 9, '既有標題', '既有摘要',
-                translations={**translations(), 'en': {'headline': 'x' * 46, 'summary': 'Valid summary'}})
+                translations={**translations(), 'en': {'headline': 'x' * 51, 'summary': 'Valid summary'}})
     llm = Mock()
-    llm.chat_json.return_value = {'en': {'headline': 'x' * 46, 'summary': 'Valid summary'}}
+    llm.chat_json.return_value = {'en': {'headline': 'x' * 51, 'summary': 'Valid summary'}}
     assert missing_languages(post) == ['en']
     assert not translate_post(post, llm)
     assert llm.chat_json.call_count == 2
-    assert post.translations['en']['headline'] == 'x' * 46
+    assert post.translations['en']['headline'] == 'x' * 51
     # Subsequent attempts can recover without overwriting any valid saved edition.
     llm.chat_json.return_value = translations()
     assert translate_post(post, llm)
@@ -280,7 +280,7 @@ def test_prompt_examples_pass_the_validator_in_every_language():
 
 
 def test_writer_prompt_is_versioned_and_carries_shared_style_and_examples():
-    assert PROMPT_VERSION == 'grounded-four-locale-v6'
+    assert PROMPT_VERSION == 'grounded-four-locale-v7'
     assert TRANSLATION_STYLE in SYSTEM_PROMPT
     assert 'zh-TW 不是原稿' in SYSTEM_PROMPT
     for _, editions in PROMPT_EXAMPLES:
@@ -381,7 +381,7 @@ def test_backfill_does_not_ask_to_keep_wording_when_source_edition_is_already_sa
 
 
 @pytest.mark.parametrize('language,headline_limit,summary_limit', [
-    ('en', 45, 150), ('zh-TW', 30, 90), ('ja', 30, 90), ('ko', 30, 90), (None, 30, 90)])
+    ('en', 50, 150), ('zh-TW', 30, 90), ('ja', 30, 90), ('ko', 30, 90), (None, 30, 90)])
 def test_length_limits_are_per_edition_and_only_english_is_relaxed(language, headline_limit, summary_limit):
     assert text_limits(language) == (headline_limit, summary_limit)
     assert not text_errors('a' * headline_limit, 'b' * summary_limit, language=language)
@@ -397,7 +397,7 @@ def test_relaxed_english_limit_never_invalidates_previously_valid_copy():
 def test_prompts_state_the_same_limits_the_validator_enforces():
     for language, (headline, summary) in ((l, text_limits(l)) for l in LANGUAGES):
         assert f'{headline}' in SYSTEM_PROMPT and f'{summary}' in SYSTEM_PROMPT, language
-    assert 'en 的 headline 1–45、summary 1–150' in SYSTEM_PROMPT
+    assert 'en 的 headline 1–50、summary 1–150' in SYSTEM_PROMPT
     assert 'zh-TW、ko、ja 的 headline 1–30、summary 1–90' in SYSTEM_PROMPT
 
 
@@ -407,7 +407,7 @@ def test_backfill_prompt_gives_each_requested_language_its_own_limit():
     llm.chat_json.return_value = translations()
     assert translate_post(post, llm)
     prompt = llm.chat_json.call_args[0][0]
-    assert 'en: headline 45, summary 150' in prompt
+    assert 'en: headline 50, summary 150' in prompt
     assert 'ja: headline 30, summary 90' in prompt
     assert 'Use at most 30 Unicode code points' not in prompt
 
@@ -415,7 +415,7 @@ def test_backfill_prompt_gives_each_requested_language_its_own_limit():
 def test_backfill_accepts_english_between_the_old_and_new_limit_only_for_english():
     post = Post('x', 1, 9, '既有標題', '既有摘要')
     data = translations()
-    data['en'] = {'headline': 'h' * 45, 'summary': 's' * 150}
+    data['en'] = {'headline': 'h' * 50, 'summary': 's' * 150}
     data['ja'] = {'headline': 'あ' * 31, 'summary': '要約'}
     llm = Mock()
     llm.chat_json.side_effect = [data, {'ja': translations()['ja']}]
@@ -430,7 +430,7 @@ def test_store_merge_applies_the_language_specific_limit(tmp_path):
         store.upsert_events([event])
         store.add_post(Post('slack:C:1', 2, 8, '既有標題', '既有摘要'))
         stored, _, _ = store.recent_posts()[0]
-        stored.translations = {'en': {'headline': 'h' * 45, 'summary': 's' * 150},
+        stored.translations = {'en': {'headline': 'h' * 50, 'summary': 's' * 150},
                                'ja': {'headline': 'あ' * 31, 'summary': '要約'}}
         assert store.update_post_translations(stored)
         saved, _, _ = store.recent_posts()[0]

@@ -277,13 +277,13 @@ def test_missing_or_untyped_lifecycle_does_not_infer_merge_from_eligibility():
 
 def test_retry_includes_previous_rejected_copy_for_concrete_rewrite():
     c=merged_pull_request();bad=software_response(c.event.id)
-    bad['translations']['en']['headline']='A'*46
+    bad['translations']['en']['headline']='A'*51
     good=software_response(c.event.id)
     llm=Mock();llm.chat_json.side_effect=[bad,good]
     result=write(c,llm,NOW)
     assert not result.needs_review and len(result.translations)==4
     payload=json.loads(llm.chat_json.call_args.args[1])
-    assert payload['previous_output']['translations']['en']['headline']=='A'*46
+    assert payload['previous_output']['translations']['en']['headline']=='A'*51
     assert 'en:headline:length' in payload['rewrite_required']
 
 
