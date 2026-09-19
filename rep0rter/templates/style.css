@@ -298,7 +298,7 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
 /* Landscape image cards: site materials around unmodified source artwork. */
 .image-viewer-open, .image-viewer-open body { overflow: hidden; }
 .image-viewer {
-  width: min(1080px, calc(100% - 32px), calc((100dvh - 210px) * 40 / 21 + 64px));
+  width: min(1080px, calc(100% - 32px), calc((100dvh - 250px) * 40 / 21 + 64px));
   min-width: min(280px, calc(100% - 24px)); max-width: none;
   max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px);
   padding: 0; border: 1px solid var(--line); border-radius: 32px;
