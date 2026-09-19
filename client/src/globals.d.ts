@@ -42,6 +42,8 @@ interface Window {
     isScrollKey: (event: KeyboardEvent) => boolean;
   }>;
   Rep0rterMotion?: { spring: (options: SpringOptions) => SpringHandle };
+  /** Swaps light/dark artwork; resolves once visible images have decoded. */
+  Rep0rterImages?: { sync: () => Promise<void> | undefined };
   Rep0rterLanguage?: Readonly<{
     change: (locale: string | undefined,
              options?: { initial?: boolean; history?: boolean }) => Promise<void>;

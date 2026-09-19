@@ -1,104 +1,159 @@
-// Same-page image sheets: native modal semantics with interruptible spring motion.
+// Same-page landscape cards. The artwork stays intact; only its frame catches light.
 (() => {
   let dispose = () => {};
   const initialize = () => {
     dispose();
-    interface Drag { id: number; startY: number; lastY: number; time: number; velocity: number; }
+    type AnyEventMap = HTMLElementEventMap & WindowEventMap & MediaQueryListEventMap;
+    type ImageState = 'loading' | 'ready' | 'error';
+    interface Axis { value: number; velocity: number; motion?: SpringHandle | null; }
 
     const removers: (() => void)[] = [];
-    const listen = <K extends keyof HTMLElementEventMap>(
-      target: EventTarget | null, type: K,
-      handler: (event: HTMLElementEventMap[K]) => void,
+    const listen = <K extends keyof AnyEventMap>(
+      target: EventTarget | null | undefined, type: K,
+      handler: (event: AnyEventMap[K]) => void,
     ) => {
-      if (!target) return;
+      // Test harnesses stub matchMedia with plain objects that cannot listen.
+      if (typeof target?.addEventListener !== 'function') return;
       target.addEventListener(type, handler as EventListener);
       removers.push(() => target.removeEventListener(type, handler as EventListener));
     };
     dispose = () => { removers.splice(0).forEach(remove => remove()); };
     const viewer = document.querySelector<HTMLDialogElement>('#image-viewer');
     if (!viewer || typeof viewer.showModal !== 'function') return;
-    // The dialog template always ships these four together; only the close
-    // button is optional, and listen() already tolerates a missing target.
+    // The dialog template always ships the image, caption and download link;
+    // the close button, stage, card and status line are optional.
     const image = viewer.querySelector<HTMLImageElement>('[data-viewer-image]')!;
     const caption = viewer.querySelector<HTMLElement>('[data-viewer-caption]')!;
     const download = viewer.querySelector<HTMLAnchorElement>('[data-viewer-download]')!;
     const close = viewer.querySelector<HTMLElement>('[data-viewer-close]');
-    const toolbar = viewer.querySelector<HTMLElement>('.image-viewer-toolbar')!;
+    const stage = viewer.querySelector<HTMLElement>('[data-viewer-stage]');
+    const card = viewer.querySelector<HTMLElement>('[data-viewer-card]');
+    const status = viewer.querySelector<HTMLElement>('[data-viewer-status]');
     const root = document.documentElement;
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
     let opener: HTMLElement | null = null;
     let animation: SpringHandle | null = null;
     let progress = 0;
-    let dragY = 0;
-    let drag: Drag | null = null;
     let closing = false;
     let startedOutside = false;
-    let origin = { x: 0, y: 20, scale: .96 };
-
-    const render = () => {
-      const remaining = 1 - progress;
-      viewer.style.transform = `translate(${origin.x * remaining}px, ${origin.y * remaining + dragY}px) scale(${origin.scale + (1 - origin.scale) * progress})`;
-      viewer.style.opacity = String(Math.min(1, Math.max(0, progress * 4)));
-      root.style.setProperty('--viewer-depth', String(Math.max(0, Math.min(1, progress * (1 - Math.min(dragY / 500, .5))))));
+    let touch: number | null = null;
+    const axes: Record<'x' | 'y' | 'light', Axis> = {
+      x: { value: 0, velocity: 0 }, y: { value: 0, velocity: 0 }, light: { value: 0, velocity: 0 },
     };
-    const spring = (from: number, to: number, update: (value: number) => void,
-                    complete?: () => void, velocity = 0) => {
+
+    const paintCard = () => {
+      if (!card) return;
+      card.style.setProperty('--card-rx', `${-axes.y.value * 4}deg`);
+      card.style.setProperty('--card-ry', `${axes.x.value * 5}deg`);
+      card.style.setProperty('--card-x', `${50 + axes.x.value * 40}%`);
+      card.style.setProperty('--card-y', `${50 + axes.y.value * 40}%`);
+      card.style.setProperty('--card-light', String(axes.light.value));
+    };
+    const tilt = (x = 0, y = 0, light = 0, immediate = false) => {
+      for (const [key, to] of Object.entries({ x, y, light }) as [keyof typeof axes, number][]) {
+        const axis = axes[key];
+        axis.motion?.cancel();
+        axis.motion = null;
+        if (!immediate && !reduced.matches && window.Rep0rterMotion) {
+          axis.motion = window.Rep0rterMotion.spring({
+            from: axis.value, to, velocity: axis.velocity,
+            onUpdate: (value, velocity) => { axis.value = value; axis.velocity = velocity; paintCard(); },
+          });
+        } else { axis.value = to; axis.velocity = 0; }
+      }
+      paintCard();
+    };
+    const render = () => {
+      // Keep the page still and controls level; no long flight from the thumbnail.
+      viewer.style.transform = `translateY(${(1 - progress) * 12}px) scale(${.98 + .02 * progress})`;
+      viewer.style.opacity = String(Math.min(1, Math.max(0, progress)));
+      root.style.setProperty('--viewer-depth', String(Math.max(0, Math.min(1, progress))));
+    };
+    const spring = (to: number, complete?: () => void) => {
       animation?.cancel();
       if (window.Rep0rterMotion && !reduced.matches) {
-        animation = window.Rep0rterMotion.spring({ from, to, velocity, onUpdate: update, onComplete: complete });
-      } else {
-        update(to);
-        complete?.();
-      }
+        animation = window.Rep0rterMotion.spring({ from: progress, to,
+          onUpdate: value => { progress = value; render(); }, onComplete: complete });
+      } else { progress = to; render(); complete?.(); }
     };
+    const imageState = (state: ImageState) => {
+      viewer.dataset.imageState = state;
+      if (status) status.textContent = state === 'ready' ? '' : status.dataset[state === 'error' ? 'error' : 'loading'] ?? '';
+      download.hidden = state !== 'ready';
+    };
+    const syncImages = () => {
+      const dark = root.dataset.theme === 'dark' || (!root.dataset.theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      const pending: Promise<void>[] = [];
+      document.querySelectorAll<HTMLElement>('[data-image-light][data-image-dark]').forEach(element => {
+        // The selector requires both attributes, so the chosen one is present.
+        const src = (dark ? element.dataset.imageDark : element.dataset.imageLight)!;
+        if (element.matches('a')) { (element as HTMLAnchorElement).href = src; return; }
+        element.dataset.imageSrc = src;
+        const source = element.querySelector<HTMLSourceElement>('[data-theme-source]');
+        const media = dark ? 'all' : 'not all';
+        if (source && source.media !== media) source.media = media;
+        const thumbnail = element.querySelector('img')!;
+        const rect = thumbnail.getBoundingClientRect();
+        // Only wait for visible images, never force the lazy-loaded article list.
+        if (thumbnail.decode && rect.bottom > 0 && rect.top < window.innerHeight && rect.width > 0) {
+          pending.push(thumbnail.decode().catch(() => {}));
+        }
+      });
+      if (viewer.open && opener && image.getAttribute('src') !== opener.dataset.imageSrc) {
+        imageState('loading');
+        image.src = opener.dataset.imageSrc!;
+        download.href = opener.dataset.imageSrc!;
+        if (image.complete) imageState(image.naturalWidth ? 'ready' : 'error');
+        if (image.decode) pending.push(image.decode().catch(() => {}));
+      }
+      // Give a theme snapshot decoded artwork, with a bound for slow networks.
+      if (!pending.length) return;
+      return new Promise<void>(resolve => {
+        const timeout = window.setTimeout(resolve, 400);
+        Promise.all(pending).then(() => { window.clearTimeout(timeout); resolve(); });
+      });
+    };
+    const imageAPI = { sync: syncImages };
+    window.Rep0rterImages = imageAPI;
+    const observer = typeof MutationObserver === 'function' ? new MutationObserver(syncImages) : null;
+    observer?.observe(root, { attributes: true, attributeFilter: ['data-theme'] });
     const cleanup = () => {
       animation?.cancel();
       animation = null;
-      drag = null;
+      touch = null;
+      tilt(0, 0, 0, true);
       closing = false;
       progress = 0;
-      dragY = 0;
       root.classList.remove('image-viewer-open');
       root.style.removeProperty('--viewer-depth');
       viewer.style.removeProperty('transform');
       viewer.style.removeProperty('opacity');
+      delete viewer.dataset.imageState;
       image.removeAttribute('src');
-      image.removeAttribute('width');
-      image.removeAttribute('height');
       image.alt = '';
       caption.textContent = '';
+      if (status) status.textContent = '';
       download.removeAttribute('href');
+      download.hidden = true;
       if (opener?.isConnected) opener.focus({ preventScroll: true });
       opener = null;
     };
     const removeListeners = dispose;
     dispose = () => {
       removeListeners();
-      // A language replacement must not focus or scroll to the old document.
+      observer?.disconnect();
+      if (window.Rep0rterImages === imageAPI) delete window.Rep0rterImages;
+      // Locale replacement must not return focus to a detached document.
       opener = null;
-      if (drag && toolbar.hasPointerCapture(drag.id)) toolbar.releasePointerCapture(drag.id);
       cleanup();
       if (viewer.open) viewer.close();
     };
-    const finishClose = () => {
-      viewer.close();
-      // Native close events are queued: clean up now before another image opens.
-      cleanup();
-    };
-    const dismiss = (velocity = 0) => {
+    const dismiss = () => {
       if (!viewer.open || closing) return;
       closing = true;
-      drag = null;
-      if (dragY > 0) {
-        const from = dragY;
-        spring(from, Math.max(innerHeight * .65, from + 180), value => {
-          dragY = value;
-          progress = Math.max(0, 1 - (value - from) / 240);
-          render();
-        }, finishClose, velocity);
-      } else {
-        spring(progress, 0, value => { progress = value; render(); }, finishClose);
-      }
+      touch = null;
+      tilt(0, 0, 0, true);
+      spring(0, () => { viewer.close(); cleanup(); });
     };
 
     document.querySelectorAll<HTMLButtonElement>('[data-image-view]').forEach(button => {
@@ -106,86 +161,64 @@
       listen(button, 'click', () => {
         if (viewer.open) return;
         const thumbnail = button.querySelector('img')!;
-        const start = thumbnail.getBoundingClientRect();
         opener = button;
         startedOutside = false;
         closing = false;
-        dragY = 0;
-        image.src = button.dataset.imageSrc!;
+        imageState('loading');
         image.alt = thumbnail.alt;
-        image.width = thumbnail.naturalWidth || 1200;
-        image.height = thumbnail.naturalHeight || 630;
         caption.textContent = thumbnail.alt;
         download.href = button.dataset.imageSrc!;
-        viewer.showModal();
-        const end = viewer.getBoundingClientRect();
-        origin = {
-          x: start.left + start.width / 2 - end.left - end.width / 2,
-          y: start.top + start.height / 2 - end.top - end.height / 2,
-          scale: Math.max(.25, Math.min(.96, start.width / end.width)),
-        };
+        image.src = button.dataset.imageSrc!;
         root.classList.add('image-viewer-open');
+        viewer.showModal();
+        close?.focus({ preventScroll: true });
+        if (image.complete) imageState(image.naturalWidth ? 'ready' : 'error');
         progress = reduced.matches ? 1 : 0;
         render();
-        spring(progress, 1, value => { progress = value; render(); });
+        spring(1);
       });
     });
-
-    listen(close, 'click', () => dismiss());
-    listen(viewer, 'cancel', event => {
-      event.preventDefault();
-      dismiss();
-    });
+    listen(image, 'load', () => { if (viewer.open && image.naturalWidth) imageState('ready'); });
+    listen(image, 'error', () => { if (viewer.open && image.getAttribute('src')) imageState('error'); });
+    listen(close, 'click', dismiss);
+    listen(viewer, 'cancel', event => { event.preventDefault(); dismiss(); });
     const isOutside = (event: MouseEvent) => {
       const rect = viewer.getBoundingClientRect();
-      return event.clientX < rect.left || event.clientX > rect.right ||
-        event.clientY < rect.top || event.clientY > rect.bottom;
+      return event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom;
     };
-    listen(viewer, 'pointerdown', event => {
-      startedOutside = event.target === viewer && isOutside(event);
-    });
+    listen(viewer, 'pointerdown', event => { startedOutside = event.target === viewer && isOutside(event); });
     listen(viewer, 'click', event => {
       if (startedOutside && event.target === viewer && isOutside(event)) dismiss();
       startedOutside = false;
     });
-    // A previous close event must never clear a newly opened image.
+    // A queued close event must never erase a newly opened image.
     listen(viewer, 'close', () => { if (!viewer.open) cleanup(); });
 
-    // Drag the sheet's toolbar; image gestures and download controls stay native.
-    listen(toolbar, 'pointerdown', event => {
-      if (closing || event.button !== 0 || !event.isPrimary ||
-          (event.target as Element).closest('button, a')) return;
-      animation?.cancel();
-      progress = 1;
-      drag = { id: event.pointerId, startY: event.clientY - dragY, lastY: event.clientY, time: event.timeStamp, velocity: 0 };
-      toolbar.setPointerCapture(event.pointerId);
-      render();
-    });
-    listen(toolbar, 'pointermove', event => {
-      if (!drag || drag.id !== event.pointerId) return;
-      const elapsed = event.timeStamp - drag.time;
-      if (elapsed > 0) drag.velocity = (event.clientY - drag.lastY) / elapsed;
-      drag.lastY = event.clientY;
-      drag.time = event.timeStamp;
-      dragY = Math.max(0, event.clientY - drag.startY);
-      render();
-    });
-    const release = (event: PointerEvent, cancelled = false) => {
-      if (!drag || drag.id !== event.pointerId) return;
-      const velocity = event.timeStamp - drag.time > 100 ? 0 : drag.velocity;
-      drag = null;
-      if (toolbar.hasPointerCapture(event.pointerId)) toolbar.releasePointerCapture(event.pointerId);
-      if (!cancelled && (dragY > 110 || (dragY > 24 && velocity > .65))) {
-        dismiss(velocity * 1000);
-      } else {
-        spring(dragY, 0, value => { dragY = value; render(); });
-      }
+    const point = (event: PointerEvent) => {
+      if (!card || !stage || reduced.matches || closing || viewer.dataset.imageState !== 'ready') return;
+      const rect = stage.getBoundingClientRect(); // Stationary bounds prevent tilt feedback.
+      const clamp = (value: number) => Math.max(-1, Math.min(1, value));
+      tilt(clamp((event.clientX - rect.left) / rect.width * 2 - 1),
+        clamp((event.clientY - rect.top) / rect.height * 2 - 1), 1);
     };
-    listen(toolbar, 'pointerup', event => release(event));
-    listen(toolbar, 'pointercancel', event => release(event, true));
-    listen(toolbar, 'lostpointercapture', event => release(event, true));
+    listen(stage, 'pointerdown', event => {
+      if (!event.isPrimary) { touch = null; tilt(); return; }
+      if (event.pointerType !== 'mouse') { touch = event.pointerId; point(event); }
+    });
+    listen(stage, 'pointermove', event => {
+      if (event.pointerType === 'mouse' || event.pointerId === touch) point(event);
+    });
+    const resetTilt = () => { touch = null; tilt(); };
+    listen(stage, 'pointerleave', resetTilt);
+    listen(stage, 'pointerup', event => { if (event.pointerType !== 'mouse') resetTilt(); });
+    listen(stage, 'pointercancel', resetTilt);
+    listen(window, 'blur', resetTilt);
+    listen(reduced, 'change', () => { if (reduced.matches) tilt(0, 0, 0, true); });
+    syncImages();
   };
   document.addEventListener('rep0rter:before-language', () => dispose());
   document.addEventListener('rep0rter:language-applied', initialize);
+  window.addEventListener?.('pagehide', () => dispose());
+  window.addEventListener?.('pageshow', event => { if (event.persisted) initialize(); });
   initialize();
 })();
