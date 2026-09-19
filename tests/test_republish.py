@@ -139,3 +139,70 @@ def test_changed_mapping_or_selected_posts_blocks_approved_batch(setup):
         republish.apply(store, cfg, batch['id'])
     with pytest.raises(ValueError, match='existing'):
         republish.plan(store, cfg)
+
+
+def undeletable_batch(store, cfg, monkeypatch):
+    batch = republish.plan(store, cfg)
+    monkeypatch.setattr(retractions.requests, 'post', lambda url, **kw:
+                        response(False, error_code=400, description="Bad Request: message can't be deleted")
+                        if kw['json']['message_id'] == 102 else response())
+    result = republish.apply(store, cfg, batch['id'])
+    mutation = store.conn.execute("SELECT id FROM telegram_mutations WHERE status='failed'").fetchone()[0]
+    return result, mutation
+
+
+@pytest.mark.parametrize('already_edited', [False, True])
+def test_explicit_notice_preserves_failed_delete_audit_and_unblocks_republish(setup, monkeypatch, already_edited):
+    store, cfg = setup
+    batch, mutation = undeletable_batch(store, cfg, monkeypatch)
+    calls = []
+    def edit(url, **kw):
+        calls.append((url, kw))
+        assert url.endswith('/editMessageText')
+        assert kw['json']['message_id'] == 102
+        assert 'rep0rter now publishes in English' in kw['json']['text']
+        assert '原文' not in kw['json']['text']
+        # Durable attempt exists before transport; it is not a queued deletion.
+        notice = republish.inspect(store, batch['id'])['manifest']['notice_replacements'][str(mutation)]
+        assert notice['status'] == 'sending'
+        return response(False, error_code=400, description='Bad Request: message is not modified') if already_edited else response()
+    monkeypatch.setattr(republish.requests, 'post', edit)
+    result = republish.replace_undeletable_with_notice(store, cfg, batch['id'], mutation)
+    notice = result['manifest']['notice_replacements'][str(mutation)]
+    assert notice['status'] == 'sent' and notice['original_deleted'] is False
+    row = store.conn.execute('SELECT action,status,error FROM telegram_mutations WHERE id=?', (mutation,)).fetchone()
+    assert tuple(row) == ('deleteMessage', 'failed', republish.CANNOT_DELETE)
+    assert 'text' not in notice
+    assert republish.apply(store, cfg, batch['id'])['status'] == 'staged'
+    assert len(calls) == 1
+
+
+def test_ambiguous_notice_remains_blocked_and_cannot_retry_or_turn_into_delete(setup, monkeypatch):
+    import requests
+    store, cfg = setup
+    batch, mutation = undeletable_batch(store, cfg, monkeypatch)
+    calls = []
+    def timeout(url, **kw):
+        calls.append(url)
+        raise requests.Timeout('botSECRET')
+    monkeypatch.setattr(republish.requests, 'post', timeout)
+    result = republish.replace_undeletable_with_notice(store, cfg, batch['id'], mutation)
+    assert result['manifest']['notice_replacements'][str(mutation)]['status'] == 'unknown'
+    assert 'SECRET' not in json.dumps(result)
+    assert republish.apply(store, cfg, batch['id'])['status'] == 'deleting'
+    with pytest.raises(ValueError, match='already attempted'):
+        republish.replace_undeletable_with_notice(store, cfg, batch['id'], mutation)
+    assert len(calls) == 1
+    assert all(r[0] == 'sent' for r in store.conn.execute('SELECT status FROM delivery_jobs'))
+
+
+def test_notice_rejects_other_mutations_and_other_rejection_reasons(setup, monkeypatch):
+    store, cfg = setup
+    batch, mutation = undeletable_batch(store, cfg, monkeypatch)
+    monkeypatch.setattr(republish.requests, 'post', lambda *a, **kw: pytest.fail('Unsafe notice'))
+    with pytest.raises(ValueError, match='not part'):
+        republish.replace_undeletable_with_notice(store, cfg, batch['id'], 9999)
+    with store.conn:
+        store.conn.execute("UPDATE telegram_mutations SET error='Telegram rejected (403: permission_denied)' WHERE id=?", (mutation,))
+    with pytest.raises(ValueError, match='message_cannot_be_deleted'):
+        republish.replace_undeletable_with_notice(store, cfg, batch['id'], mutation)

@@ -2,7 +2,8 @@
 
 Pause the publishing worker while applying a batch. Remote deletions use the
 existing mutation outbox; no replacement is prepared until every old message
-has a confirmed deletion. The batch stores identifiers, never report text.
+has a confirmed deletion or an explicitly requested English migration notice.
+The batch stores identifiers and action results, never report text.
 """
 from __future__ import annotations
 
@@ -11,6 +12,9 @@ import json
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import urlsplit
+
+import requests
 
 from . import retractions, stories
 from .delivery import DeliveryOutbox, _job_item
@@ -24,6 +28,7 @@ CREATE TABLE IF NOT EXISTS telegram_republish_batches (
  staged_at REAL
 );
 """
+CANNOT_DELETE = 'Telegram rejected (400: message_cannot_be_deleted)'
 
 
 def ensure(store):
@@ -138,8 +143,12 @@ def apply(store, cfg, batch_id):
                                (json.dumps(manifest), batch_id))
     retractions.process(store, cfg)
     for mutation_id in manifest['mutation_ids']:
-        row = store.conn.execute('SELECT status FROM telegram_mutations WHERE id=?', (mutation_id,)).fetchone()
-        if not row or row['status'] != 'sent':
+        row = store.conn.execute('SELECT status,error,message_id FROM telegram_mutations WHERE id=?', (mutation_id,)).fetchone()
+        notice = manifest.get('notice_replacements', {}).get(str(mutation_id), {})
+        notice_complete = bool(row and row['status'] == 'failed' and row['error'] == CANNOT_DELETE
+                               and notice.get('status') == 'sent' and notice.get('action') == 'editMessageText'
+                               and notice.get('message_id') == row['message_id'] and notice.get('target') == batch['target'])
+        if not row or (row['status'] != 'sent' and not notice_complete):
             return inspect(store, batch_id)
     # The deletion barrier is complete. Queue replacements and retire old
     # mappings in one transaction, preserving stable post IDs and site URLs.
@@ -174,6 +183,70 @@ def apply(store, cfg, batch_id):
     return inspect(store, batch_id)
 
 
+def replace_undeletable_with_notice(store, cfg, batch_id, mutation_id):
+    """Explicit operator action for Telegram's older, undeletable text messages.
+
+    This does not claim that deletion succeeded. The separate notice attempt is
+    durable before transport, is never picked up by the deletion worker, and
+    cannot be blindly retried after an ambiguous response.
+    """
+    ensure(store)
+    if not cfg.telegram_bot_token:
+        raise ValueError('A Telegram bot token is required')
+    parsed = urlsplit(cfg.site_url)
+    if parsed.scheme not in ('https', 'http') or not parsed.hostname or parsed.username or parsed.password:
+        raise ValueError('A public website URL is required for the English notice')
+    notice_text = ('This earlier digest has been superseded.\n\n'
+                   'rep0rter now publishes in English. Read the latest reports and choose Chinese, '
+                   'Japanese, or Korean translations on the website:\n'
+                   + telegram._link(cfg.site_url.rstrip('/') + '/', 'Read rep0rter'))
+    with store.conn:
+        store.conn.execute('BEGIN IMMEDIATE')
+        batch = inspect(store, batch_id)
+        manifest = batch['manifest']
+        if batch['status'] != 'deleting' or batch['target'] != str(cfg.telegram_target) or cfg.telegram_language != 'en':
+            raise ValueError('An active English republish batch for this channel is required')
+        if mutation_id not in manifest.get('mutation_ids', []):
+            raise ValueError('The deletion mutation is not part of this batch')
+        row = store.conn.execute('SELECT * FROM telegram_mutations WHERE id=?', (mutation_id,)).fetchone()
+        if (not row or row['target'] != batch['target'] or row['action'] != 'deleteMessage'
+                or row['status'] != 'failed' or row['error'] != CANNOT_DELETE):
+            raise ValueError('Only a confirmed message_cannot_be_deleted failure can become an English notice')
+        notices = manifest.setdefault('notice_replacements', {})
+        key = str(mutation_id)
+        if key in notices:
+            raise ValueError('This notice was already attempted; verify its outcome instead of retrying')
+        notices[key] = {'action': 'editMessageText', 'target': batch['target'], 'message_id': row['message_id'],
+                        'status': 'sending', 'created_at': time.time(),
+                        'content_hash': hashlib.sha256(notice_text.encode()).hexdigest(), 'original_deleted': False}
+        store.conn.execute('UPDATE telegram_republish_batches SET manifest=? WHERE id=?', (json.dumps(manifest), batch_id))
+    status, error = 'unknown', 'Ambiguous notice response; verify Telegram before reconciliation'
+    try:
+        response = requests.post(telegram.API.format(token=cfg.telegram_bot_token, method='editMessageText'),
+                                 json={'chat_id': batch['target'], 'message_id': row['message_id'],
+                                       'text': notice_text, 'parse_mode': 'HTML', 'disable_web_page_preview': True},
+                                 timeout=(10, 40))
+        body = response.json()
+        if isinstance(body, dict) and response.status_code < 500:
+            if body.get('ok') is True and response.status_code == 200:
+                status, error = 'sent', None
+            elif body.get('ok') is False:
+                code = int(body.get('error_code', response.status_code))
+                reason = retractions.rejection_reason(code, body.get('description'))
+                if code == 400 and reason == 'message_not_modified':
+                    status, error = 'sent', None
+                else:
+                    status, error = 'failed', f'Telegram rejected ({code}: {reason})'
+    except Exception:
+        pass  # Never persist exception text: it can contain the bot token.
+    with store.conn:
+        store.conn.execute('BEGIN IMMEDIATE')
+        latest = inspect(store, batch_id)['manifest']
+        latest['notice_replacements'][str(mutation_id)].update(status=status, error=error, completed_at=time.time())
+        store.conn.execute('UPDATE telegram_republish_batches SET manifest=? WHERE id=?', (json.dumps(latest), batch_id))
+    return inspect(store, batch_id)
+
+
 def register_commands(sub):
     parser = sub.add_parser('telegram-republish', help='plan or resume an explicit English Telegram replacement batch; pause the worker first')
     choice = parser.add_mutually_exclusive_group(required=True)
@@ -181,6 +254,17 @@ def register_commands(sub):
     choice.add_argument('--batch')
     parser.add_argument('--apply', action='store_true', help='delete confirmed old messages and stage replacements after the deletion barrier')
     parser.set_defaults(func=cmd_republish)
+    notice = sub.add_parser('telegram-republish-notice', help='explicitly replace an undeletable old digest with an English migration notice')
+    notice.add_argument('--batch', required=True)
+    notice.add_argument('--mutation', type=int, required=True)
+    notice.set_defaults(func=cmd_notice)
+
+
+def cmd_notice(cfg, args):
+    from .store import Store
+    with Store(cfg.db_path) as store:
+        print(json.dumps(replace_undeletable_with_notice(store, cfg, args.batch, args.mutation), ensure_ascii=False, indent=2))
+    return 0
 
 
 def cmd_republish(cfg, args):
