@@ -99,7 +99,7 @@ def test_exclusion_arriving_during_card_render_prevents_transport(tmp_path, monk
             def __init__(self,cfg): pass
             def __enter__(self): return self
             def __exit__(self,*args): pass
-            def render_report(self,*args,**kwargs):
+            def render_report(self,*args):
                 policy.add_rule(store,'user','slack:U1')
                 image=tmp_path/'test.png'
                 image.write_bytes(b'fake-image')
@@ -114,7 +114,6 @@ def test_exclusion_arriving_during_card_render_prevents_transport(tmp_path, monk
 
 def test_redaction_sanitizes_all_cached_generations_even_when_rebuild_fails(tmp_path, monkeypatch):
     import hashlib
-    import io
     import pytest
     from bs4 import BeautifulSoup
     from PIL import Image
@@ -125,29 +124,18 @@ def test_redaction_sanitizes_all_cached_generations_even_when_rebuild_fails(tmp_
     from rep0rter.store import Container
 
     config=Config(data_dir=tmp_path,site_url='https://site.invalid')
-    def render(renderer,event,container,names,*,theme="light"):
-        path=renderer.cfg.site_dir/'cards'/(hashlib.sha256(event.id.encode()).hexdigest()+('-dark' if theme == 'dark' else '')+'.png')
+    def render(renderer,event,container,names):
+        path=renderer.cfg.site_dir/'cards'/(hashlib.sha256(event.id.encode()).hexdigest()+'.png')
         path.parent.mkdir(parents=True,exist_ok=True)
-        Image.new('RGB',(2,2),'black' if theme == 'dark' else 'white').save(path)
+        Image.new('RGB',(2,2),'white').save(path)
         return path
     monkeypatch.setattr(site.CardRenderer,'render',render)
-    def render_report(renderer,event,container,post,language,*,theme="light"):
-        path=renderer.cfg.site_dir/'cards'/f'report-{post.id}-{language}{"-dark" if theme == "dark" else ""}.png'
-        path.parent.mkdir(parents=True,exist_ok=True)
-        Image.new('RGB',(2,2),'navy' if theme == 'dark' else 'blue').save(path)
-        return path
-    monkeypatch.setattr(site.CardRenderer,'render_report',render_report)
-    def identity_image(event, config):
-        buffer = io.BytesIO()
-        Image.new('RGB', (8, 8), 'red' if event.author_id == 'U1' else 'blue').save(buffer, format='PNG')
-        return buffer.getvalue()
-    monkeypatch.setattr(site, 'identity_image', identity_image)
+    monkeypatch.setattr(site.CardRenderer,'render_report',lambda renderer,event,container,post,language: render(renderer,event,container,{}))
     with Store(config.db_path) as store:
         store.upsert_container(Container('slack:C','slack','source'))
         for i in (1,2):
             source=Event(f'slack:C:{i}','slack','message','slack:C',100+i,author_id=f'U{i}',
-                         author_name=f'AUTHOR{i}',text=f'ORIGINAL{i}',url=f'https://source.invalid/{i}',
-                         meta={'avatar_url': f'https://identity.invalid/{i}.png'})
+                         author_name=f'AUTHOR{i}',text=f'ORIGINAL{i}',url=f'https://source.invalid/{i}')
             store.upsert_events([source],now=150)
             translations={code:{'headline':f'{code} HEADLINE{i}','summary':f'{code} SUMMARY{i}'} for code in LANGUAGES}
             store.add_post(Post(source.id,180+i,7,f'HEADLINE{i}',f'SUMMARY{i}',translations=translations))
@@ -156,14 +144,7 @@ def test_redaction_sanitizes_all_cached_generations_even_when_rebuild_fails(tmp_
         survivor_before=BeautifulSoup((config.site_dir/'index.html').read_text(),'html.parser').find('article',id='1')
         survivor_links=[a['href'] for a in survivor_before.find_all('a',href=True)]
         survivor_text=survivor_before.get_text()
-        roots=list((tmp_path/'.site-releases').iterdir())
-        dark_assets={root: list((root/'cards').glob('*-dark.png')) for root in roots}
-        assert all(dark_assets.values()), 'Each cached generation must contain dark cards before withdrawal'
-        avatar_assets={root: list((root/'cards').glob('avatar-*.png')) for root in roots}
-        assert all(len(paths) == 2 for paths in avatar_assets.values())
         policy.redact(store,['slack:C:2'])
-        assert all(not path.exists() for paths in dark_assets.values() for path in paths)
-        assert all(not path.exists() for paths in avatar_assets.values() for path in paths)
         def fail(*args,**kwargs):
             raise RuntimeError('simulated renderer failure')
         monkeypatch.setattr(site,'_build',fail)

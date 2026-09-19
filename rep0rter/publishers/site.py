@@ -24,7 +24,7 @@ from ..slack_text import to_plain
 from ..store import Store
 from ..topics import classify_topics, localized_topics
 from .. import hashtags
-from .cards import CardRenderer, identity_image
+from .cards import CardRenderer
 
 log = logging.getLogger(__name__)
 env = Environment(loader=PackageLoader("rep0rter", "templates"),
@@ -48,22 +48,6 @@ def _write(path: Path, content: str):
         temporary.replace(path)
     finally:
         temporary.unlink(missing_ok=True)
-
-
-def _author_avatar(event, cfg: Config) -> str:
-    """Publish a validated local identity image, never a reader-side remote URL."""
-    if not (event.meta.get("avatar_url") or event.meta.get("source_logo_url")):
-        return ""
-    data = identity_image(event, cfg)
-    if not data:
-        return ""
-    filename = "avatar-" + hashlib.sha256(data).hexdigest()[:24] + ".png"
-    folder = cfg.site_dir / "cards"
-    folder.mkdir(parents=True, exist_ok=True)
-    path = folder / filename
-    if not path.exists():
-        path.write_bytes(data)
-    return "cards/" + filename
 
 
 def _branding(cfg: Config) -> dict:
@@ -128,20 +112,17 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
                 event = replace(event, text=excerpt, html='',
                                 meta={**event.meta, 'plain_text': excerpt, 'content_format': 'plain'})
             image = cards.render(event, container, names)
-            image_dark = cards.render(event, container, names, theme="dark")
             headline, summary, _ = _display_text(post, 'en')
             # A missing translation uses an explicit English pending card. This
             # presentation-only placeholder never becomes stored article copy.
             report_post = replace(post, translations={**post.translations,
                                   'en': {'headline': headline, 'summary': summary}})
             report_image = cards.render_report(event, container, report_post, 'en')
-            report_image_dark = cards.render_report(event, container, report_post, 'en', theme="dark")
             filters = _filter_metadata(event, container)
             original = to_plain(event.text, names) if event.source == "slack" else plain_text(event)
             source_path = f"sources/{filters['filter_source']}/"
             items.append({
                 "post": post, "event": event, "container": container, **filters,
-                "author_avatar": _author_avatar(event, cfg),
                 "channel": container.name if container else event.container_id,
                 "source_label": ('#' if event.source == 'slack' else '') + (container.name if container else event.container_id),
                 "source_url": _safe_url(event.url),
@@ -153,8 +134,6 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
                 "day": datetime.fromtimestamp(post.published_at, TAIPEI).strftime("%Y-%m-%d"),
                 "image": image.relative_to(cfg.site_dir).as_posix(), "image_size": image.stat().st_size,
                 "original_image": image.relative_to(cfg.site_dir).as_posix(),
-                "original_image_dark": image_dark.relative_to(cfg.site_dir).as_posix(),
-                "report_image_dark": report_image_dark.relative_to(cfg.site_dir).as_posix(),
                 "report_image": report_image.relative_to(cfg.site_dir).as_posix(),
                 "report_image_size": report_image.stat().st_size,
                 "original": original,
@@ -225,7 +204,6 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
             latest_summary = _display_text(visible_posts[latest['id']], language)[1] if latest else None
             localized.append({**item, "headline": headline, "summary": summary, "translated": translated,
                               "image": item['report_image'] if language == 'en' else item['original_image'],
-                              "image_dark": item['report_image_dark'] if language == 'en' else item['original_image_dark'],
                               "image_size": item['report_image_size'] if language == 'en' else item['image_size'],
                               "latest_path": latest_path,
                               "filter_topics": localized_topics(item["topic_ids"], language),
@@ -257,8 +235,7 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
             for filename in (page_name(language), *page_aliases(language)):
                 _write(cfg.site_dir / 'posts' / str(row['post_id']) / filename,
                        env.get_template('withdrawn.html').render(language=language,copy=COPY[language],languages=LANGUAGES,page_name=page_name))
-    keep={Path(item[key]).name for item in items for key in ('original_image', 'report_image', 'original_image_dark', 'report_image_dark')}
-    keep.update(Path(item['author_avatar']).name for item in items if item['author_avatar'])
+    keep={Path(item[key]).name for item in items for key in ('original_image', 'report_image')}
     for path in (cfg.site_dir/'cards').glob('*.png'):
         if path.name not in keep: path.unlink()
     log.info("site written to %s (%d posts, four languages)", cfg.site_dir, len(items))
