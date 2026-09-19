@@ -196,14 +196,27 @@ class Runtime:
         gc.collect()
 
     def render_card(self, html):
-        response = run_sync(self.env.BROWSER.quickAction('screenshot', obj({
-            'html': html, 'viewport': {'width': 1200, 'height': 630},
-            'screenshotOptions': {'type': 'png', 'clip': {'x': 0, 'y': 0, 'width': 1200, 'height': 630}},
-            'setJavaScriptEnabled': False, 'rejectRequestPattern': ['^https?://'],
-        })))
-        if not response.ok:
-            raise RuntimeError(f'Browser Run screenshot failed ({response.status})')
-        return buffer_bytes(run_sync(response.bytes()))
+        # Browser Run rate limits batches independently of the Worker. Honour
+        # Retry-After and yield while waiting instead of losing a whole build.
+        for attempt in range(8):
+            response = run_sync(self.env.BROWSER.quickAction('screenshot', obj({
+                'html': html, 'viewport': {'width': 1200, 'height': 630},
+                'screenshotOptions': {'type': 'png', 'clip': {'x': 0, 'y': 0, 'width': 1200, 'height': 630}},
+                'setJavaScriptEnabled': False, 'rejectRequestPattern': ['^https?://'],
+            })))
+            if response.ok:
+                return buffer_bytes(run_sync(response.bytes()))
+            if response.status != 429 or attempt == 7:
+                raise RuntimeError(f'Browser Run screenshot failed ({response.status})')
+            try:
+                delay = min(120, max(10, float(response.headers.get('Retry-After') or '20')))
+            except ValueError:
+                delay = 20
+            error = run_sync(response.text())
+            if 'time limit exceeded' in error.lower():
+                raise RuntimeError('Browser Run daily quota exhausted')
+            run_sync(asyncio.sleep(delay))
+        raise RuntimeError('Browser Run retry limit exceeded')
 
     def browser_document(self, url, timeout):
         import requests
