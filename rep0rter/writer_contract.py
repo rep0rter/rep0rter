@@ -11,6 +11,7 @@ import json
 import re
 from zoneinfo import ZoneInfo
 
+from .dates import calendar_dates, has_unsupported_date
 from .editorial import URL, CANCEL, ensure_audit
 from .i18n import LANGUAGES
 from .slack_text import to_plain
@@ -320,6 +321,12 @@ def validate_response(data, bundle) -> tuple[dict, list[str]]:
         errors.append("participation_url:closed_event_requires_review")
     if CANCEL.search(source) and not bundle["metadata"].get("story_update"):
         errors.append("evidence:cancellation_or_delay_requires_review")
+    source_dates = calendar_dates(source)
+    for record in evidence.values():
+        for key, value in record.get("lifecycle", {}).items():
+            if key.endswith("_at") and isinstance(value, str):
+                source_day = datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(TZ).date()
+                source_dates.add((source_day.year, source_day.month, source_day.day))
     for language in LANGUAGES:
         item = translations.get(language)
         if not isinstance(item, dict):
@@ -339,12 +346,7 @@ def validate_response(data, bundle) -> tuple[dict, list[str]]:
             local.append("speculation_must_be_preserved")
         if any(evidence[i]["kind"] == "reply" for i in ids) and not ATTRIBUTION.search(combined):
             local.append("reply_requires_attribution")
-        source_dates = set(re.findall(r"\d{4}-\d{2}-\d{2}", source))
-        for record in evidence.values():
-            for key, value in record.get("lifecycle", {}).items():
-                if key.endswith("_at") and isinstance(value,str):
-                    source_dates.add(datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(TZ).date().isoformat())
-        if any(d not in source_dates for d in re.findall(r"\d{4}-\d{2}-\d{2}", combined)):
+        if has_unsupported_date(combined, source_dates):
             local.append("date_not_in_evidence")
         if not local:
             valid[language] = {"headline": item["headline"].strip(), "summary": item["summary"].strip()}

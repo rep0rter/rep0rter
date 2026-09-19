@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from .config import Config
+from .dates import calendar_dates, has_unsupported_date
 from .llm import LLM
 from .i18n import LANGUAGES, LANGUAGE_PROMPT_NAMES, detect_language
 from .slack_text import excerpt, to_plain
@@ -125,50 +126,9 @@ def write_item(c: Candidate, llm: LLM | None) -> tuple[str, str]:
     return headline, summary
 
 
-def _calendar_dates(text: str) -> set[tuple[int | None, int, int]]:
-    """Recognize common four-locale date forms and same-month range endpoints.
-
-    This mechanical guard cannot verify which activity a date describes or parse
-    every natural-language date form. Years and relative phrases are not dates.
-    """
-    found = set()
-    def add_date(year, month, day, end):
-        found.add((year, month, day))
-        # A same-month range endpoint shares the preceding date's year/month.
-        # Fully written endpoints are parsed independently by the patterns below.
-        endpoint = re.match(r"\s*[-–—~〜至到]\s*(\d{1,2})(?:日|일)?(?![\d/-])", text[end:])
-        if endpoint:
-            found.add((year, month, int(endpoint.group(1))))
-    for match in re.finditer(r"(?<!\d)(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?!\d)", text):
-        add_date(*map(int, match.groups()), match.end())
-    for match in re.finditer(r"(?:(\d{4})[年년]\s*)?(\d{1,2})\s*[月월]\s*(\d{1,2})\s*[日일]?", text):
-        year, month, day = match.groups()
-        add_date(int(year) if year else None, int(month), int(day), match.end())
-    for match in re.finditer(r"(?<![\d/-])(\d{1,2})/(\d{1,2})(?![\d/])", text):
-        month, day = map(int, match.groups())
-        add_date(None, month, day, match.end())
-    months = {name: number for number, names in enumerate([
-        ('jan', 'january'), ('feb', 'february'), ('mar', 'march'), ('apr', 'april'), ('may',),
-        ('jun', 'june'), ('jul', 'july'), ('aug', 'august'), ('sep', 'sept', 'september'),
-        ('oct', 'october'), ('nov', 'november'), ('dec', 'december')], 1) for name in names}
-    names = '|'.join(sorted(months, key=len, reverse=True))
-    for pattern, order in [
-        (rf"\b({names})\.?\s+(\d{{1,2}})(?:st|nd|rd|th)?(?:,?\s+(\d{{4}}))?\b", 'month_first'),
-        (rf"\b(\d{{1,2}})(?:st|nd|rd|th)?\s+({names})\.?(?:\s+(\d{{4}}))?\b", 'day_first'),
-    ]:
-        for match in re.finditer(pattern, text, re.I):
-            first, second, year = match.groups()
-            month, day = (months[first.lower()], int(second)) if order == 'month_first' else (months[second.lower()], int(first))
-            add_date(int(year) if year else None, month, day, match.end())
-    return found
-
-
 def _translation_date_errors(entry: dict, source_dates: set) -> list[str]:
-    for year, month, day in _calendar_dates(entry['headline'] + ' ' + entry['summary']):
-        if not any((month, day) == (source_month, source_day)
-                   and (year is None or source_year is None or year == source_year)
-                   for source_year, source_month, source_day in source_dates):
-            return ['calendar_date_not_in_source_text']
+    if has_unsupported_date(entry['headline'] + ' ' + entry['summary'], source_dates):
+        return ['calendar_date_not_in_source_text']
     return []
 
 
@@ -216,9 +176,9 @@ def translate_post(post: Post, llm: LLM, languages=LANGUAGES, *, source_ts: floa
         previous_start = source_day - timedelta(days=source_day.weekday()+7)
         metadata.update(previous_week_start=previous_start.isoformat(),
                         previous_week_end=(previous_start+timedelta(days=6)).isoformat())
-    source_dates = _calendar_dates(headline + ' ' + summary) if source_ts is not None else set()
+    source_dates = calendar_dates(headline + ' ' + summary) if source_ts is not None else set()
     if metadata and re.search(r"上週|上周|\blast week\b|先週|지난\s*주", post.headline + ' ' + post.summary, re.I):
-        source_dates.update(_calendar_dates(metadata['previous_week_start'] + ' ' + metadata['previous_week_end']))
+        source_dates.update(calendar_dates(metadata['previous_week_start'] + ' ' + metadata['previous_week_end']))
     for attempt in range(2):
         payload = {"languages": missing, "headline": headline, "summary": summary}
         if metadata:

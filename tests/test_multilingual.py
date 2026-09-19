@@ -331,6 +331,8 @@ def test_style_guide_keeps_source_currency_instead_of_converting_it():
     ('参加者はAstraとUE5、3DGSをつないだ構成を説明した', 'ja'),
     ('참여자는 Astra와 UE5를 연결한 구성을 설명함', 'ko'),
     ('Participants say the PR is merged to fix login timeouts', 'en'),
+    ('OpenStreetMap adds 東京マップ support for local community contributors', 'en'),
+    ('New guide for デジタル庁 APIs. Participants published an English integration guide for developers.', 'en'),
     ('以 Astra 串接 UE5 與 3D Tiles 的台北沙盒構想', 'zh-TW'),        # Latin names inside Chinese
     ('서울 버스 앱 Where Is My Bus 개선 PR #17', 'ko'),                # Latin names inside Korean
     ('新北の工作坊', 'zh-TW'),                                           # a stray kana must not flip Chinese to Japanese
@@ -340,6 +342,20 @@ def test_style_guide_keeps_source_currency_instead_of_converting_it():
 ])
 def test_detect_language_from_scripts(text, expected):
     assert detect_language(text) == expected
+
+
+def test_backfill_translates_english_with_a_japanese_name_instead_of_preserving_it():
+    post = Post('x', 1, 9, 'New guide for デジタル庁 APIs',
+                'Participants published an English integration guide for developers')
+    japanese = {'headline': 'デジタル庁APIの英語ガイド',
+                'summary': '参加者が開発者向けの英語の連携ガイドを公開した'}
+    llm = Mock()
+    llm.chat_json.return_value = {'ja': japanese}
+    assert translate_post(post, llm, languages=['ja'])
+    prompt = llm.chat_json.call_args.args[0]
+    assert 'written in English (en)' in prompt
+    assert 'keep the supplied wording' not in prompt
+    assert post.translations['ja'] == japanese
 
 
 @pytest.mark.parametrize('headline,summary,source,name', [

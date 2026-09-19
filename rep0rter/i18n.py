@@ -28,8 +28,9 @@ def detect_language(text: str) -> str | None:
         return None
     if hangul / total >= 0.3:
         return "ko"
-    # A stray kana in Chinese text (a quoted name) must not flip it to Japanese.
-    if kana >= 3 and kana / (kana + han) >= 0.2:
+    # Quoted Japanese names must not override predominantly Latin text.
+    # Within CJK text, require enough kana to distinguish it from Chinese.
+    if kana >= 3 and (kana + han) / total >= 0.3 and kana / (kana + han) >= 0.2:
         return "ja"
     if han / total >= 0.3:
         return "zh-TW"
