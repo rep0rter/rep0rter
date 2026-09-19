@@ -127,3 +127,19 @@ quantiles rather than clamped to zero. Run duration is separate from acquisition
 The default collection interval remains one hour. Collect at least two weeks of
 these metrics before choosing a shorter interval, and respect per-source request
 budgets when changing it.
+
+## 來源提案（每週）
+
+設定 `REP0RTER_NOTION_PORTAL` 後，`maintenance` 服務每週從公開的 Notion 入口取出
+GitHub 允許清單候選，並以既有的管理者告警路徑（`alert_transitions` 去重節流、
+`send_admin_alerts` 只送管理目的地）通知。詳見 [FtO 來源](fto-sources.md)。
+
+- **不進入 health。**worker 的 healthcheck 執行 `rep0rter health`，若把提案寫進
+  `check_health` 的 `issues`，別人編輯自己的 wiki 就會讓容器變成 unhealthy。
+  提案有自己的報表與 `proposals.json` 狀態檔。
+- **不自動設定。**提案只列出不在 `REP0RTER_GITHUB_REPOS` 內的 repository，
+  由人審核後手動加入。加入後下一輪提案消失並送出 recovery 通知。
+- **失敗被隔離。**發現用的是未文書端點，壞掉是預期內的事。任何失敗都不會影響
+  備份、還原演練或健康檢查，`maintenance.json` 的紀錄也不會因此遺失。
+- **不佔用採集預算。**發現與 `collect_all` 的每輪／每日 request budget 完全分離。
+- 未設定 `REP0RTER_NOTION_PORTAL` 時不做任何發現。

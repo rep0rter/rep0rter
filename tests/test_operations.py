@@ -221,3 +221,69 @@ def test_offsite_is_optional_unless_explicitly_configured(operational_db,tmp_pat
     monkeypatch.setenv('REP0RTER_BACKUP_OFFSITE','backup@example.invalid:/dedicated')
     configured=ops.check_health(operational_db,backup_dir=directory,now=210,min_free_bytes=0)
     assert 'offsite_backup_stale' in configured['issues']
+
+
+def _proposal_cfg(tmp_path, monkeypatch, portal='https://example-space.notion.site/Home-' + '9' * 32):
+    from rep0rter.config import Config
+    monkeypatch.setenv('REP0RTER_NOTION_PORTAL', portal)
+    return Config(data_dir=tmp_path)
+
+
+def test_source_proposals_only_report_repositories_not_already_configured(tmp_path, monkeypatch):
+    cfg = _proposal_cfg(tmp_path, monkeypatch)
+    monkeypatch.setenv('REP0RTER_GITHUB_REPOS', 'example/known')
+    monkeypatch.setattr(ops, 'time', ops.time)
+    found = {'complete': True, 'candidates': [{'repository': 'example/known'},
+                                              {'repository': 'example/fresh'}]}
+    monkeypatch.setattr('rep0rter.notion_discovery.discover', lambda *a, **k: found)
+    monkeypatch.setattr('rep0rter.collectors.slack_archive.make_session', lambda: None)
+    report = ops.source_proposals(cfg, now=1000)
+    assert report['candidates'] == ['example/fresh']
+    assert 'example/fresh' in report['issues']['source_candidates']
+    assert 'example/known' not in report['issues']['source_candidates']
+
+
+def test_source_proposals_never_touch_health(operational_db, tmp_path, monkeypatch):
+    """A project added to somebody's wiki must not mark the worker unhealthy."""
+    cfg = _proposal_cfg(tmp_path, monkeypatch)
+    monkeypatch.setattr('rep0rter.notion_discovery.discover',
+                        lambda *a, **k: {'complete': True, 'candidates': [{'repository': 'example/fresh'}]})
+    monkeypatch.setattr('rep0rter.collectors.slack_archive.make_session', lambda: None)
+    result = ops.maintenance(cfg, now=200000)
+    assert result['proposals']['candidates'] == ['example/fresh']
+    assert 'source_candidates' not in result['health']['issues']
+    assert any(notice['key'] == 'source_candidates' for notice in result['notifications'])
+
+
+def test_failed_discovery_does_not_cost_the_backup_or_the_health_check(operational_db, tmp_path, monkeypatch):
+    cfg = _proposal_cfg(tmp_path, monkeypatch)
+
+    def explode(*args, **kwargs):
+        raise ValueError('notion queryCollection reported 113 rows but returned none')
+
+    monkeypatch.setattr('rep0rter.notion_discovery.discover', explode)
+    monkeypatch.setattr('rep0rter.collectors.slack_archive.make_session', lambda: None)
+    result = ops.maintenance(cfg, now=200000)
+    assert 'source_discovery_failed' in result['proposals']['issues']
+    assert 'source_discovery_failed' not in result['health']['issues']
+    assert ops._read_json(tmp_path / 'backups' / 'maintenance.json').get('backed_up_at') == 200000
+
+
+def test_discovery_runs_weekly_not_hourly(operational_db, tmp_path, monkeypatch):
+    cfg = _proposal_cfg(tmp_path, monkeypatch)
+    calls = []
+    monkeypatch.setattr('rep0rter.notion_discovery.discover',
+                        lambda *a, **k: calls.append(1) or {'complete': True, 'candidates': []})
+    monkeypatch.setattr('rep0rter.collectors.slack_archive.make_session', lambda: None)
+    ops.maintenance(cfg, now=200000)
+    ops.maintenance(cfg, now=200000 + 3600)
+    assert len(calls) == 1
+    ops.maintenance(cfg, now=200000 + 7 * 86400)
+    assert len(calls) == 2
+
+
+def test_no_portal_configured_means_no_discovery(operational_db, tmp_path, monkeypatch):
+    from rep0rter.config import Config
+    monkeypatch.delenv('REP0RTER_NOTION_PORTAL', raising=False)
+    result = ops.maintenance(Config(data_dir=tmp_path), now=200000)
+    assert result['proposals']['issues'] == {} and result['proposals']['portal'] is None
