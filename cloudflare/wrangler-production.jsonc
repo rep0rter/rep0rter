@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "rep0rter-preview",
+  "name": "rep0rter-engine",
   "account_id": "08f074fca6db8519f744f2a2675a2693",
   "main": ".build/src/entry.py",
   "compatibility_date": "2026-09-19",
@@ -35,7 +35,7 @@
   },
   "vars": {
     "REP0RTER_SITE_URL": "https://rep0rter.observe.tw",
-    "RUN_ENABLED": "false"
+    "RUN_ENABLED": "true"
   },
   "observability": {
     "enabled": true
@@ -58,7 +58,7 @@
   "services": [
     {
       "binding": "SITE",
-      "service": "rep0rter-web-preview"
+      "service": "rep0rter"
     }
   ]
 }

@@ -97,3 +97,46 @@ def test_wal_snapshot_can_be_reopened_after_restart(runtime, tmp_path):
         assert check.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
         assert check.execute('SELECT * FROM posts').fetchall() == [(1,)]
     db.close()
+
+
+def test_withdrawal_publishes_scrubbed_site_before_any_rebuild(tmp_path):
+    from rep0rter import policy
+    from rep0rter.store import Store, Event, Post
+    class Runtime:
+        def __init__(self):
+            self.ledger = None
+            self.published = None
+        def persist_policy(self, path):
+            self.ledger = path.read_text()
+        def hydrate_site(self):
+            site = tmp_path / 'site'
+            site.mkdir(exist_ok=True)
+            (site / 'index.html').write_text('<html><body><article data-post-id="1">Secret</article></body></html>')
+            (site / 'cards').mkdir(exist_ok=True)
+            (site / 'cards/private.png').write_bytes(b'private')
+        def publish_site(self, cfg):
+            self.published = (tmp_path / 'site/posts/1/index.html').read_text()
+            assert not (tmp_path / 'site/cards').exists()
+    runtime = Runtime()
+    with Store(tmp_path / 'db.sqlite') as store:
+        event = Event('slack:C:1', 'slack', 'message', 'slack:C', 100, text='Secret')
+        store.upsert_events([event])
+        store.add_post(Post(event.id, 110, 7, 'Secret', 'Private summary'))
+        token = services.set(runtime)
+        try:
+            policy.redact(store, [event.id])
+        finally:
+            services.reset(token)
+    assert 'slack:C:1' in runtime.ledger
+    assert runtime.published and 'Secret' not in runtime.published
+
+
+def test_browser_xml_viewer_unwrap_preserves_feed_namespaces():
+    from rep0rter.collectors.browser import unwrap_document
+    from xml.etree import ElementTree as ET
+    wrapped = '<html xmlns="http://www.w3.org/1999/xhtml"><body><div id="webkit-xml-viewer-source-xml"><rss xmlns="" xmlns:atom="http://www.w3.org/2005/Atom" version="2.0"><channel><title>A &amp; B</title><atom:link href="https://example.com/feed"/></channel></rss></div></body></html>'
+    root = ET.fromstring(unwrap_document(wrapped))
+    assert root.tag == 'rss'
+    assert root.findtext('channel/title') == 'A & B'
+    assert root.find('channel/{http://www.w3.org/2005/Atom}link').get('href') == 'https://example.com/feed'
+    assert unwrap_document('<rss/>') == '<rss/>'

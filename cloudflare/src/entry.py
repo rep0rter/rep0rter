@@ -16,7 +16,8 @@ from urllib.parse import unquote, urljoin, urlsplit
 import zipfile
 
 import js
-from pyodide.ffi import run_sync, to_js
+from revision import SOURCE_COMMIT
+from pyodide.ffi import create_proxy, run_sync, to_js
 from workers import DurableObject, Response, WorkerEntrypoint, wsgi
 from rep0rter.runtime import services, DurabilityError
 
@@ -79,6 +80,16 @@ class Runtime:
     def set_meta(self, key, value):
         self.sql.exec('INSERT INTO meta VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value', key, str(value))
 
+    def transaction(self, callback):
+        # The Python RPC adapter creates persistent JS proxies for callbacks.
+        # Explicitly release this one so it cannot retain complete DB snapshots
+        # and generated-site buffers after the synchronous transaction returns.
+        proxy = create_proxy(callback)
+        try:
+            return self.ctx.storage.transactionSync(proxy)
+        finally:
+            proxy.destroy()
+
     def commit_database(self, data):
         if len(data) > MAX_DATABASE:
             raise ValueError('Database exceeds configured memory budget')
@@ -90,8 +101,29 @@ class Runtime:
             for number, page in changes:
                 self.sql.exec('INSERT INTO db_pages VALUES (?,?) ON CONFLICT(number) DO UPDATE SET data=excluded.data', number, to_js(page))
             self.sql.exec('DELETE FROM db_pages WHERE number>=?', len(current))
-        self.ctx.storage.transactionSync(write)
+        self.transaction(write)
         self.pages = current
+        gc.collect()
+
+    def persist_policy(self, path):
+        data = path.read_bytes()
+        self.sql.exec('INSERT INTO files VALUES (?,?,?) ON CONFLICT(path) DO UPDATE SET data=excluded.data,digest=excluded.digest',
+                      'exclusions.json', to_js(data), hashlib.sha256(data).hexdigest())
+
+    def hydrate_site(self):
+        # Withdrawals scrub the complete durable generation before any render
+        # attempt. A later Browser Run failure must not leave old text online.
+        directory = self.root / 'site'
+        if directory.exists():
+            if directory.is_symlink():
+                directory.unlink()
+            else:
+                shutil.rmtree(directory)
+        for item in rows(self.sql.exec("SELECT path FROM files WHERE path LIKE 'site/%'")):
+            row = rows(self.sql.exec('SELECT data FROM files WHERE path=?', item['path']))[0]
+            path = self.root / item['path']
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(buffer_bytes(row['data']))
         gc.collect()
 
     def hydrate_assets(self, cfg):
@@ -130,7 +162,37 @@ class Runtime:
             for path in existing.keys() - files.keys():
                 self.sql.exec('DELETE FROM files WHERE path=?', path)
             self.set_meta('site_built_at', time.time())
-        self.ctx.storage.transactionSync(write)
+        self.transaction(write)
+        gc.collect()
+        self.publish_public()
+
+    def health(self):
+        return {'ready': self.meta('imported') == 'true' and self.meta('site_built_at') is not None,
+                'runtime': 'cloudflare-workers', 'source_commit': SOURCE_COMMIT,
+                'scheduled': getattr(self.env, 'RUN_ENABLED', 'false') == 'true',
+                'last_started': self.meta('last_started'), 'last_finished': self.meta('last_finished'),
+                'last_error': self.meta('last_error', ''),
+                'collection_healthy': self.meta('collection_healthy')}
+
+    def publish_status(self):
+        site = getattr(self.env, 'SITE', None)
+        if site is not None:
+            run_sync(site.updateStatus(self.health()))
+
+    def publish_public(self):
+        site = getattr(self.env, 'SITE', None)
+        if site is None:
+            return
+        files = []
+        total = 0
+        for item in rows(self.sql.exec("SELECT path FROM files WHERE path LIKE 'site/%'")):
+            row = rows(self.sql.exec('SELECT data,digest FROM files WHERE path=?', item['path']))[0]
+            data = buffer_bytes(row['data'])
+            total += len(data)
+            if total > 24 * 1024 * 1024:
+                raise ValueError('Public site exceeds the RPC transfer budget')
+            files.append({'path': item['path'][5:], 'data': data, 'digest': row['digest']})
+        run_sync(site.publishSite(files, self.health()))
         gc.collect()
 
     def render_card(self, html):
@@ -159,7 +221,8 @@ class Runtime:
         result = requests.Response()
         result.status_code = 200
         result.url = url
-        result._content = content.encode()
+        from rep0rter.collectors.browser import unwrap_document
+        result._content = unwrap_document(content).encode()
         result.encoding = 'utf-8'
         return result
 
@@ -253,15 +316,22 @@ class Reporter(DurableObject):
             if time.time() - float(runtime.meta('last_started', '0')) < 3500:
                 return
             runtime.set_meta('last_started', time.time())
+            runtime.publish_status()
             token = services.set(runtime)
             try:
                 from rep0rter.cli import run_once
                 from rep0rter.config import Config
                 run_once(Config())
+                from rep0rter.store import Store
+                with Store(Config().db_path) as store:
+                    collection = json.loads(store.get_kv('collector_health', '{}'))
+                runtime.set_meta('collection_healthy', str(collection.get('healthy', False)).lower())
                 runtime.set_meta('last_finished', time.time())
                 runtime.set_meta('last_error', '')
+                runtime.publish_status()
             except BaseException as exc:
                 runtime.set_meta('last_error', type(exc).__name__)
+                runtime.publish_status()
                 raise
             finally:
                 services.reset(token)
@@ -282,11 +352,8 @@ class Reporter(DurableObject):
             if path.startswith('/__admin/'):
                 return await self.admin(request, path)
             if path == '/healthz':
-                ready = runtime.meta('imported') == 'true' and runtime.meta('site_built_at') is not None
-                return Response.json({'ready': ready, 'runtime': 'cloudflare-workers',
-                    'scheduled': getattr(self.env, 'RUN_ENABLED', 'false') == 'true',
-                    'last_started': runtime.meta('last_started'), 'last_finished': runtime.meta('last_finished'),
-                    'last_error': runtime.meta('last_error', '')}, status=200 if ready else 503)
+                health = runtime.health()
+                return Response.json(health, status=200 if health['ready'] else 503)
             if runtime.meta('imported') != 'true':
                 return Response('Migration is not yet complete.', status=503)
             if path.startswith(('/auth/', '/projects')) or path in ('/submit', '/write'):
@@ -346,16 +413,34 @@ class Reporter(DurableObject):
                     counts = {t: check.execute('SELECT count(*) FROM ' + t).fetchone()[0] for t in ('events', 'posts', 'project_accounts')}
                 finally:
                     check.close()
+                if len(database) > MAX_DATABASE:
+                    return Response('Database too large', status=413)
+                runtime.commit_database(database)
+                (runtime.root / 'rep0rter.sqlite').write_bytes(database)
+                # Until the final imported marker, none of these files can be
+                # served. Stream one file at a time to bound migration memory.
+                runtime.sql.exec('DELETE FROM files')
                 for item in archive.infolist():
-                    if not item.is_dir():
-                        dest = runtime.root / item.filename
-                        dest.parent.mkdir(parents=True, exist_ok=True)
-                        dest.write_bytes(archive.read(item))
-            from rep0rter.config import Config
-            runtime.commit_database(database)
-            runtime.publish_site(Config())
+                    if item.is_dir() or item.filename == 'rep0rter.sqlite':
+                        continue
+                    value = archive.read(item)
+                    if len(value) > MAX_FILE:
+                        return Response('Asset too large', status=413)
+                    runtime.sql.exec('INSERT INTO files VALUES (?,?,?)', item.filename,
+                                     to_js(value), hashlib.sha256(value).hexdigest())
+                    if item.filename == 'exclusions.json':
+                        (runtime.root / item.filename).write_bytes(value)
+                    del value
+                    gc.collect()
+            runtime.set_meta('site_built_at', time.time())
             runtime.set_meta('imported', 'true')
+            runtime.publish_public()
             return Response.json({'imported': True, 'counts': counts, 'sha256': hashlib.sha256(database).hexdigest()})
+        if path == '/__admin/start' and request.method == 'POST':
+            if runtime.meta('imported') != 'true' or getattr(self.env, 'RUN_ENABLED', 'false') != 'true':
+                return Response('Reporting is not enabled', status=409)
+            await self.schedule()
+            return Response.json({'scheduled': True})
         if path == '/__admin/check' and request.method == 'POST':
             from rep0rter.config import Config
             from rep0rter.store import Store
@@ -363,9 +448,23 @@ class Reporter(DurableObject):
             with Store(cfg.db_path) as store:
                 counts = {t: store.conn.execute('SELECT count(*) FROM ' + t).fetchone()[0] for t in ('events', 'posts', 'project_accounts')}
                 integrity = store.conn.execute('PRAGMA integrity_check').fetchone()[0]
+                # Exercise repeated committed writes without publishing or
+                # retaining probe data, including Python/JS callback cleanup.
+                for number in range(64):
+                    store.set_kv('__worker_storage_probe', str(number))
+                with store.conn:
+                    store.conn.execute("DELETE FROM kv WHERE key='__worker_storage_probe'")
             picture = runtime.render_card('<html><body style="margin:0">rep0rter runtime check</body></html>')
             return Response.json({'counts': counts, 'integrity': integrity, 'browser_png': picture.startswith(b'\x89PNG'),
                 'google_configured': cfg.google_login_enabled, 'llm_configured': cfg.llm_enabled})
+        if path == '/__admin/rehearse' and request.method == 'POST':
+            from rep0rter.config import Config
+            from rep0rter.cli import run_once
+            cfg = Config()
+            if cfg.telegram_bot_token or getattr(self.env, 'RUN_ENABLED', 'false') == 'true':
+                return Response('Rehearsal requires a preview without Telegram credentials', status=409)
+            collected, posted = run_once(cfg)
+            return Response.json({'collected': collected, 'posted': posted, 'telegram': 'disabled'})
         if path == '/__admin/collect' and request.method == 'POST':
             from rep0rter.config import Config
             from rep0rter.store import Store

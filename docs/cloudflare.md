@@ -1,6 +1,7 @@
 # Native Cloudflare Workers deployment
 
-The Cloudflare target runs the existing Python application in Python Workers.
+The Cloudflare target runs the existing Python application in Python Workers,
+with a separate JavaScript Worker serving public pages.
 It does not use Containers, Docker, a Cloudflare Tunnel, or the Steam host at
 runtime. Flask handles Google login and submissions, Browser Run renders cards
 and browser-only feeds, and a Cron Trigger asks a singleton Durable Object to
@@ -15,7 +16,8 @@ transaction before returning to the caller. This preserves existing transaction
 and Telegram outbox semantics. If persistence fails, the invocation aborts and
 its local working copy is discarded before the next application operation.
 
-Generated files are published to Durable Object storage as a single transaction;
+Generated files are copied through a private service binding to the JavaScript
+Worker and published to its `PublishedSite` Durable Object in a single transaction;
 removed paths disappear at that same boundary. Website reads do not wait for a
 collector or model request. Neither the database nor private account/session
 records are available through the static file route. Local file locks are
@@ -36,8 +38,9 @@ uv tool install workers-py==1.17.3
 python3 cloudflare/prepare.py
 cd cloudflare
 pywrangler dev
-# Deploy a preview without routing the public hostname or enabling publication:
-pywrangler deploy --name rep0rter-preview
+# Update an existing preview (see bootstrap ordering below for first deployment):
+pywrangler deploy
+npx wrangler@4.135.0 deploy --config wrangler-web.jsonc
 ```
 
 `prepare.py` copies only application source and checked-in assets into the build
@@ -54,7 +57,10 @@ variables. Upload it through Wrangler's stdin; never put values in command
 arguments, source, logs, or git. `REP0RTER_SITE_URL` is the public origin configured
 in Wrangler. Google OAuth continues using the same callback URL.
 
-The checked-in config defaults to `RUN_ENABLED=false`. This prevents preview
+The Python engine and public frontend each have separate Wrangler configs.
+The preview config defaults to `RUN_ENABLED=false`. The separate
+`wrangler-production.jsonc` enables engine scheduling;
+`wrangler-web-production.jsonc` attaches the public route. This prevents preview
 and pre-cutover deployments from publishing duplicate Telegram messages. Use
 preview credentials without a Telegram token. A temporary `MIGRATION_TOKEN`
 secret protects the import and validation endpoints. The local admin client
@@ -75,13 +81,25 @@ commit it. Import validates the database and paths, and is disabled after the
 first successful import or after scheduling is enabled. Never use an initial
 preview snapshot as the final cutover snapshot while local writers are running.
 
+## Subsequent code deployments
+
+Push the commit to `main`, wait for its passing **Offline tests** push run, then
+run `python3 cloudflare/deploy.py --production` from a clean checkout of that
+commit. This verifies GitHub tests and remote main before deploying. Wrangler
+uses its saved OAuth login or `CLOUDFLARE_API_TOKEN`; no Steam service is involved.
+Automatic GitHub deployment requires a separately provisioned deployment API
+token. The old Steam deployment timer must remain disabled.
+
 ## Cutover
 
 1. Validate the preview's database integrity, collection, Browser Run, all four
    editions, RSS, Google-login form and callback destination, and recovery after
    a Worker version change. Keep preview Telegram credentials absent.
 2. Commit and push to `main`, and wait for the exact commit's successful GitHub
-   **Offline tests** push run before deploying production code.
+   **Offline tests** push run before deploying production code. Bootstrap the engine with scheduling disabled
+   and its `SITE` binding omitted, then the frontend with its public route omitted,
+   then restore the engine binding. Keep those temporary configs under the ignored
+   `.wrangler` directory. Both service bindings must exist before importing.
 3. Pause local writers through `cloudflare/cutover.py pause`. This acquires the
    installed deployment controller's lock and uses its existing stop method.
    Exit 75 means another deployment is active; wait and retry. The website stays
@@ -92,7 +110,9 @@ preview snapshot as the final cutover snapshot while local writers are running.
 5. Route `rep0rter.observe.tw/*` to the production Worker, verify public pages and
    Google callback behavior, then deploy with `RUN_ENABLED=true`. Keep the local
    deployment timer disabled. Verify a complete Cloudflare reporting cycle and
-   its health record before retiring the local web service.
+   its health record before retiring the local web service. The protected
+   `manage.py start` action can request the first alarm immediately; it retains
+   the hourly duplicate-run guard.
 6. Delete `MIGRATION_TOKEN` from production and preview. Record the Worker version,
    route, source commit, and health result. The unprotected `/healthz` exposes only
    runtime readiness and scheduling timestamps, never credentials or content.
@@ -100,6 +120,12 @@ preview snapshot as the final cutover snapshot while local writers are running.
 The first scheduled request durably reserves its hourly slot. A crash retry does
 not immediately rerun the entire pipeline; the next hour resumes the normal
 cycle. Telegram's existing unknown-delivery handling remains in effect.
+
+Native Workers replace host maintenance snapshots with Durable Object SQLite
+point-in-time recovery. The old daily filesystem backups and SSH/rsync jobs do
+not run in Workers. The current installation has no offsite destination, Notion
+proposal discovery, or administrator alert transport configured. Configure and
+verify any future equivalents explicitly before enabling those features.
 
 Use Cloudflare version rollback for code recovery. Data persists independently
 of Worker versions. Never restart the old local publisher after Cloudflare starts

@@ -6,7 +6,7 @@ import urllib.error
 import urllib.request
 
 parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument('action', choices=('import', 'check', 'collect', 'build'))
+parser.add_argument('action', choices=('import', 'check', 'collect', 'build', 'rehearse', 'start'))
 parser.add_argument('--url', required=True)
 parser.add_argument('--token-file', type=Path, default=Path(__file__).parent / '.dev.vars')
 parser.add_argument('--archive', type=Path)
@@ -21,7 +21,7 @@ request = urllib.request.Request(args.url.rstrip('/') + '/__admin/' + args.actio
     'Content-Type': 'application/zip' if args.archive else 'application/json',
     'User-Agent': 'rep0rter-migration/1.0'})
 try:
-    with urllib.request.urlopen(request, timeout=180) as response:
+    with urllib.request.urlopen(request, timeout=900) as response:
         print(response.status, response.read().decode())
 except urllib.error.HTTPError as error:
     print(error.code, error.read().decode()[:4000])

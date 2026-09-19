@@ -47,3 +47,18 @@ def get_document(url, timeout=30):
             return response
         finally:
             browser.close()
+
+
+def unwrap_document(content):
+    """Recover XML from Chromium's viewer when Browser Run returns DOM HTML."""
+    if 'id="webkit-xml-viewer-source-xml"' not in content:
+        return content
+    from xml.etree import ElementTree as ET
+    root = ET.fromstring(content)
+    for element in root.iter():
+        if element.get('id') == 'webkit-xml-viewer-source-xml':
+            children = list(element)
+            if len(children) != 1:
+                raise ValueError('Browser XML viewer contains no unique document')
+            return ET.tostring(children[0], encoding='unicode')
+    raise ValueError('Browser XML viewer source is missing')
