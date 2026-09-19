@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 import time
 from dataclasses import replace
 from urllib.parse import unquote, urljoin, urlsplit
@@ -99,8 +100,9 @@ def test_four_editions_escape_content_and_preserve_legacy_feed_guids(published_s
         assert doc.select_one("p.summary").get_text() == latest.translations[language]["summary"]
         assert len(doc.select("article")) == 1
         assert not doc.select("article script, article img[onerror]")
-        assert set(a["data-language"] for a in doc.select("a[data-language]")) == set(EDITIONS)
-        assert doc.select_one('[aria-current="page"]')["data-language"] == language
+        links = doc.select(".masthead-actions a[data-language]")
+        assert {link['data-language'] for link in links} == set(EDITIONS)
+        assert doc.select_one('.language-menu [aria-current=page]')['data-language'] == language
 
         tree = ElementTree.parse(cfg.site_dir / feed)
         assert tree.findtext("channel/language") == language
@@ -128,7 +130,7 @@ def test_older_stories_keep_permanent_pages_outside_homepage_window(published_si
         doc = html(permanent)
         assert doc.select_one("article")["id"] == str(oldest.id)
         assert doc.select_one("blockquote").get_text() == original.text
-        assert doc.select_one("details").has_attr("open") == (language != 'en')
+        assert doc.select_one("details.original-source").has_attr("open") == (language != 'en')
         assert doc.select_one('meta[property="og:type"]')["content"] == "article"
 
 
@@ -137,8 +139,9 @@ def test_english_default_and_existing_explicit_english_links(published_site):
     doc = html(cfg.site_dir / "index.html")
     assert doc.html["lang"] == "en"
     links = doc.select("a[data-language]")
-    assert links[0]["data-language"] == "en"
-    chinese = next(link for link in links if link["data-language"] == "zh-TW")
+    assert len(links) == 4
+    chinese = next(link for link in links if link['data-language'] == 'zh-TW')
+    assert chinese['data-language'] == 'zh-TW'
     assert chinese["href"] == "index.zh-TW.html"
     assert html(cfg.site_dir / chinese["href"]).html["lang"] == "zh-TW"
     # Existing feed subscriptions, bookmarks, and links to source/history pages
@@ -171,7 +174,7 @@ global.document = {
   documentElement: {lang: 'en'},
   querySelectorAll: selector => selector === '[data-language]' ? [chineseLink] : [],
 };
-global.window = {};
+global.window = {addEventListener: () => {}};
 global.location = {pathname: '/', hash: '', replace: () => assert.fail('unexpected redirect')};
 global.localStorage = {getItem: () => 'zh-TW'};
 """ + (cfg.site_dir / "language.js").read_text()
@@ -251,6 +254,142 @@ def test_all_local_links_and_branding_assets_exist(published_site):
         assert local_path(cfg, image).is_file()
         for node in doc.select('meta[property="og:url"], link[rel="canonical"]'):
             assert local_path(cfg, node.get("content") or node.get("href")).is_file()
+
+
+def test_reading_assets_and_self_hosted_fonts_are_published(published_site):
+    _, cfg, _, _, _ = published_site
+    for asset in ("style.css", "language.js", "theme.js", "reading.js"):
+        assert (cfg.site_dir / asset).stat().st_size > 0
+    # Font URLs are resolved relative to the stylesheet, including nested pages.
+    css = (cfg.site_dir / "style.css").read_text()
+    fonts = [url for url in re.findall(r'''url\(["']?([^"')]+)''', css) if url.endswith(".woff2")]
+    assert fonts, "The reading fonts must be part of the generated release"
+    for font in fonts:
+        assert not urlsplit(font).scheme, "Reading should not require an external font service"
+        assert (cfg.site_dir / font).read_bytes().startswith(b"wOF2")
+    for path in cfg.site_dir.rglob("*.html"):
+        doc = html(path)
+        theme = doc.select_one('script[src$="theme.js"]')
+        stylesheet = doc.select_one('link[rel="stylesheet"]')
+        assert theme and not theme.has_attr("defer") and not theme.has_attr("async")
+        assert list(doc.head.children).index(theme) < list(doc.head.children).index(stylesheet)
+        reading = doc.select_one('script[src$="reading.js"]')
+        language = doc.select_one('script[src$="language.js"]')
+        assert reading.has_attr("defer")
+        assert language.has_attr("defer")
+        assert not language.has_attr("blocking")
+        scripts = list(doc.select("script[src]"))
+        assert scripts.index(reading) < scripts.index(language)
+
+
+def test_images_open_with_named_in_page_controls_in_every_edition_and_page(published_site):
+    from rep0rter.i18n import COPY
+
+    _, cfg, _, _, _ = published_site
+    assert (cfg.site_dir / "image-viewer.js").stat().st_size > 0
+    page_kinds = set()
+    languages = set()
+    for path in cfg.site_dir.rglob("*.html"):
+        doc = html(path)
+        language = doc.html["lang"]
+        languages.add(language)
+        page_kinds.update(doc.body.get("class", []))
+        page_url = cfg.site_url + "/" + path.relative_to(cfg.site_dir).as_posix()
+        script = doc.select_one('script[src$="image-viewer.js"]')
+        assert script and script.has_attr("defer")
+        assert local_path(cfg, urljoin(page_url, script["src"])).is_file()
+
+        viewers = doc.select("dialog#image-viewer")
+        assert len(viewers) == 1
+        viewer = viewers[0]
+        assert not viewer.has_attr("open")
+        assert doc.find(id=viewer["aria-labelledby"]).get_text(strip=True) == COPY[language]["view_image"]
+        close = viewer.select_one("button[data-viewer-close]")
+        assert close["type"] == "button"
+        assert close["aria-label"] == COPY[language]["close_image"]
+        # Shared modal content must be populated only on opening: article
+        # withdrawal can then remove all source-specific image metadata.
+        assert not viewer.select_one("[data-viewer-image]").has_attr("src")
+        assert viewer.select_one("[data-viewer-image]")["alt"] == ""
+        assert not viewer.select_one("[data-viewer-caption]").get_text(strip=True)
+        assert not viewer.select_one("[data-viewer-download]").has_attr("href")
+        assert viewer.select_one("[data-viewer-download]").has_attr("download")
+
+        images = doc.select("article img.source-card")
+        assert images
+        assert len(doc.select("[data-image-view]")) == len(images)
+        for image in images:
+            trigger = image.parent
+            assert trigger.name == "button", "Image clicks must not navigate to raw files"
+            assert trigger["type"] == "button"
+            assert trigger.has_attr("data-image-view") and trigger.has_attr("disabled")
+            assert trigger["aria-haspopup"] == "dialog"
+            assert trigger["aria-controls"] == viewer["id"]
+            assert trigger["aria-label"].strip()
+            assert not trigger.has_attr("href")
+            assert trigger["data-image-src"] == image["src"]
+            assert local_path(cfg, urljoin(page_url, trigger["data-image-src"])).is_file()
+    assert languages == set(EDITIONS)
+    assert page_kinds == {"page-home", "page-source", "page-story"}
+
+
+def test_emergency_withdrawal_leaves_no_popup_image_metadata_in_cached_pages(published_site):
+    from rep0rter.policy import add_rule, redact
+
+    store, cfg, container, entries, rendered_ids = published_site
+    image_names = {
+        urlsplit(trigger["data-image-src"]).path.rsplit("/", 1)[-1]
+        for path in cfg.site_dir.rglob("*.html")
+        for trigger in html(path).select("[data-image-view]")
+    }
+    assert image_names
+    release = cfg.site_dir.resolve()
+    previous_rendered = list(rendered_ids)
+    add_rule(store, "container", container.id)
+    redact(store, [event.id for _, event in entries])
+    assert cfg.site_dir.resolve() == release
+    assert rendered_ids == previous_rendered
+    for path in cfg.site_dir.rglob("*.html"):
+        cached = path.read_text(encoding="utf-8")
+        assert not html(path).select("[data-image-view], [data-image-src]")
+        assert not any(name in cached for name in image_names), path
+
+
+def test_reading_is_available_without_javascript_and_controls_are_labeled(published_site):
+    from rep0rter.i18n import COPY
+
+    _, cfg, _, _, _ = published_site
+    for path in cfg.site_dir.rglob("*.html"):
+        doc = html(path)
+        copy = COPY[doc.html["lang"]]
+        controls = doc.select_one("[data-theme-controls]")
+        assert controls.has_attr("hidden")
+        assert controls.name == 'details'
+        trigger = controls.select_one('summary[data-theme-trigger]')
+        assert trigger['aria-label'] == copy['appearance']
+        assert not doc.select('[data-theme-cycle], .glass-indicator, .has-glass-indicator')
+        assert controls.select_one('[aria-pressed="true"]')['data-theme-choice'] == 'system'
+        for mode in ('light', 'dark', 'system'):
+            assert trigger['data-theme-' + mode] == copy['theme_' + mode]
+            assert controls.select_one(f'[data-theme-choice="{mode}"]').get_text(strip=True) == copy['theme_' + mode]
+        assert not doc.select("article[hidden], .day[hidden]")
+        assert all(article.select_one("h3").get_text().strip() for article in doc.select("article"))
+        if "posts" in path.parts:
+            assert doc.select_one("[data-search-form]") is None
+            continue
+        form = doc.select_one("[data-search-form]")
+        assert form.has_attr("hidden")
+        input_ = form.select_one('input[type="search"]')
+        assert form.find("label", attrs={"for": input_["id"]}).get_text(strip=True) == copy["search_label"]
+        assert input_["placeholder"] == copy["search_placeholder"]
+        status = doc.find(id=input_["aria-describedby"])
+        assert status["aria-live"] == "polite"
+        assert status["data-result-template"] == copy["search_results"]
+        assert "{count}" in status["data-result-template"]
+        assert status.has_attr("hidden")
+        assert doc.select_one("[data-no-results]").has_attr("hidden")
+        for day in doc.select(".day"):
+            assert int(day.select_one(".day-count").get_text()) == len(day.select("article"))
 
 
 def test_failed_generation_keeps_complete_previous_release(published_site,monkeypatch):
@@ -366,3 +505,142 @@ def test_withdrawal_removes_all_editions_feeds_assets_and_prior_releases(publish
         assert not html(cfg.site_dir/page).find('article',id=str(removed.id))
         assert str(removed.id) not in [item.findtext('guid') for item in ElementTree.parse(cfg.site_dir/feed).findall('channel/item')]
     assert not (cfg.site_dir/'cards'/(hashlib.sha256(event.id.encode()).hexdigest()+'.png')).exists()
+
+
+def test_withdrawn_pages_keep_localized_navigation_and_appearance_assets(published_site):
+    from rep0rter.i18n import COPY
+    from rep0rter.policy import add_rule, redact
+
+    store, cfg, _, entries, _ = published_site
+    removed, event = entries[-1]
+    add_rule(store, "event", event.id)
+    redact(store, [event.id])
+    site.build(store, cfg)
+    for language, (page, _) in EDITIONS.items():
+        path = cfg.site_dir / "posts" / str(removed.id) / page
+        doc = html(path)
+        assert doc.html["lang"] == language
+        assert doc.h1.get_text() == COPY[language]["withdrawn"]
+        assert doc.select_one("[data-theme-controls]").has_attr("hidden")
+        assert doc.select_one('meta[name="robots"]')["content"] == "noindex"
+        languages = doc.select("a[data-language]")
+        assert {link["data-language"] for link in languages} == set(EDITIONS)
+        assert doc.select_one('[aria-current="page"]')["data-language"] == language
+        assert doc.select_one('script[src$="theme.js"]')
+        page_url = cfg.site_url + "/" + path.relative_to(cfg.site_dir).as_posix()
+        for node in doc.select("a[href], link[href], script[src]"):
+            assert local_path(cfg, urljoin(page_url, node.get("href") or node.get("src"))).is_file()
+
+
+def test_source_optout_scrubs_cached_pages_and_keeps_styled_tombstones_without_rebuild(published_site):
+    from html import unescape
+
+    from rep0rter.i18n import COPY
+    from rep0rter.policy import add_rule, redact
+
+    store, cfg, container, entries, rendered_ids = published_site
+    source_pages = {}
+    for language, (page, _) in EDITIONS.items():
+        source_url = html(cfg.site_dir / page).select_one("a.channel")["href"]
+        source_pages[language] = local_path(cfg, urljoin(cfg.site_url + "/", source_url))
+        before = unescape(source_pages[language].read_text())
+        assert container.name in before
+        assert all(post.translations[language]["headline"] in before for post, _ in entries)
+    previous_rendered = list(rendered_ids)
+    release = cfg.site_dir.resolve()
+
+    # Emergency policy cleanup must protect the existing release even when the
+    # normal generator cannot run. The fixture has several reports per source.
+    add_rule(store, "container", container.id)
+    assert set(redact(store, [event.id for _, event in entries])) == {event.id for _, event in entries}
+    assert cfg.site_dir.resolve() == release
+    assert rendered_ids == previous_rendered
+
+    for language, (page, _) in EDITIONS.items():
+        cached = unescape(source_pages[language].read_text())
+        assert container.name not in cached
+        assert not html(source_pages[language]).select("article")
+        for cached_path in (source_pages[language], cfg.site_dir / page):
+            scrubbed = html(cached_path)
+            assert not scrubbed.select('[data-author], [data-author-label], [data-source-label], [data-topics]')
+            for facet in ('topic', 'author', 'source'):
+                assert all(option['value'] == '' for option in scrubbed.select(f'[data-filter="{facet}"] option'))
+        for post, event in entries:
+            for private_text in (event.author_name, event.text, post.headline, post.summary,
+                                 post.translations[language]["headline"], post.translations[language]["summary"]):
+                assert private_text not in cached
+            path = cfg.site_dir / "posts" / str(post.id) / page
+            tombstone = html(path)
+            assert tombstone.html["lang"] == language
+            assert tombstone.h1.get_text() == COPY[language]["withdrawn"]
+            assert tombstone.select_one('meta[name="robots"]')["content"] == "noindex"
+            assert not tombstone.select('article, blockquote, meta[property="og:image"]')
+            assert tombstone.select_one('script[src$="theme.js"]')
+            assert tombstone.select_one('link[rel="stylesheet"][href$="style.css"]')
+            languages = tombstone.select("nav a[lang]")
+            assert {link["lang"] for link in languages} == set(EDITIONS)
+            assert tombstone.select_one('[aria-current="page"]')["lang"] == language
+            page_url = cfg.site_url + "/" + path.relative_to(cfg.site_dir).as_posix()
+            for node in tombstone.select("a[href], link[href], script[src]"):
+                assert local_path(cfg, urljoin(page_url, node.get("href") or node.get("src"))).is_file()
+
+
+def test_masthead_puts_one_search_between_brand_and_compact_controls(published_site):
+    from rep0rter.i18n import page_name
+
+    _, cfg, _, _, _ = published_site
+    for path in cfg.site_dir.rglob('*.html'):
+        doc = html(path)
+        masthead = doc.select_one('.masthead')
+        form = masthead.select_one('form[role="search"]')
+        assert len(doc.select('#story-search')) == 1
+        assert form.select_one('#story-search')['name'] == 'q'
+        children = masthead.find_all(recursive=False)
+        assert children[0].get('class') == ['wordmark']
+        assert children[1] is form
+        assert 'masthead-actions' in children[2].get('class', [])
+        assert len(children[2].select('details.language-menu')) == 1
+        assert len(children[2].select('a[data-language]')) == 4
+        assert len(children[2].select('details.theme-menu')) == 1
+        assert len(children[2].select('button[data-theme-choice]')) == 3
+        page_url = cfg.site_url + '/' + path.relative_to(cfg.site_dir).as_posix()
+        assert local_path(cfg, urljoin(page_url, form['action'])) == cfg.site_dir / page_name(doc.html['lang'])
+        assert form['method'] == 'get'
+        if 'posts' in path.parts:
+            # Story search remains a usable native form that returns home.
+            assert not form.has_attr('hidden')
+            assert not form.has_attr('data-search-form')
+        else:
+            assert form.has_attr('data-search-form')
+
+
+def test_facet_metadata_stays_in_removable_articles_and_selects_start_empty(published_site):
+    _, cfg, _, entries, _ = published_site
+    posts = {str(post.id): (post, event) for post, event in entries}
+    metadata = ('data-post-id', 'data-date', 'data-timestamp', 'data-author',
+                'data-author-label', 'data-source-label', 'data-topics')
+    for path in cfg.site_dir.rglob('*.html'):
+        doc = html(path)
+        for attribute in metadata:
+            assert all(node.name == 'article' for node in doc.select(f'[{attribute}]'))
+        for article in doc.select('article'):
+            post, event = posts[article['data-post-id']]
+            assert float(article['data-timestamp']) == post.published_at
+            assert article['data-author-label'] == event.author_name
+            assert article['data-author']
+            assert article['data-source']
+            assert article['data-date'] == article.find_parent('section', class_='day').time['datetime']
+            assert isinstance(json.loads(article['data-topics']), list)
+        if 'posts' in path.parts:
+            assert doc.select_one('[data-filters]') is None
+            continue
+        filters = doc.select_one('[data-filters]')
+        assert filters.has_attr('hidden')
+        assert {node['data-filter'] for node in filters.select('[data-filter]')} == {
+            'period', 'topic', 'author', 'source', 'sort', 'from', 'to',
+        }
+        # Populate options only from articles still present after emergency cleanup.
+        for facet in ('topic', 'author', 'source'):
+            options = filters.select(f'[data-filter="{facet}"] option')
+            assert len(options) == 1
+            assert options[0]['value'] == ''

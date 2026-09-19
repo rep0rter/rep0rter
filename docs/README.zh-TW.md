@@ -1,5 +1,8 @@
 # rep0rter
 
+先了解專案全貌：閱讀[專案總覽：架構、內容、樣式與維運](project-overview.zh-TW.md)。
+目前網頁的設計規格與修改位置：閱讀[清楚易讀的 Liquid Glass 介面](web-design.zh-TW.md)。
+
 g0v 的虛擬記者。匯集 Slack、GitHub 與明列 Mastodon 帳號的公開協作紀錄，
 每小時挑出值得大家知道的動態，推播到 Telegram，並發布在 [rep0rter.observe.tw](https://rep0rter.observe.tw)。
 
@@ -98,11 +101,11 @@ Docker 已包含 Chromium 與 Noto CJK 字型。本機若使用其他字型，�
 
 測試模式未設定測試 chat 時不會改送正式頻道。網站發布和 Telegram 分開記錄；無 Telegram
 設定時留下待送工作，設定完成後由 `report` 或 `run` 處理。發送結果不明時不自動重試，
-請用 `python -m rep0rter outbox` 檢查，參考 [Telegram 恢復操作](docs/telegram-delivery.md)。
+請用 `python -m rep0rter outbox` 檢查，參考 [Telegram 恢復操作](telegram-delivery.md)。
 
 升級既有環境前請先以 SQLite backup API 備份資料庫；啟動時會保留既有文章並新增翻譯欄位。
 `translate` 和 `build-site` 不會重送已發布文章。退出會傳播至引用、證據與發布快取；
-舊 Telegram 合併訊息須先確認完整對應後才能重建。逐項進度見 [issue 實作紀錄](docs/implementation-notes.md)。
+舊 Telegram 合併訊息須先確認完整對應後才能重建。逐項進度見 [issue 實作紀錄](implementation-notes.md)。
 
 ## 部署
 
@@ -134,9 +137,9 @@ docker compose logs -f worker
 ## 來源、退出與維運
 
 GitHub bot、Slack GitHub integration、CI、依賴升級與例行維護通知不進新聞。
-日韓來源的具體核實與設定見 [FtO 來源](docs/fto-sources.md)；其他帳號需明確 allowlist。
-[來源採集](docs/collectors.md)、[影子評分與證據契約](docs/editorial-policy.md)、
-[主題去重／修訂](docs/stories.md)、[備份與健康](docs/operations.md) 分別記錄操作方式。
+日韓來源的具體核實與設定見 [FtO 來源](fto-sources.md)；其他帳號需明確 allowlist。
+[來源採集](collectors.md)、[影子評分與證據契約](editorial-policy.md)、
+[主題去重／修訂](stories.md)、[備份與健康](operations.md) 分別記錄操作方式。
 
 ```sh
 python -m rep0rter exclusion add --scope user --subject slack:U123 --reason '本人要求退出'
