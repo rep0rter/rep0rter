@@ -106,6 +106,11 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
     from ..stories import info
     with CardRenderer(cfg) as cards:
         for post, event, container in rows:
+            if 'source_example' in post.reasons:
+                # Keep public quotations short; summaries and links carry the report.
+                excerpt = ' '.join(plain_text(event).split()[:12])[:40].rstrip()
+                event = replace(event, text=excerpt, html='',
+                                meta={**event.meta, 'plain_text': excerpt, 'content_format': 'plain'})
             image = cards.render(event, container, names)
             headline, summary, _ = _display_text(post, 'en')
             # A missing translation uses an explicit English pending card. This
@@ -146,6 +151,7 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
            "generated_local": _fmt_local(now), "generated_rfc822": _fmt_rfc822(now),
            "event_count": store.event_count(), "post_count": store.post_count(),
            "branding": _branding(cfg),
+           "has_examples": any("source_example" in item["post"].reasons for item in items),
            "last_healthy": _fmt_local(last_healthy_at) if last_healthy_at else None,
            "collection_complete": collection_complete}
     template = env.get_template("index.html")
@@ -215,6 +221,9 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
             render_page(language, source_items, source_path + page_name(language), "../../", source_items[0]["source_label"])
         for tag, tag_items in tagged.items():
             render_page(language, tag_items, hashtags.path(tag) + page_name(language), '../../', '#' + tag, tag=tag)
+        examples = [item for item in localized if 'source_example' in item['post'].reasons]
+        if examples:
+            render_page(language, examples, 'examples/' + page_name(language), '../', COPY[language]['source_examples'])
         root_outputs.append((language, localized[:limit]))
     # Publish discovery pages after every linked story and asset exists.
     for language, localized in root_outputs:
