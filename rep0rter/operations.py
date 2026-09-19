@@ -413,6 +413,28 @@ def delay_metrics(db_path):
             'groups': {key: {metric: _distribution(values) for metric, values in group.items()} for key, group in groups.items()}}
 
 
+def _declined_repositories(cfg, repositories):
+    """Repositories an operator already excluded, so proposals stop nagging.
+
+    This reuses the exclusion ledger rather than keeping a second list. One
+    place then records every repository we do not collect — whether its
+    maintainers asked or we judged it out of scope — and the rule's reason
+    distinguishes the two. A separate ledger would have to reproduce the
+    durability this one already has, and would reproduce it less well.
+    """
+    if not repositories:
+        return set()
+    from .policy import container_allowed
+    try:
+        with readonly(cfg.db_path) as conn:
+            view = _PolicyReadView(conn)
+            return {name for name in repositories
+                    if not container_allowed(view, 'github:' + name.lower())}
+    except (sqlite3.Error, OSError):
+        # No database or no policy table yet means nothing has been excluded.
+        return set()
+
+
 def source_proposals(cfg, *, now=None, session=None):
     """Weekly source discovery, reported to administrators and never to health.
 
@@ -423,7 +445,7 @@ def source_proposals(cfg, *, now=None, session=None):
     """
     now = time.time() if now is None else now
     portal = os.environ.get('REP0RTER_NOTION_PORTAL')
-    report = {'issues': {}, 'checked_at': now, 'portal': portal, 'candidates': []}
+    report = {'issues': {}, 'checked_at': now, 'portal': portal, 'candidates': [], 'declined': []}
     if not portal:
         return report
     configured = {name.strip().lower() for name in os.environ.get('REP0RTER_GITHUB_REPOS', '').split(',') if name.strip()}
@@ -435,8 +457,11 @@ def source_proposals(cfg, *, now=None, session=None):
         # A dead undocumented endpoint must not stop backups or health checks.
         report['issues']['source_discovery_failed'] = redact(f'{type(exc).__name__}: {exc}')
         return report
-    report['candidates'] = [item['repository'] for item in found['candidates']
-                            if item['repository'].lower() not in configured]
+    proposed = [item['repository'] for item in found['candidates']
+                if item['repository'].lower() not in configured]
+    declined = _declined_repositories(cfg, proposed)
+    report['declined'] = sorted(declined)
+    report['candidates'] = [name for name in proposed if name not in declined]
     if report['candidates']:
         report['issues']['source_candidates'] = (
             'Public portal proposes ' + str(len(report['candidates'])) + ' repositor' +

@@ -137,8 +137,10 @@ GitHub 允許清單候選，並以既有的管理者告警路徑（`alert_transi
 - **不進入 health。**worker 的 healthcheck 執行 `rep0rter health`，若把提案寫進
   `check_health` 的 `issues`，別人編輯自己的 wiki 就會讓容器變成 unhealthy。
   提案有自己的報表與 `proposals.json` 狀態檔。
-- **不自動設定。**提案只列出不在 `REP0RTER_GITHUB_REPOS` 內的 repository，
-  由人審核後手動加入。加入後下一輪提案消失並送出 recovery 通知。
+- **不自動設定。**提案只列出不在 `REP0RTER_GITHUB_REPOS` 內、也不在排除台帳內的
+  repository，由人審核後手動加入。加入後下一輪提案消失並送出 recovery 通知。
+- **可以記錄「不納入」。**`exclusion add --scope container --subject github:owner/repo`
+  同時讓該 repo 不被採集也不再被提案，理由寫在 `--reason`。不另開第二份清單。
 - **失敗被隔離。**發現用的是未文書端點，壞掉是預期內的事。任何失敗都不會影響
   備份、還原演練或健康檢查，`maintenance.json` 的紀錄也不會因此遺失。
 - **不佔用採集預算。**發現與 `collect_all` 的每輪／每日 request budget 完全分離。

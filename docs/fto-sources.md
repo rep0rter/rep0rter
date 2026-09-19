@@ -3,6 +3,8 @@
 透過 GitHub 官方 API 逐一核對後啟用的公開 repository。允許清單永遠是明列的；
 來源合格不等於可以發布，編輯政策與證據契約照常適用。
 
+第二批來自 Code for Japan 的公開 Notion 入口，並已於 2026-09-19 取得對方同意。
+
 ```dotenv
 REP0RTER_GITHUB_REPOS=codeforjapan/mapprint,Code-for-Korea/where-is-my-bus,codeforjapan/decidim-cfj,nawashiro/chiyoda_city_main_facilities,codeforjapan/BirdXplorer,codeforjapan/JibungotoPlanet,nawashiro/kazaguruma-transit,nishio/plurality-japanese,ocftw/open-star-ter-village,codeforjapan/Gussuri
 REP0RTER_GITHUB_TOKEN=
@@ -55,6 +57,20 @@ REP0RTER_COLLECT_DAILY_BUDGET=1800
 | kazutoshifurukawa/jukatsuflex-frontend | 2023-10-30 | 休眠 |
 | stats-gender-gap-jp/stats-gender-gap-jp | 2023-10-16 | 休眠 |
 | ayuki-joto/nekonige | 2023-01-30 | 休眠 |
+
+### 如何記錄「看過但不納入」
+
+判斷某個候選不適合時，寫進既有的排除台帳，提案就不會再重複提出：
+
+```sh
+python -m rep0rter exclusion add --scope container \
+  --subject github:owner/repository --reason '為什麼不納入'
+```
+
+`github.collect` 本來就會檢查 `container_allowed`，所以同一筆紀錄同時代表
+「不採集」與「不再提案」。刻意不另開一份清單：不採集的對象只有一個地方可查，
+理由欄位負責區分「當事人要求退出」與「我們判斷不在範圍內」。需要重新評估時用
+`exclusion remove` 取消。
 
 `c-3lab/opendata-pdf-to-csv` 只出現在入口的子頁面，基於下節的理由沒有被掃到；
 如果要納入，請以人工方式加入清單，不要為此開啟子頁面巡迴。

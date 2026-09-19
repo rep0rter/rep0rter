@@ -449,7 +449,7 @@ def redact(store, event_ids, reason='withdrawn'):
 
 
 def register_commands(sub):
-    p=sub.add_parser('exclusion',help='manage stable-ID optouts; verify requester identity before adding')
+    p=sub.add_parser('exclusion',help='manage stable-ID optouts and editorial source exclusions; verify requester identity before adding an optout')
     p.add_argument('action',choices=('add','list','remove'))
     p.add_argument('--scope',choices=SCOPES)
     p.add_argument('--subject')

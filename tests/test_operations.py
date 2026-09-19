@@ -287,3 +287,32 @@ def test_no_portal_configured_means_no_discovery(operational_db, tmp_path, monke
     monkeypatch.delenv('REP0RTER_NOTION_PORTAL', raising=False)
     result = ops.maintenance(Config(data_dir=tmp_path), now=200000)
     assert result['proposals']['issues'] == {} and result['proposals']['portal'] is None
+
+
+def test_an_excluded_repository_is_not_proposed_again(operational_db, tmp_path, monkeypatch):
+    """Declining is recorded once in the exclusion ledger, not nagged weekly."""
+    from rep0rter import policy
+    from rep0rter.store import Store
+    cfg = _proposal_cfg(tmp_path, monkeypatch)
+    monkeypatch.delenv('REP0RTER_GITHUB_REPOS', raising=False)
+    monkeypatch.setattr('rep0rter.notion_discovery.discover',
+                        lambda *a, **k: {'complete': True, 'candidates': [
+                            {'repository': 'example/wanted'}, {'repository': 'example/Declined'}]})
+    monkeypatch.setattr('rep0rter.collectors.slack_archive.make_session', lambda: None)
+    assert ops.source_proposals(cfg, now=1000)['candidates'] == ['example/wanted', 'example/Declined']
+
+    with Store(cfg.db_path) as store:
+        policy.add_rule(store, 'container', 'github:example/declined', reason='Out of scope for civic coverage')
+    report = ops.source_proposals(cfg, now=1000)
+    assert report['candidates'] == ['example/wanted']
+    assert report['declined'] == ['example/Declined']
+    assert 'example/Declined' not in report['issues']['source_candidates']
+
+
+def test_proposals_survive_a_database_without_a_policy_table(tmp_path, monkeypatch):
+    cfg = _proposal_cfg(tmp_path, monkeypatch)
+    monkeypatch.delenv('REP0RTER_GITHUB_REPOS', raising=False)
+    monkeypatch.setattr('rep0rter.notion_discovery.discover',
+                        lambda *a, **k: {'complete': True, 'candidates': [{'repository': 'example/fresh'}]})
+    monkeypatch.setattr('rep0rter.collectors.slack_archive.make_session', lambda: None)
+    assert ops.source_proposals(cfg, now=1000)['candidates'] == ['example/fresh']
