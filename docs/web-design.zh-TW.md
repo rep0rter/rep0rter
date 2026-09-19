@@ -90,3 +90,13 @@ macOS 本機原有圖卡測試的字型預設路徑不存在。本次透過暫�
 ## 橫式圖卡本機驗證
 
 執行 `python scripts/verify-image-viewer.py --url http://127.0.0.1:8765/index.html?lang=ZH`（需選用的 Playwright 與 Chromium）可檢查 320×568、390×844、667×375、768×1024、1440×900 的雙主題浮層。涵蓋尺寸、圖片與下載同步、焦點、連續開關、觸控取消、背景位置、長說明捲動、減少動態、載入失敗恢復及四語切換。這是 Chromium 模擬檢查，未取代實體 iOS／Android 的雙指操作驗證。
+
+## 5. 登入與帳號介面
+
+登入入口改用原頁 `dialog`，共用 `_login_card.html`；`/auth/sign-in` 提供無 JavaScript 時仍可操作的獨立頁。介面提供繁中、英文、日文、韓文，配色沿用主站 tokens。登入視窗支援 Escape、外側點擊、焦點返回與載入失敗重試，顯示期間停止背景捲動。帳號頁的共用版型為 `_account_base.html`，並在 CSS 前載入既有 `theme.js`，同步手動偏好與裝置配色。
+
+Google 驗證保留 CSRF、OIDC state／nonce、PKCE 與可撤銷工作階段。回程限制為首頁、文章、來源及標籤閱讀頁，保留原網址的語言、搜尋條件及錨點。瀏覽器可以使用 sessionStorage 時，等待初始語言載入完成後再恢復閱讀高度；儲存受阻仍可登入及返回原網址。從投稿或專案管理開始登入時，保留原本目的地與投稿標籤。Google 登入本身仍需前往 Google 完成驗證。
+
+前端維護 `client/src/account.ts`，以 `npm --prefix client run build` 產生提交的 `account.js`；`login.css` 管理登入卡片／浮層，`account.css` 管理投稿與專案表單。新增靜態資產由既有建站流程一併產出。帳號頁 CSP 只允許指定的主題腳本，不開放行內腳本。
+
+`python scripts/verify-login-ui.py --url http://127.0.0.1:8766` 可檢查有登入設定、四語資料的本機預覽。檢查不提交 Google 表單，涵蓋 320／390／768／1440px、深淺色、鍵盤、閱讀位置、延遲語言載入、圖片浮層、重試、儲存受阻與停用 JavaScript。真實 Google 帳號登入及實體手機仍需另行驗收。

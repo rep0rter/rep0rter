@@ -1,21 +1,10 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light dark">
-  <meta name="robots" content="noindex">
-  <title>Your project news · {{ cfg.site_title }}</title>
-  <link rel="stylesheet" href="/style.css">
-</head>
-<body class="account-page">
-<header>
-  <div class="masthead"><a class="wordmark" href="/">{{ cfg.site_title }}</a><span class="edition">YOUR PROJECT NEWSROOM</span></div>
-  <h1>You run the project. Your news runs here.</h1>
-  <p class="tagline">Write a template once. Publish news automatically when your project has something new to share.</p>
-  <nav class="links"><a href="/">← Community feed</a><a href="{{ url_for('submit') }}">Write a one-off post</a><a href="{{ url_for('managed_project') }}">Add a project</a></nav>
-</header>
-<main>
+{% extends "_account_base.html" %}
+{% block page_title %}Your project news{% endblock %}
+{% block edition %}YOUR PROJECT NEWSROOM{% endblock %}
+{% block heading %}You run the project. Your news runs here.{% endblock %}
+{% block intro %}Write a template once. Publish news automatically when your project has something new to share.{% endblock %}
+{% block navigation %}<a href="/">← Community feed</a><a href="{{ url_for('submit') }}">Write a one-off post</a><a href="{{ url_for('managed_project') }}">Add a project</a>{% endblock %}
+{% block content %}
   <div class="account-bar"><span>Signed in as {{ owner.name }}</span><form action="{{ url_for('logout') }}" method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="quiet-button">Sign out</button></form></div>
   {% if error %}<p class="form-notice" role="alert">{{ error }}</p>{% endif %}
   {% if saved_notice %}<p class="form-notice" role="status">Project settings saved. {{ 'Automatic publishing is enabled for new updates.' if values.get('enabled') else 'Automatic publishing is paused.' }}</p>{% endif %}
@@ -45,7 +34,5 @@
       <div class="form-actions"><button type="submit" name="action" value="preview" class="quiet-button">Preview with an example</button><button type="submit" name="action" value="save">Save project settings</button></div>
     </form>
   </article>
-</main>
-<footer><p>Project news is published from your template, with a link to each original update.</p></footer>
-</body>
-</html>
+{% endblock %}
+{% block footer %}Project news is published from your template, with a link to each original update.{% endblock %}

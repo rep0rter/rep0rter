@@ -1,0 +1,32 @@
+{% import '_ui.html' as ui %}
+<section class="login-card" data-auth-card lang="{{ account_language }}" aria-labelledby="login-title">
+  <span class="login-mark" aria-hidden="true">{{ ui.icon('chat') }}</span>
+  <p class="eyebrow">{{ copy.login_welcome }}</p>
+  <h1 id="login-title">{{ copy.login_signed_in if owner else copy.login_title }}</h1>
+  <p class="login-intro">{{ copy.login_next if owner else copy.login_intro }}</p>
+  {% if error %}<p class="login-notice" role="alert">{{ error }}</p>{% endif %}
+  {% if not cfg.google_login_enabled %}
+    <p class="login-notice" role="status">{{ copy.login_unavailable }}. {{ copy.login_later }}</p>
+  {% elif owner %}
+    <p class="login-identity">{{ owner.name }}</p>
+    <div class="login-actions">
+      <a class="button button-primary" href="/write">{{ copy.write_story }} {{ ui.icon('arrow') }}</a>
+      <a class="button button-secondary" href="/projects">{{ copy.login_projects }}</a>
+    </div>
+    <form action="{{ url_for('logout') }}" method="post" class="login-logout">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="login-text-button" type="submit">{{ copy.login_logout }}</button>
+    </form>
+  {% else %}
+    <form action="{{ url_for('login') }}" method="post" data-login-form>
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="destination" value="{{ destination }}">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <input type="hidden" name="ui_language" value="{{ ui_language }}">
+      {% if login_tag %}<input type="hidden" name="tag" value="{{ login_tag }}">{% endif %}
+      <button class="login-google" type="submit"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M21.6 12.2c0-.7-.1-1.4-.2-2.1H12v4h5.4a4.7 4.7 0 0 1-2 3.1 6 6 0 1 1-3.4-11c1.5 0 2.8.5 3.8 1.5l2.9-2.8A10 10 0 1 0 12 22c5.8 0 9.6-4.1 9.6-9.8Z"/></svg>{{ copy.login_google }}</button>
+    </form>
+    <p class="login-privacy">{{ ui.icon('check') }}<span>{{ copy.login_privacy }}</span></p>
+  {% endif %}
+  <a class="login-read" href="{{ return_to }}" data-login-dismiss>{{ ui.icon('back') }} {{ copy.login_read }}</a>
+</section>

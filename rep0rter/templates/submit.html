@@ -1,35 +1,12 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light dark">
-  <meta name="robots" content="noindex">
-  <title>Post your project · {{ cfg.site_title }}</title>
-  <link rel="stylesheet" href="/style.css">
-</head>
-<body class="account-page">
-<header>
-  <div class="masthead"><a class="wordmark" href="/">{{ cfg.site_title }}</a><span class="edition">COMMUNITY PROJECTS</span></div>
-  <h1>Share what you’re building.</h1>
-  <p class="tagline">Post your civic-tech project to the rep0rter community feed.</p>
-  <nav class="links"><a href="/">← Back to the feed</a><a href="/write">Write a story</a><a href="{{ url_for('managed_project') }}">Manage automatic project news</a></nav>
-</header>
-<main>
+{% extends "_account_base.html" %}
+{% block page_title %}Post your project{% endblock %}
+{% block edition %}COMMUNITY PROJECTS{% endblock %}
+{% block heading %}Share what you’re building.{% endblock %}
+{% block intro %}Post your civic-tech project to the rep0rter community feed.{% endblock %}
+{% block navigation %}<a href="/">← Back to the feed</a><a href="/write">Write a story</a><a href="{{ url_for('managed_project') }}">Manage automatic project news</a>{% endblock %}
+{% block content %}
 {% if error %}<p class="form-notice" role="alert">{{ error }}</p>{% endif %}
-{% if not cfg.google_login_enabled %}
-  <article><h2>Project posting is not available yet</h2><p>Google sign-in is being set up. Please check back soon.</p></article>
-{% elif not owner %}
-  <article class="project-form">
-    <h2>Sign in to post your project</h2>
-    <p>Use your Google account to publish a project you own or represent.</p>
-    <form action="{{ url_for('login') }}" method="post">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <button class="google-login" type="submit">Sign in with Google</button>
-    </form>
-    <p class="form-help">We use Google to verify your account. Your email stays private. You choose the name shown on your post.</p>
-  </article>
-{% else %}
+
   <div class="account-bar"><span>Signed in as {{ owner.name }}</span>
     <form action="{{ url_for('logout') }}" method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="quiet-button">Sign out</button></form>
   </div>
@@ -55,8 +32,5 @@
       <button type="submit">{{ 'Retry publishing saved project' if saved_post else 'Publish project to the feed' }}</button>
     </form>
   </article>
-{% endif %}
-</main>
-<footer><p>Community projects, shared by the people building them.</p></footer>
-</body>
-</html>
+{% endblock %}
+{% block footer %}Community projects, shared by the people building them.{% endblock %}
