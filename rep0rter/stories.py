@@ -106,7 +106,26 @@ def anchor_id(event):
 
 def _assign(store,event,now):
     prior=store.conn.execute('SELECT story_id FROM story_events WHERE event_id=?',(event.id,)).fetchone()
-    if prior: return prior['story_id']
+    if prior:
+        story = prior['story_id']
+        anchor = anchor_id(event)
+        # Older imports may have published a share before preserving its original.
+        # Attach the now-verified original to that existing history, retaining post IDs.
+        original = store.get_event(anchor) if anchor != event.id else None
+        if original and event_allowed(store, original) and not automated(original):
+            membership = store.conn.execute('SELECT story_id FROM story_events WHERE event_id=?', (anchor,)).fetchone()
+            other_story = membership['story_id'] if membership else None
+            # Never silently rewrite two independently published revision histories.
+            conflicting_history = other_story and other_story != story and store.conn.execute(
+                'SELECT 1 FROM story_posts WHERE story_id=?', (other_story,)).fetchone()
+            if not conflicting_history:
+                if other_story and other_story != story:
+                    store.conn.execute('UPDATE story_events SET story_id=? WHERE story_id=?', (story, other_story))
+                    store.conn.execute('DELETE FROM stories WHERE id=?', (other_story,))
+                store.conn.execute('INSERT OR IGNORE INTO story_events VALUES(?,?,?,?)',
+                                   (anchor, story, fingerprint(original), now))
+                store.conn.execute('UPDATE stories SET canonical_event_id=? WHERE id=?', (anchor, story))
+        return story
     anchor=anchor_id(event)
     original=store.conn.execute('SELECT story_id FROM story_events WHERE event_id=?',(anchor,)).fetchone()
     story=original['story_id'] if original else hashlib.sha256(('event:'+anchor).encode()).hexdigest()[:24]
@@ -181,14 +200,36 @@ def expand_candidates(store,cfg,picked,now):
     bootstrap(store,now)
     picked=list(picked)
     picked_ids={c.event.id for c in picked}
-    for row in store.conn.execute('''SELECT e.*,se.fingerprint AS prior_fingerprint FROM events e
+    recovered = []
+    for row in store.conn.execute('''SELECT e.*,se.fingerprint AS prior_fingerprint,p.id AS prior_post_id FROM events e
         JOIN posts p ON p.event_id=e.id JOIN story_events se ON se.event_id=e.id
         WHERE e.kind!='story_update' ''').fetchall():
         event=store._row_to_event(row)
-        if (event.id not in picked_ids and event_allowed(store,event) and fingerprint(event)!=row['prior_fingerprint']
-                and UPDATE.search(event.text)):
-            picked.append(Candidate(event,store.get_container(event.container_id),max(6,cfg.score_threshold),
-                reasons=['material_source_correction'],plain_text=to_plain(event.text),user_names=store.user_names(event.source)))
+        anchor = anchor_id(event)
+        recovered_original = store.get_event(anchor) if anchor != event.id else event
+        restored_context = (row['prior_fingerprint'] == hashlib.sha256(b'').hexdigest()
+                            and recovered_original is not None
+                            and event_allowed(store, recovered_original)
+                            and not automated(recovered_original)
+                            and len(_body(recovered_original)) >= 12)
+        if ((event.id not in picked_ids or restored_context) and event_allowed(store,event) and fingerprint(event)!=row['prior_fingerprint']
+                and (UPDATE.search(event.text) or restored_context)):
+            candidate = Candidate(event,store.get_container(event.container_id),max(6,cfg.score_threshold),
+                reasons=['recovered_source_context' if restored_context else 'material_source_correction'],
+                plain_text=to_plain(event.text),user_names=store.user_names(event.source))
+            if restored_context:
+                candidate.event = replace(event, meta={**event.meta, 'source_context_recovered': True,
+                                                       'recovery_previous_post_ids': [row['prior_post_id']]})
+                # Reconcile before ordinary candidates can independently publish the original.
+                recovered_story = assign(store, candidate.event, now)
+                canonical_membership = store.conn.execute('SELECT story_id FROM story_events WHERE event_id=?', (anchor,)).fetchone()
+                if canonical_membership and canonical_membership['story_id'] != recovered_story:
+                    # Two existing published histories need an explicit editorial reconciliation.
+                    continue
+                recovered.append(candidate)
+            else:
+                picked.append(candidate)
+    picked = recovered + picked
     result=[]; seen=set()
     for c in picked:
         if not event_allowed(store,c.event) or automated(c.event): continue
@@ -205,7 +246,8 @@ def expand_candidates(store,cfg,picked,now):
             if base.id != canonical_id:
                 previous_urls=set().union(*(urls(source) for source in context if source.id!=base.id))
                 if not CORRECTION.search(base.text) and not (urls(base)-previous_urls): continue
-            if store.conn.execute('SELECT 1 FROM story_posts WHERE story_id=? AND fingerprint=?',(story,digest)).fetchone() or not UPDATE.search(base.text): continue
+            restored_context = bool(c.event.meta.get('source_context_recovered'))
+            if store.conn.execute('SELECT 1 FROM story_posts WHERE story_id=? AND fingerprint=?',(story,digest)).fetchone() or not (UPDATE.search(base.text) or restored_context): continue
             # A previously observed unchanged crosspost cannot roll a corrected story back.
             prior=store.conn.execute('SELECT fingerprint FROM story_events WHERE event_id=?',(base.id,)).fetchone()
             already_covered=any(base.id in json.loads(row['covered_ids']) for row in store.conn.execute('SELECT covered_ids FROM story_posts WHERE story_id=?',(story,)))
@@ -213,8 +255,12 @@ def expand_candidates(store,cfg,picked,now):
             revision=existing['revision']+1
             canonical=store.get_event(canonical_id)
             evidence=[canonical,base] if canonical and canonical.id!=base.id and event_allowed(store,canonical) else [base]
+            if restored_context and c.event.id != base.id:
+                evidence.append(c.event)
+            recovery_meta = {key: c.event.meta[key] for key in ('source_context_recovered', 'recovery_previous_post_ids')
+                             if key in c.event.meta}
             c.event=replace(base,id=f'story-update:{story}:{digest[:24]}',kind='story_update',parent_id=None,
-                meta={**base.meta,'references':[{'event_id':e.id,'container_id':e.container_id,'author_id':e.author_id,'public':True} for e in evidence]})
+                meta={**base.meta, **recovery_meta,'references':[{'event_id':e.id,'container_id':e.container_id,'author_id':e.author_id,'public':True} for e in evidence]})
             c.evidence_events=evidence
         else:
             revision=1

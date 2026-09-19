@@ -99,11 +99,16 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
                 "source_path": source_path,
             })
     now = datetime.now(timezone.utc).timestamp()
+    health = json.loads(store.get_kv('collector_health', '{}'))
+    last_healthy_at = health.get('last_healthy_at')
+    collection_complete = bool(health.get('healthy') and last_healthy_at
+                               and 0 <= now - last_healthy_at <= 9000)
     ctx = {"cfg": cfg, "languages": LANGUAGES, "page_name": page_name,
            "generated_local": _fmt_local(now), "generated_rfc822": _fmt_rfc822(now),
            "event_count": store.event_count(), "post_count": store.post_count(),
            "branding": _branding(cfg),
-           "last_healthy": _fmt_local(health['last_healthy_at']) if (health := json.loads(store.get_kv('collector_health','{}'))).get('last_healthy_at') else None}
+           "last_healthy": _fmt_local(last_healthy_at) if last_healthy_at else None,
+           "collection_complete": collection_complete}
     template = env.get_template("index.html")
 
     def render_page(language: str, page_items: list[dict], relative_path: str, prefix: str, title: str = "", detail=False):
@@ -113,7 +118,7 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
         canonical = cfg.site_url.rstrip("/") + "/" + relative_path
         context = {**ctx, "language": language, "copy": COPY[language], "items": page_items, "days": days,
                    "prefix": prefix, "canonical": canonical, "page_title": title or COPY[language]["title"],
-                   "description": page_items[0]["summary"] if detail else COPY[language]["intro"],
+                   "description": page_items[0]["page_description"] if detail else COPY[language]["intro"],
                    "og_image": page_items[0]["image"] if detail else ctx["branding"].get("social", ""),
                    "detail": detail, "feed": feed_name(language),
                    "stats": COPY[language]["stats"].format(events=ctx["event_count"], posts=ctx["post_count"])}
@@ -123,15 +128,24 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
     for asset in ("style.css", "language.js"):
         _write(cfg.site_dir / asset, env.get_template(asset).render())
     root_outputs = []
+    visible_posts = {item['post'].id: item['post'] for item in items}
     for language in LANGUAGES:
         localized = []
         for item in items:
             headline, summary, translated = post_text(item["post"], language)
+            newer = [version for version in item['story']['versions']
+                     if version['revision'] > item['story']['revision'] and version['id'] in visible_posts]
+            latest = max(newer, key=lambda version: version['revision']) if newer else None
+            latest_path = f"posts/{latest['id']}/{page_name(language)}" if latest else None
+            latest_summary = post_text(visible_posts[latest['id']], language)[1] if latest else None
             localized.append({**item, "headline": headline, "summary": summary, "translated": translated,
+                              "latest_path": latest_path,
+                              "page_description": COPY[language]['superseded'] + ' ' + latest_summary if latest else summary,
                               "story_path": f"posts/{item['post'].id}/{page_name(language)}"})
         sources = {}
         for item in localized:
-            render_page(language, [item], item["story_path"], "../../", item["headline"], detail=True)
+            title = COPY[language]['previous_report'] + ' · ' + item['headline'] if item['latest_path'] else item['headline']
+            render_page(language, [item], item["story_path"], "../../", title, detail=True)
             sources.setdefault(item["source_path"], []).append(item)
         for source_path, source_items in sources.items():
             render_page(language, source_items, source_path + page_name(language), "../../", source_items[0]["source_label"])

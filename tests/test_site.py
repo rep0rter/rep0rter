@@ -1,6 +1,8 @@
 """Offline regressions for localized feeds, durable URLs, and generated assets."""
 
 import hashlib
+import json
+import time
 from dataclasses import replace
 from urllib.parse import unquote, urljoin, urlsplit
 from xml.etree import ElementTree
@@ -165,6 +167,91 @@ def test_failed_generation_keeps_complete_previous_release(published_site,monkey
     assert cfg.site_dir.resolve()==old_target
     assert (cfg.site_dir/'index.html').read_bytes()==old_page
     assert len(list((cfg.data_dir/'.site-releases').iterdir()))==1
+
+
+@pytest.mark.parametrize('state', ['unknown', 'partial', 'stale', 'complete'])
+def test_source_freshness_is_not_confused_with_site_generation(published_site, state):
+    from rep0rter.i18n import COPY
+    store, cfg, _, _, _ = published_site
+    last_complete = time.time() - (10000 if state == 'stale' else 60)
+    health = {} if state == 'unknown' else {
+        'healthy': state != 'partial', 'last_healthy_at': last_complete,
+    }
+    store.set_kv('collector_health', json.dumps(health))
+    site.build(store, cfg)
+    for language, (page, _) in EDITIONS.items():
+        doc = html(cfg.site_dir / page)
+        notice = doc.select_one('.source-update-status')
+        if state == 'complete':
+            assert notice is None
+        else:
+            assert notice.get_text() == COPY[language]['collection_delayed']
+        footer = doc.footer.get_text()
+        assert COPY[language]['updated'] in footer
+        if state == 'unknown':
+            assert COPY[language]['healthy'] not in footer
+        else:
+            assert COPY[language]['healthy'] + ' ' + site._fmt_local(last_complete) in footer
+
+
+def link_revisions(store, entries):
+    from rep0rter import stories
+    stories.ensure(store)
+    old, original = entries[0]
+    with store.conn:
+        store.conn.execute('INSERT INTO stories VALUES(?,?,?)', ('test-revisions', 1, original.id))
+        for revision, (post, event) in enumerate(entries, 1):
+            event = replace(event, text=event.text + f' Revision {revision}')
+            store.upsert_events([event])
+            store.conn.execute('INSERT INTO story_events VALUES(?,?,?,?)',
+                               (event.id, 'test-revisions', stories.fingerprint(event), 1))
+            store.conn.execute('INSERT INTO story_posts VALUES(?,?,?,?,?,?)',
+                               ('test-revisions', revision, post.id, stories.fingerprint(event), json.dumps([event.id]), post.published_at))
+
+
+def test_superseded_pages_cards_and_feeds_link_latest_without_repeating_stale_og(published_site):
+    from rep0rter.i18n import COPY
+    store, cfg, _, entries, _ = published_site
+    link_revisions(store, entries)
+    old, latest = entries[0][0], entries[-1][0]
+    site.build(store, cfg)
+    for language, (page, feed) in EDITIONS.items():
+        old_path = cfg.site_dir / 'posts' / str(old.id) / page
+        old_url = cfg.site_url + f'/posts/{old.id}/{page}'
+        expected = cfg.site_url + f'/posts/{latest.id}/{page}'
+        doc = html(old_path)
+        notice = doc.select_one('.revision-notice')
+        assert COPY[language]['superseded'] in notice.get_text()
+        assert urljoin(old_url, notice.a['href']) == expected
+        assert not doc.select_one('details.previous-summary').has_attr('open')
+        assert doc.select_one('details.previous-summary .summary').get_text() == old.translations[language]['summary']
+        assert COPY[language]['previous_report'] in doc.title.get_text()
+        for node in doc.select('meta[name="description"], meta[property="og:description"]'):
+            assert COPY[language]['superseded'] in node['content']
+            assert latest.translations[language]['summary'] in node['content']
+            assert old.translations[language]['summary'] not in node['content']
+        assert not html(cfg.site_dir / 'posts' / str(latest.id) / page).select_one('.revision-notice')
+        old_card = html(cfg.site_dir / page).find('article', id=str(old.id))
+        assert old_card.select_one('.revision-notice a')['href'] == f'posts/{latest.id}/{page}'
+        items = ElementTree.parse(cfg.site_dir / feed).findall('channel/item')
+        assert {item.findtext('guid') for item in items} == {str(old.id), str(latest.id)}
+        description = next(item.findtext('description') for item in items if item.findtext('guid') == str(old.id))
+        assert description.startswith(COPY[language]['superseded'])
+        assert expected in description
+
+
+def test_latest_revision_link_does_not_point_to_withdrawn_content(published_site):
+    from rep0rter.policy import add_rule, redact
+    store, cfg, _, entries, _ = published_site
+    link_revisions(store, entries)
+    old, latest_event = entries[0][0], entries[-1][1]
+    add_rule(store, 'event', latest_event.id)
+    redact(store, [latest_event.id])
+    site.build(store, cfg)
+    for _, (page, _) in EDITIONS.items():
+        old_doc = html(cfg.site_dir / 'posts' / str(old.id) / page)
+        assert not old_doc.select_one('.revision-notice')
+        assert old_doc.select_one('.summary')
 
 
 def test_withdrawal_removes_all_editions_feeds_assets_and_prior_releases(published_site):

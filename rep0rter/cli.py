@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
+import hashlib
 import logging
 import sys
 import time
@@ -17,7 +19,7 @@ from .i18n import LANGUAGES
 from .llm import LLM
 from .publishers import site as site_publisher
 from .publishers import telegram
-from .reporter import draft_posts, translate_post
+from .reporter import draft_posts, missing_languages, translate_post
 from .store import Store
 
 log = logging.getLogger("rep0rter")
@@ -45,6 +47,8 @@ def cmd_report(cfg: Config, args) -> int:
             print(f"dry run: {len(drafts)} item(s) would be posted")
             return 0
         prepare_posts(cfg, store, drafts)
+        if not args.no_llm:
+            _backfill_translations(store, cfg)
         site_publisher.build(store, cfg)
         deliver_pending(cfg, store)
         from .retractions import process
@@ -74,20 +78,82 @@ def cmd_translate(cfg: Config, args) -> int:
         _reconcile_exclusions(store,cfg)
         llm = LLM(cfg)
         languages = args.language or list(LANGUAGES)
-        for post, _, _ in store.recent_posts(limit=-1):
-            if all(language in post.translations for language in languages):
+        for post, event, _ in store.recent_posts(limit=-1):
+            if not missing_languages(post, languages):
                 continue
             if attempted >= args.limit:
                 break
             attempted += 1
-            if translate_post(post, llm, languages=languages):
-                store.update_post_translations(post)
-                updated += 1
-            if not all(language in post.translations for language in languages):
+            if translate_post(post, llm, languages=languages, source_ts=event.ts):
+                updated += int(store.update_post_translations(post))
+            if missing_languages(post, languages):
                 incomplete += 1
+            elif not missing_languages(post):
+                with store.conn:
+                    store.conn.execute('DELETE FROM kv WHERE key=?', (f'translation_retry:{post.id}',))
         site_publisher.build(store, cfg)
     print(f"translation: attempted {attempted}, updated {updated}, incomplete {incomplete}")
     return 1 if incomplete else 0
+
+
+def _backfill_translations(store: Store, cfg: Config, limit: int = 3) -> dict:
+    """Repair saved editions without preparing any new publications or deliveries."""
+    from .policy import event_allowed
+    if not cfg.llm_enabled:
+        return {'attempted': 0, 'updated': 0, 'incomplete': 0}
+    now = time.time()
+    pending = []
+    review_required = 0
+    for post, _, _ in store.recent_posts(limit=-1):
+        if missing_languages(post):
+            state = json.loads(store.get_kv(f'translation_retry:{post.id}', '{}'))
+            fingerprint = hashlib.sha256(json.dumps([post.headline, post.summary]).encode()).hexdigest()
+            if state.get('source_hash') != fingerprint:
+                state = {}
+            if int(state.get('attempts', 0)) >= 6:
+                review_required += 1
+                continue
+            pending.append((float(state.get('next_attempt_at', 0)), post.published_at, post, fingerprint))
+    pending.sort(key=lambda item: (item[0], item[1], item[2].id))
+    report = {'attempted': 0, 'updated': 0, 'incomplete': len(pending) + review_required,
+              'review_required': review_required, 'checked_at': now}
+    llm = None
+    for due, _, post, fingerprint in pending:
+        if report['attempted'] >= limit or due > now:
+            break
+        key = f'translation_retry:{post.id}'
+        # Reserve a bounded retry before the model call; another run or a crash
+        # must not repeatedly spend on the same failing edition.
+        with store.conn:
+            store.conn.execute('BEGIN IMMEDIATE')
+            event = store.get_event(post.event_id)
+            if not event or not event_allowed(store, event):
+                continue
+            state = json.loads(store.get_kv(key, '{}'))
+            if state.get('source_hash') != fingerprint:
+                state = {}
+            if float(state.get('next_attempt_at', 0)) > now:
+                continue
+            attempts = int(state.get('attempts', 0)) + 1
+            state = {'attempts': attempts, 'last_attempt_at': now, 'source_hash': fingerprint,
+                     'next_attempt_at': now + min(86400, 3600 * 2 ** min(attempts - 1, 5))}
+            store.conn.execute('INSERT INTO kv(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value',
+                               (key, json.dumps(state)))
+        report['attempted'] += 1
+        # Six calls at most, each with a 45-second timeout. Persistent failures
+        # require an explicit `translate` run after six scheduled attempts.
+        llm = llm or LLM(replace(cfg, ai_timeout_seconds=min(cfg.ai_timeout_seconds, 45)))
+        if translate_post(post, llm, source_ts=event.ts):
+            report['updated'] += int(store.update_post_translations(post))
+        if not missing_languages(post):
+            report['incomplete'] -= 1
+            with store.conn:
+                store.conn.execute('DELETE FROM kv WHERE key=?', (key,))
+    store.set_kv('translation_backfill', json.dumps(report))
+    if report['attempted']:
+        log.info('saved translation recovery: attempted %d, updated %d, incomplete %d',
+                 report['attempted'], report['updated'], report['incomplete'])
+    return report
 
 
 def cmd_outbox(cfg: Config, args) -> int:
@@ -133,6 +199,8 @@ def run_once(cfg: Config, dry_run: bool = False, no_llm: bool = False, days: int
             else:
                 prepare_posts(cfg, store, drafts)
                 posted = len(drafts)
+                if not no_llm:
+                    _backfill_translations(store, cfg)
                 site_publisher.build(store, cfg)
                 deliver_pending(cfg, store)
                 from .retractions import process
@@ -148,7 +216,9 @@ def run_once(cfg: Config, dry_run: bool = False, no_llm: bool = False, days: int
 def cmd_run(cfg: Config, args) -> int:
     collected, posted = run_once(cfg, dry_run=args.dry_run, no_llm=args.no_llm, days=args.days)
     print(f"run finished: collected {collected}, posted {posted}")
-    return 0
+    with Store(cfg.db_path) as store:
+        health = json.loads(store.get_kv('collector_health', '{}'))
+    return 1 if health.get('healthy') is False else 0
 
 
 def cmd_loop(cfg: Config, args) -> int:

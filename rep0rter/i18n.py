@@ -70,9 +70,25 @@ COPY = {
 }
 
 for _language, _values in {
-    'zh-TW': ('報導發布','修訂','相關來源','最後正常採集（台北）','這篇報導已撤回','內容已移除。第三方訂閱器與轉寄的副本可能仍存在。'),
-    'ko': ('소식 게시','수정','관련 출처','마지막 정상 수집 (타이베이)','이 소식은 철회되었습니다','내용이 삭제되었습니다. 외부 구독기나 전달된 사본은 남아 있을 수 있습니다.'),
-    'ja': ('記事公開','改訂','関連情報源','最終正常収集（台北）','この記事は撤回されました','内容は削除されました。外部の購読サービスや転送されたコピーは残る場合があります。'),
-    'en': ('Reported','Revision','Related sources','Last healthy collection (Taipei)','This story has been withdrawn','The content has been removed. Copies in third-party readers and forwarded messages may remain.'),
+    'zh-TW': ('報導發布','修訂','相關來源','來源最後完整更新（台北）','這篇報導已撤回','內容已移除。第三方訂閱器與轉寄的副本可能仍存在。'),
+    'ko': ('소식 게시','수정','관련 출처','모든 출처의 마지막 업데이트 (타이베이)','이 소식은 철회되었습니다','내용이 삭제되었습니다. 외부 구독기나 전달된 사본은 남아 있을 수 있습니다.'),
+    'ja': ('記事公開','改訂','関連情報源','全情報源の最終更新（台北）','この記事は撤回されました','内容は削除されました。外部の購読サービスや転送されたコピーは残る場合があります。'),
+    'en': ('Reported','Revision','Related sources','Sources last fully updated (Taipei)','This story has been withdrawn','The content has been removed. Copies in third-party readers and forwarded messages may remain.'),
 }.items():
     COPY[_language].update(zip(('reported','revision','sources','healthy','withdrawn','withdrawal_notice'),_values))
+
+for _language, _text in {
+    'zh-TW': '部分來源更新較慢，消息可能尚未收齊。',
+    'ko': '일부 출처의 업데이트가 늦어져 최신 소식이 아직 반영되지 않았을 수 있습니다.',
+    'ja': '一部の情報源の更新が遅れているため、最新のニュースがまだ反映されていない場合があります。',
+    'en': 'Some sources are updating slowly. Recent news may not appear yet.',
+}.items():
+    COPY[_language]['collection_delayed'] = _text
+
+for _language, _values in {
+    'zh-TW': ('這篇報導已有後續修訂，請以最新版本為準。', '閱讀最新報導', '舊版報導（已修訂）'),
+    'ko': ('이 소식은 수정되었습니다. 최신 내용을 확인해 주세요.', '최신 소식 읽기', '이전 소식 (수정됨)'),
+    'ja': ('この記事には改訂版があります。最新の内容をご確認ください。', '最新版を読む', '旧版の記事（改訂済み）'),
+    'en': ('This story has been revised. Please refer to the latest version.', 'Read the latest story', 'Previous report (superseded)'),
+}.items():
+    COPY[_language].update(zip(('superseded', 'latest_report', 'previous_report'), _values))

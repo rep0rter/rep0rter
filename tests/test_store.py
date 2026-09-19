@@ -93,3 +93,36 @@ def test_historical_events_resolve_latest_public_avatar_by_stable_author(tmp_pat
         store.upsert_events([old],now=100)
         store.upsert_events([recent],now=200)
         assert store.get_event(old.id).meta['avatar_url']=='https://public.example.test/portrait.png'
+
+
+def test_translation_result_cannot_restore_withdrawn_copy(tmp_path):
+    from rep0rter.policy import redact
+    with Store(tmp_path/'withdrawn.sqlite') as store:
+        store.upsert_events([event()])
+        store.add_post(Post(event().id, 200, 8, 'Title', 'Summary'))
+        stale, _, _ = store.recent_posts()[0]
+        redact(store, [event().id])
+        stale.translations['en'] = {'headline': 'Private title', 'summary': 'Private summary'}
+        assert store.update_post_translations(stale) is False
+        row = store.conn.execute('SELECT translations FROM posts WHERE id=?', (stale.id,)).fetchone()
+        assert row['translations'] == '{}'
+
+
+def test_translation_merge_preserves_concurrent_valid_editions_and_changed_copy(tmp_path):
+    with Store(tmp_path/'merge.sqlite') as store:
+        store.upsert_events([event()])
+        store.add_post(Post(event().id, 200, 8, 'Title', 'Summary'))
+        first, _, _ = store.recent_posts()[0]
+        stale, _, _ = store.recent_posts()[0]
+        first.translations['en'] = {'headline': 'First title', 'summary': 'First summary'}
+        assert store.update_post_translations(first)
+        stale.translations = {'en': {'headline': 'Later title', 'summary': 'Later summary'},
+                              'ja': {'headline': '見出し', 'summary': '本文'}}
+        assert store.update_post_translations(stale)
+        assert stale.translations['en'] == first.translations['en']
+        assert 'ja' in store.recent_posts()[0][0].translations
+        with store.conn:
+            store.conn.execute("UPDATE posts SET summary='Corrected copy'")
+        stale.translations['ko'] = {'headline': '제목', 'summary': '요약'}
+        assert not store.update_post_translations(stale)
+        assert 'ko' not in store.recent_posts()[0][0].translations

@@ -91,6 +91,10 @@ class BudgetSession:
         self.reserve = reserve
         self.headers = session.headers
 
+    @property
+    def remaining(self):
+        return max(0, self.limit - self.metrics.requests)
+
     def get(self, *args, **kwargs):
         if self.metrics.requests >= self.limit:
             raise BudgetExceeded('collector request budget exhausted')

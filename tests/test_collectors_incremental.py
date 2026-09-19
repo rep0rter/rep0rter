@@ -90,7 +90,7 @@ def test_collect_recovers_old_root_and_skips_unchanged_channel(tmp_path,monkeypa
         assert store.get_event('slack:C:500000').text=='Original root'
         state=read_state(store,'slack:C')
         assert state['last_complete_ts']=='900000' and state['gap'] is False
-        assert get.call_args_list[-1].kwargs['before']=='500000.000001'
+        assert get.call_args_list[-1].kwargs['before']=='500001'
         count=get.call_count
         assert inc.collect(store,session=Mock(headers={}))==0
         assert get.call_count==count
@@ -186,3 +186,170 @@ def test_slack_tombstone_root_is_not_refreshed(tmp_path,monkeypatch):
         store.conn.execute("INSERT INTO events(id,source,kind,container_id,ts,first_seen,last_seen,meta) VALUES(?,?,?,?,?,?,?,?)",('slack:C:900000','slack','message','slack:C',900000,900000,900000,'{}'));store.conn.commit()
         inc.collect(store,session=Mock(headers={}))
         assert get.call_count==1
+
+
+def _scheduled_channel(channel_id, now):
+    from datetime import datetime, timezone
+    return inc.api.ChannelRow(channel_id, channel_id, '', '', 10, 10,
+                              datetime.fromtimestamp(now, timezone.utc))
+
+
+def _budgeted_pages(monkeypatch, values, limit):
+    session = Mock(headers={})
+    session.get.side_effect = [Mock(content=b'{}', json=Mock(return_value={'messages': rows})) for rows in values]
+    wrapped = BudgetSession(session, Metrics(), limit=limit, interval=0)
+    monkeypatch.setattr(inc.api, '_get', lambda transport, url, **params: transport.get(url, params=params))
+    return session, wrapped
+
+
+def test_budget_gap_retries_next_run_without_upstream_error_backoff(tmp_path, monkeypatch):
+    from rep0rter.collectors.state import write_state
+    now = 1000000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    channel = _scheduled_channel('C', now)
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda session: [channel])
+    session, transport = _budgeted_pages(monkeypatch, [[{'ts': '800000'}]], 2)
+    with Store(tmp_path/'db') as store:
+        with store.conn:
+            write_state(store, 'slack:C', {'last_complete_ts': '900000', 'last_posted': now,
+                'total_messages': 10, 'last_refresh': now, 'last_reconciliation': now,
+                'last_attempt': now - 3580, 'gap': True, 'error': 'request budget exhausted'})
+        inc.collect(store, session=transport)
+        assert session.get.call_count == 1
+        assert read_state(store, 'slack:C')['gap'] is False
+        assert read_state(store, 'slack:health')['healthy']
+
+
+def test_unattempted_channels_keep_timestamps_and_catch_up_first(tmp_path, monkeypatch):
+    from rep0rter.collectors.state import write_state
+    now = 1000000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    channels = [_scheduled_channel('A', now), _scheduled_channel('B', now)]
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda session: channels)
+    _, transport = _budgeted_pages(monkeypatch, [[{'ts': '800000'}]], 1)
+    with Store(tmp_path/'db') as store:
+        with store.conn:
+            write_state(store, 'slack:B', {'last_complete_ts': '900000', 'last_attempt': now - 50000,
+                'last_refresh': now - 50000, 'last_reconciliation': now - 50000})
+        inc.collect(store, session=transport)
+        deferred = read_state(store, 'slack:B')
+        assert deferred['last_attempt'] == deferred['last_refresh'] == now - 50000
+        assert deferred['last_complete_ts'] == '900000'
+        assert deferred['gap']
+        assert not read_state(store, 'slack:health')['history_complete']
+        now += 60
+        session, transport = _budgeted_pages(monkeypatch, [[{'ts': '800000'}]], 1)
+        inc.collect(store, session=transport)
+        assert session.get.call_args.kwargs['params']['channel'] == 'B'
+        assert read_state(store, 'slack:B')['gap'] is False
+        assert read_state(store, 'slack:health')['healthy']
+
+
+def test_busy_channel_preserves_cursor_without_starving_quiet_channel(tmp_path, monkeypatch):
+    now = 1000000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    channels = [_scheduled_channel('A', now), _scheduled_channel('B', now)]
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda session: channels)
+    bot = lambda ts: {'ts': ts, 'text': 'automation', 'user': {'id': 'BOT', 'is_bot': True}}
+    session, transport = _budgeted_pages(monkeypatch,
+        [[bot('999900'), bot('999800')], [bot('999700'), bot('999600')], [{'ts': '800000'}]], 4)
+    with Store(tmp_path/'db') as store:
+        inc.collect(store, session=transport)
+        assert [call.kwargs['params']['channel'] for call in session.get.call_args_list] == ['A', 'A', 'B']
+        a, b = read_state(store, 'slack:A'), read_state(store, 'slack:B')
+        assert a['pending_before'] == '999600' and a['pending_high'] == '999900'
+        assert 'last_complete_ts' not in a and 'last_refresh' not in a
+        assert b['gap'] is False
+        assert read_state(store, 'slack:health')['failed_channels'] == 1
+        now += 60
+        session, transport = _budgeted_pages(monkeypatch, [[{'ts': '800000'}]], 2)
+        inc.collect(store, session=transport)
+        assert session.get.call_args.kwargs['params']['before'] == '999600'
+        assert read_state(store, 'slack:A')['last_complete_ts'] == '999900'
+        assert read_state(store, 'slack:health')['healthy']
+
+
+def test_fractional_bounds_do_not_skip_microsecond_neighbors(monkeypatch):
+    get = pages(monkeypatch, [
+        [{'ts': '1789571778.900005'}, {'ts': '1789571777.383129'}],
+        [{'ts': '1789571777.383129'}, {'ts': '1789571777.383128'}, {'ts': '1789571777.100001'}],
+    ])
+    rows, complete, error, resume = inc.scan(Mock(), 'C', Decimal('1789571777.200001'))
+    assert complete and not error and resume is None
+    assert {row['ts'] for row in rows} == {'1789571778.900005', '1789571777.383129', '1789571777.383128'}
+    assert get.call_args_list[0].kwargs['after'] == '1789571777'
+    assert get.call_args_list[1].kwargs['before'] == '1789571778'
+
+
+def test_resumed_fractional_cursor_uses_wide_bound_and_exact_progress(monkeypatch):
+    get = pages(monkeypatch, [[{'ts': '1789571777.383129'}, {'ts': '1789571777.383128'}, {'ts': '1789571777.100001'}]])
+    rows, complete, error, resume = inc.scan(Mock(), 'C', Decimal('1789571777.200001'),
+                                           start_before='1789571777.383129')
+    assert complete and not error and resume is None
+    assert get.call_args.kwargs['before'] == '1789571778'
+    assert '1789571777.383128' in {row['ts'] for row in rows}
+
+
+def test_same_second_page_saturation_remains_a_gap(monkeypatch):
+    rows = [{'ts': '1789571777.' + str(900000 - n)} for n in range(100)]
+    pages(monkeypatch, [rows, rows])
+    saved, complete, error, resume = inc.scan(Mock(), 'C', Decimal('1789571776'))
+    assert not complete and len(saved) == 100
+    assert 'did not advance' in error and resume is None
+
+
+def test_root_lookup_widens_float_boundary_but_matches_only_exact_id(monkeypatch):
+    ts = '1789571777.383129'
+    get = pages(monkeypatch, [[{'ts': '1789571777.900000', 'text': 'other'}, {'ts': ts, 'text': 'exact root'}]])
+    root = inc.refresh_root(Mock(), 'C', ts, {'C'})
+    assert root.id == 'slack:C:' + ts and root.text == 'exact root'
+    assert get.call_args.kwargs['before'] == '1789571778'
+
+
+def test_ineligible_missing_roots_do_not_consume_refresh_slots(tmp_path, monkeypatch):
+    from rep0rter.collectors.state import write_state
+    now = 1000000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    channel = _scheduled_channel('C', now)
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda session: [channel])
+    get = pages(monkeypatch, [[{'ts': '500000', 'text': 'Recovered parent'}]])
+    with Store(tmp_path/'db') as store:
+        with store.conn:
+            write_state(store, 'slack:C', {'last_complete_ts': '900000', 'last_posted': now,
+                'total_messages': 10, 'last_refresh': now, 'last_reconciliation': now})
+        for index, ts in enumerate(['100000', '100001', '100002', '100003', '500000']):
+            parent_id = 'slack:C:' + ts
+            child = Event('slack:C:' + str(990000 + index), 'slack', 'thread_reply', 'slack:C',
+                          990000 + index, text='Reply', parent_id=parent_id, meta={'context_incomplete': True})
+            persist(store, 'fixture', {}, [child], Metrics(), now)
+            if index < 4:
+                with store.conn:
+                    store.conn.execute('INSERT INTO event_tombstones VALUES(?,?,?)', (parent_id, now, 'excluded'))
+        inc.collect(store, session=Mock(headers={}))
+        assert get.call_count == 1
+        assert store.get_event('slack:C:500000').text == 'Recovered parent'
+        assert store.get_event('slack:C:990004').meta['context_incomplete'] is False
+
+
+def test_root_transport_error_stays_degraded_between_refresh_attempts(tmp_path, monkeypatch):
+    from rep0rter.collectors.state import write_state
+    now = 1000000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    channel = _scheduled_channel('C', now)
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda session: [channel])
+    get = Mock(return_value=Mock(json=lambda: 0))
+    monkeypatch.setattr(inc.api, '_get', get)
+    with Store(tmp_path/'db') as store:
+        with store.conn:
+            write_state(store, 'slack:C', {'last_complete_ts': '900000', 'last_posted': now,
+                'total_messages': 10, 'last_refresh': now, 'last_reconciliation': now})
+        root = Event('slack:C:500000', 'slack', 'message', 'slack:C', 500000, text='Original root')
+        persist(store, 'fixture', {}, [root], Metrics(), now)
+        inc.collect(store, session=Mock(headers={}))
+        assert not read_state(store, 'slack:health')['healthy']
+        now += 60
+        inc.collect(store, session=Mock(headers={}))
+        assert get.call_count == 1
+        health = read_state(store, 'slack:health')
+        assert not health['healthy'] and not health['history_complete']
+        assert 'invalid root refresh' in health['reasons'][root.id]

@@ -5,7 +5,7 @@ import logging
 import time
 from dataclasses import asdict
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
 
 from . import slack_archive as api
 from .state import BudgetExceeded, BudgetSession, Metrics, persist, read_state, write_state
@@ -16,6 +16,13 @@ from ..slack_text import mention_names_from_html
 log = logging.getLogger(__name__)
 OVERLAP = 7200
 REFRESH_INTERVAL = 21600
+
+
+def _budget_debt(state):
+    # Older deployed states have only the error string. Budget debt is work for
+    # the next run, not an upstream failure needing the one-hour backoff.
+    error = state.get('error', '')
+    return bool(state.get('gap') and ('budget exhausted' in error or 'bounded scan exhausted' in error))
 
 
 def _allowed(store, event=None, container_id=None):
@@ -30,7 +37,12 @@ def scan(session, channel_id, lower, *, max_pages=30, start_before=None):
     collected, before = {}, start_before
     for _ in range(max_pages):
         params = {'channel': channel_id, 'count': 100}
-        params['before' if before is not None else 'after'] = before if before is not None else str(lower)
+        # The archive turns query floats back into PHP strings before SQL,
+        # losing fractional precision at Slack-sized timestamps. Widen the wire
+        # bounds to whole seconds; exact Decimal bounds below retain correctness.
+        params['before' if before is not None else 'after'] = str(
+            Decimal(before).to_integral_value(rounding=ROUND_CEILING) if before is not None
+            else lower.to_integral_value(rounding=ROUND_FLOOR))
         try:
             payload = api._get(session, api.BASE_URL + '/index/getmessage', **params).json()
         except BudgetExceeded:
@@ -69,7 +81,7 @@ def scan(session, channel_id, lower, *, max_pages=30, start_before=None):
 def refresh_root(session, channel_id, root_ts, public_ids):
     """One bounded point lookup; never silently substitute a nearby message."""
     payload = api._get(session, api.BASE_URL + '/index/getmessage', channel=channel_id,
-                       before=str(Decimal(root_ts) + Decimal('0.000001')), count=100).json()
+                       before=str(Decimal(root_ts).to_integral_value(rounding=ROUND_FLOOR) + 1), count=100).json()
     if not isinstance(payload, dict) or not isinstance(payload.get('messages'), list):
         raise RuntimeError('invalid root refresh response')
     matches = [r for r in payload['messages'] if isinstance(r, dict) and str(r.get('ts')) == root_ts]
@@ -82,7 +94,7 @@ def refresh_root(session, channel_id, root_ts, public_ids):
 
 
 def collect(store, days=2, max_channels=None, session=None, *, metrics=None, request_budget=80):
-    metrics = metrics or Metrics()
+    metrics = metrics or (session.metrics if isinstance(session, BudgetSession) else Metrics())
     session = session or api.make_session()
     if not isinstance(session, BudgetSession):
         session = BudgetSession(session, metrics, limit=request_budget)
@@ -106,7 +118,7 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         changed = state.get('last_posted') != posted or state.get('total_messages') != channel.total_messages
         recent = posted is None or posted >= now - (days + 1) * 86400
         due = now - state.get('last_refresh', 0) >= REFRESH_INTERVAL
-        if (not state and recent) or (state and changed) or (state.get('error') and now-state.get('last_attempt', 0)>=3600) or (recent and due):
+        if (not state and recent) or (state and changed) or (_budget_debt(state) or (state.get('error') and now-state.get('last_attempt', 0)>=3600)) or (recent and due):
             selected.append((channel, state, due))
         elif now - state.get('last_reconciliation', 0) >= 86400:
             quiet.append((channel, state, True))
@@ -117,7 +129,18 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
     selected.sort(key=lambda item: item[1].get('last_attempt', 0))
     if max_channels is not None:
         selected = selected[:max_channels]
-    for channel, state, due in selected:
+    for position, (channel, state, due) in enumerate(selected):
+        if not session.remaining:
+            # No HTTP happened: preserve attempt/refresh timestamps and pending
+            # cursors. The debt stays visible and is first in line next run.
+            with store.conn:
+                for deferred_channel, deferred_state, _ in selected[position:]:
+                    cid = 'slack:' + deferred_channel.id
+                    deferred_state = dict(deferred_state)
+                    deferred_state.update(gap=True, error=deferred_state.get('error') or 'request budget exhausted')
+                    write_state(store, cid, deferred_state)
+                    reasons[cid] = deferred_state['error']
+            break
         cid = 'slack:' + channel.id
         start = time.time()
         bootstrap = not state.get('last_complete_ts')
@@ -133,7 +156,11 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         next_state = dict(state, last_attempt=start, last_posted=channel.last_posted_at.timestamp() if channel.last_posted_at else None,
                           total_messages=channel.total_messages, last_synced=channel.last_synced_at.timestamp() if channel.last_synced_at else None)
         try:
-            raws, complete, error, resume_before = scan(session, channel.id, lower, start_before=state.get('pending_before'))
+            # Share pages across the remaining channels. A busy channel can
+            # retain its cursor without consuming the entire source allowance.
+            page_allowance = min(30, max(1, session.remaining // (len(selected) - position)))
+            raws, complete, error, resume_before = scan(session, channel.id, lower,
+                max_pages=page_allowance, start_before=state.get('pending_before'))
             events, authors = [], []
             for raw in raws:
                 event, author = api.to_event(raw, channel.id, public_ids)
@@ -153,7 +180,7 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
                 failures += 1
                 reasons[cid] = error
                 next_state.update(pending_before=resume_before, pending_lower=str(lower) if resume_before else None, pending_high=str(high) if resume_before else None)
-            if due:
+            if due and complete:
                 next_state['last_refresh'] = now
                 next_state['last_reconciliation'] = now
             store.upsert_container(Container(id=cid, source='slack', name=channel.name, topic=channel.topic,
@@ -186,7 +213,8 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
     tracked = store.conn.execute("SELECT e.id FROM events e WHERE e.source='slack' AND e.kind='message' AND e.ts>=? AND NOT EXISTS(SELECT 1 FROM event_tombstones t WHERE t.event_id=e.id) AND json_extract(e.meta,'$.deleted_at') IS NULL ORDER BY e.last_seen LIMIT 100", (now - 48*3600,)).fetchall()
     older = store.conn.execute("SELECT e.id FROM events e WHERE e.source='slack' AND e.kind='message' AND e.ts<? AND NOT EXISTS(SELECT 1 FROM event_tombstones t WHERE t.event_id=e.id) AND json_extract(e.meta,'$.deleted_at') IS NULL ORDER BY e.last_seen LIMIT 2", (now - 48*3600,)).fetchall()
     due_ids = {r[0] for r in missing} | {r[0] for r in tracked} | {r[0] for r in older}
-    for root_id in sorted(due_ids, key=lambda root: queue.get(root, {}).get('attempted_at', 0))[:4]:
+    root_attempts = 0
+    for root_id in sorted(due_ids, key=lambda root: (queue.get(root, {}).get('attempted_at', 0), root)):
         last = queue.get(root_id, {})
         if now - last.get('attempted_at', 0) < REFRESH_INTERVAL:
             continue
@@ -198,7 +226,10 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         _, channel_id, root_ts = root_id.split(':', 2)
         if channel_id not in public_ids or not _allowed(store, container_id='slack:' + channel_id):
             continue
+        if root_attempts >= 4 or not session.remaining:
+            break
         try:
+            root_attempts += 1
             root = refresh_root(session, channel_id, root_ts, public_ids)
             queue[root_id] = {'attempted_at': now, 'resolved': root is not None}
             if root and _allowed(store, event=root):
@@ -223,6 +254,21 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         state = read_state(store, cid)
         if _allowed(store, container_id=cid) and state.get('gap') and state.get('error'):
             reasons.setdefault(cid, state['error'])
+    # Root transport failures are unresolved debt too; skipping a six-hour
+    # refresh must not turn the very next hourly health check green.
+    for root_id in due_ids:
+        root_state = queue.get(root_id, {})
+        if not root_state.get('error'):
+            continue
+        _, channel_id, _ = root_id.split(':', 2)
+        if channel_id not in public_ids or not _allowed(store, container_id='slack:' + channel_id):
+            continue
+        if store.conn.execute('SELECT 1 FROM event_tombstones WHERE event_id=?', (root_id,)).fetchone():
+            continue
+        root = store.get_event(root_id)
+        if root and (root.meta.get('deleted_at') or root.meta.get('content_status') == 'deleted' or not _allowed(store, event=root)):
+            continue
+        reasons.setdefault(root_id, root_state['error'])
     failures = max(failures, len(reasons))
     queue = {k:v for k,v in queue.items() if k in due_ids or now-v.get('attempted_at',0)<7*86400}
     with store.conn:
