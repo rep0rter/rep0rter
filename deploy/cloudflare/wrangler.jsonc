@@ -1,6 +1,6 @@
 {
   "name": "rep0rter-site",
-  "main": "worker.js",
+  "main": "worker.ts",
   "compatibility_date": "2026-09-01",
   "assets": {
     // The built site. Override at deploy time with --assets=<REP0RTER_DATA_DIR>/site.

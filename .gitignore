@@ -164,3 +164,6 @@ data/
 
 # wrangler dev scratch output
 .wrangler/
+
+# node tooling for the Cloudflare deploy layer
+node_modules/

@@ -5,14 +5,21 @@
 // _headers never applies to Worker-generated responses, and the Flask app
 // already sets its own cache and security headers in rep0rter/web.py.
 
+interface Env {
+  /** Static Assets binding holding the built site. */
+  ASSETS: Fetcher;
+  /** Where /auth/*, /submit and /projects* live while accounts runs on Singa. */
+  APP_ORIGIN: string;
+}
+
 // Mirrors the Caddyfile matcher: path /auth/* /submit /projects /projects/*
-function isAppPath(pathname) {
+function isAppPath(pathname: string): boolean {
   return pathname === "/submit" || pathname === "/projects" ||
     pathname.startsWith("/auth/") || pathname.startsWith("/projects/");
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
     if (isAppPath(url.pathname)) {
@@ -29,4 +36,4 @@ export default {
     }
     return env.ASSETS.fetch(request);
   },
-};
+} satisfies ExportedHandler<Env>;

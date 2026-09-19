@@ -1,0 +1,16 @@
+{
+  "name": "rep0rter-site-deploy",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare serving layer for the generated site. Node tooling is scoped to this directory.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "types": "wrangler types",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260919.1",
+    "typescript": "7.0.2",
+    "wrangler": "4.135.0"
+  }
+}

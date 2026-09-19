@@ -77,6 +77,6 @@ def test_specific_rules_drop_the_inherited_header_before_setting_it():
 def test_worker_forwards_exactly_the_paths_caddy_reverse_proxies():
     """Drift guard: the Caddyfile matcher is still the source of truth for step 1."""
     matcher = re.search(r"@accounts path (.+)", CADDYFILE.read_text(encoding="utf-8"))
-    worker = DEPLOY.joinpath("worker.js").read_text(encoding="utf-8")
+    worker = DEPLOY.joinpath("worker.ts").read_text(encoding="utf-8")
     for path in matcher.group(1).split():
-        assert path.rstrip("*") in worker, f"{path} is proxied by Caddy but not by worker.js"
+        assert path.rstrip("*") in worker, f"{path} is proxied by Caddy but not by worker.ts"
