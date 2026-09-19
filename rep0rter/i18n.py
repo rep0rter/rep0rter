@@ -1,7 +1,41 @@
 """Shared language identifiers, UI copy, and honest translation fallbacks."""
+import re
 
 DEFAULT_LANGUAGE = "en"
 LANGUAGES = {"en": "English", "zh-TW": "繁體中文", "ja": "日本語", "ko": "한국어"}
+# Names for prompts: unambiguous to a model regardless of the prompt's own language.
+LANGUAGE_PROMPT_NAMES = {"en": "English", "zh-TW": "Taiwan Traditional Chinese", "ja": "Japanese", "ko": "Korean"}
+
+_URL = re.compile(r"https?://\S+")
+_HANGUL = re.compile("[ᄀ-ᇿ㄰-㆏가-힣]")
+_KANA = re.compile("[぀-ヿㇰ-ㇿ]")
+_HAN = re.compile("[㐀-䶿一-鿿]")
+_LATIN = re.compile("[A-Za-z]")
+
+
+def detect_language(text: str) -> str | None:
+    """Guess which of LANGUAGES a text is written in from its scripts, or None if unclear.
+
+    Script counts only: Hangul means Korean, kana means Japanese, otherwise Han means
+    Chinese (reported as zh-TW, the edition this project writes; Simplified is not
+    told apart) and Latin means English. Kana-free Japanese made only of kanji is
+    indistinguishable from Chinese. Digits, URLs and punctuation carry no signal.
+    """
+    text = _URL.sub(" ", text or "")
+    hangul, kana, han, latin = (len(p.findall(text)) for p in (_HANGUL, _KANA, _HAN, _LATIN))
+    total = hangul + kana + han + latin
+    if not total:
+        return None
+    if hangul / total >= 0.3:
+        return "ko"
+    # A stray kana in Chinese text (a quoted name) must not flip it to Japanese.
+    if kana >= 3 and kana / (kana + han) >= 0.2:
+        return "ja"
+    if han / total >= 0.3:
+        return "zh-TW"
+    if latin / total >= 0.7:
+        return "en"
+    return None
 
 
 def page_name(language: str) -> str:

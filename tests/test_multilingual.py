@@ -7,7 +7,7 @@ import pytest
 
 from rep0rter.cli import cmd_translate
 from rep0rter.config import Config
-from rep0rter.i18n import LANGUAGES, post_text
+from rep0rter.i18n import LANGUAGES, detect_language, post_text
 from rep0rter.reporter import Candidate, missing_languages, translate_post, write_multilingual_item
 from rep0rter.store import Event, Post, Store
 from rep0rter.writer_contract import (ATTRIBUTION, EDITORIAL_CORRECTION, PROMPT_EXAMPLES, PROMPT_VERSION, SPECULATIVE,
@@ -295,7 +295,7 @@ def test_backfill_prompt_names_source_language_and_shares_style_guide():
     llm.chat_json.return_value = translations()
     assert translate_post(post, llm)
     prompt = llm.chat_json.call_args[0][0]
-    assert 'supplied text is Taiwan Traditional Chinese' in prompt
+    assert 'written in Taiwan Traditional Chinese (zh-TW)' in prompt
     assert TRANSLATION_STYLE in prompt
 
 
@@ -324,4 +324,58 @@ def test_style_guide_keeps_source_currency_instead_of_converting_it():
     # v5 comparison run: source "$100 / 人" became "100元", "100円" and "100" in three editions.
     assert '照來源原樣書寫（如 $100）' in TRANSLATION_STYLE
     assert '不可寫成「円」' in TRANSLATION_STYLE
+
+
+@pytest.mark.parametrize('text,expected', [
+    ('討論指出 v2.1 修正登入逾時問題', 'zh-TW'),
+    ('参加者はAstraとUE5、3DGSをつないだ構成を説明した', 'ja'),
+    ('참여자는 Astra와 UE5를 연결한 구성을 설명함', 'ko'),
+    ('Participants say the PR is merged to fix login timeouts', 'en'),
+    ('以 Astra 串接 UE5 與 3D Tiles 的台北沙盒構想', 'zh-TW'),        # Latin names inside Chinese
+    ('서울 버스 앱 Where Is My Bus 개선 PR #17', 'ko'),                # Latin names inside Korean
+    ('新北の工作坊', 'zh-TW'),                                           # a stray kana must not flip Chinese to Japanese
+    ('https://example.com/한국어/path 2026-09-19', None),               # URLs and digits carry no signal
+    ('', None),
+    ('12345 ---', None),
+])
+def test_detect_language_from_scripts(text, expected):
+    assert detect_language(text) == expected
+
+
+@pytest.mark.parametrize('headline,summary,source,name', [
+    ('한국 시골 버스 앱', '기사 요약 문장입니다', 'ko', 'Korean'),
+    ('熊本の紙地図を追加', '災害支援用の地図を公開した', 'ja', 'Japanese'),
+    ('討論指出會議全線上', '參與者提到會議全線上舉行', 'zh-TW', 'Taiwan Traditional Chinese'),
+    ('Meetup moves online', 'Participants say it is fully online', 'en', 'English'),
+])
+def test_backfill_prompt_names_the_detected_source_language(headline, summary, source, name):
+    post = Post('x', 1, 9, headline, summary)
+    llm = Mock()
+    llm.chat_json.return_value = translations()
+    assert translate_post(post, llm)
+    prompt = llm.chat_json.call_args[0][0]
+    assert f'written in {name} ({source})' in prompt
+    assert prompt.count('written in ') == 1  # only the detected language, no hard-coded zh-TW claim
+    # The source-language edition is requested too (all four are missing), so keep-the-wording applies.
+    assert f'For the requested {source} edition keep the supplied wording' in prompt
+
+
+def test_backfill_prompt_admits_uncertain_source_language_and_skips_keep_wording_rule():
+    post = Post('x', 1, 9, 'https://example.com/a', '12345')
+    llm = Mock()
+    llm.chat_json.return_value = translations()
+    assert translate_post(post, llm)
+    prompt = llm.chat_json.call_args[0][0]
+    assert 'language of the supplied text is uncertain' in prompt
+    assert 'keep the supplied wording' not in prompt
+
+
+def test_backfill_does_not_ask_to_keep_wording_when_source_edition_is_already_saved():
+    post = Post('x', 1, 9, '한국 시골 버스 앱', '기사 요약 문장입니다', translations={'ko': translations()['ko']})
+    llm = Mock()
+    llm.chat_json.return_value = translations()
+    assert translate_post(post, llm)
+    prompt = llm.chat_json.call_args[0][0]
+    assert 'written in Korean (ko)' in prompt
+    assert 'keep the supplied wording' not in prompt
 
