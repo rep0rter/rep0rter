@@ -119,7 +119,9 @@ def create_app(cfg: Config | None = None) -> Flask:
             response.headers['X-Frame-Options'] = 'DENY'
             response.headers['Content-Security-Policy'] = (
                 "default-src 'self'; script-src 'none'; style-src 'self'; "
-                "img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
+                # Chromium applies form-action to the OAuth POST's redirect too.
+                "img-src 'self'; form-action 'self' https://accounts.google.com; "
+                "frame-ancestors 'none'; base-uri 'none'"
             )
         return response
 

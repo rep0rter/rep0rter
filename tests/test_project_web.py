@@ -95,6 +95,18 @@ def test_login_verifies_identity_and_keeps_credentials_private(web, monkeypatch)
         assert 'never-store-this' not in '\n'.join(store.conn.iterdump())
 
 
+def test_login_form_security_policy_allows_google_redirect_only(web):
+    client = web[0].test_client()
+    for path in ('/submit', '/projects'):
+        response = client.get(path)
+        policy = response.headers['Content-Security-Policy']
+        directives = {part.strip().split()[0]: part.strip().split()[1:]
+                      for part in policy.split(';') if part.strip()}
+        assert directives['form-action'] == ["'self'", 'https://accounts.google.com']
+        assert directives['script-src'] == ["'none'"]
+        assert directives['frame-ancestors'] == ["'none'"]
+
+
 @pytest.mark.parametrize('claims', [
     {'aud': 'another-client'}, {'iss': 'https://attacker.test'}, {'nonce': 'wrong'},
     {'exp': 1}, {'email_verified': False}, {'sub': ''},
