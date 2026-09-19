@@ -96,6 +96,109 @@ def test_material_root_edit_makes_one_revision_and_no_rollback(tmp_path):
         assert stories.expand_candidates(store,cfg,candidates(stale),NOW+3)==[]
 
 
+def test_recovered_empty_share_corrects_existing_story_once_with_canonical_evidence(tmp_path):
+    cfg, store = setup(tmp_path)
+    with store:
+        share = event('share', '')
+        store.upsert_events([share])
+        old_post = publish(cfg, store, candidates(share)[0])
+        stories.bootstrap(store, NOW)
+        old_story = stories.info(store, old_post.id)
+        original = event('original', '學區描述清單：81 所可由村里範圍組合；78 所涉及鄰界。 https://example.test/schools')
+        store.upsert_events([original])
+        # Even an original observed/clustered before recovery must join the old report.
+        stories.assign(store, original, NOW)
+        restored = replace(share, text='Quoted original author: ' + original.text, meta={
+            'references': [{'event_id': original.id, 'container_id': original.container_id,
+                            'author_id': original.author_id, 'public': True}],
+        })
+        store.upsert_events([restored])
+        updates = stories.expand_candidates(store, cfg, candidates(original), NOW + 1)
+        assert len(updates) == 1
+        update = updates[0]
+        assert update.event.kind == 'story_update'
+        assert update.event.meta['story_revision'] == 2
+        assert update.reasons == ['recovered_source_context']
+        assert update.event.meta['source_context_recovered'] is True
+        assert update.event.meta['recovery_previous_post_ids'] == [old_post.id]
+        assert {e.id for e in update.evidence_events} == {original.id, share.id}
+        assert update.event.text == original.text
+        assert store.conn.execute('SELECT COUNT(DISTINCT story_id) FROM story_events').fetchone()[0] == 1
+        assert store.conn.execute('SELECT canonical_event_id FROM stories').fetchone()[0] == original.id
+        correction = publish(cfg, store, update)
+        assert correction.id != old_post.id
+        assert stories.info(store, old_post.id)['versions'] == [
+            {'id': old_post.id, 'revision': 1}, {'id': correction.id, 'revision': 2},
+        ]
+        assert old_story['revision'] == 1
+        assert stories.expand_candidates(store, cfg, candidates(original, restored), NOW + 2) == []
+        assert stories.expand_candidates(store, cfg, [], NOW + 3) == []
+
+
+def test_recovered_empty_original_without_update_keywords_is_a_single_correction(tmp_path):
+    cfg, store = setup(tmp_path)
+    with store:
+        root = event('empty', '')
+        store.upsert_events([root])
+        old_post = publish(cfg, store, candidates(root)[0])
+        stories.bootstrap(store, NOW)
+        root = replace(root, text='社區學區描述清單：村里與鄰界需分別處理。 https://example.test/schools')
+        store.upsert_events([root])
+        updates = stories.expand_candidates(store, cfg, [], NOW + 1)
+        assert len(updates) == 1
+        assert updates[0].event.meta['recovery_previous_post_ids'] == [old_post.id]
+        publish(cfg, store, updates[0])
+        assert stories.expand_candidates(store, cfg, [], NOW + 2) == []
+
+
+def test_empty_root_recovery_cannot_bypass_optout_or_create_news_from_link_only(tmp_path):
+    from rep0rter.policy import add_rule
+    cfg, store = setup(tmp_path)
+    with store:
+        root = event('empty', '')
+        store.upsert_events([root])
+        publish(cfg, store, candidates(root)[0])
+        stories.bootstrap(store, NOW)
+        store.upsert_events([replace(root, text='https://example.test/long-path-but-no-content')])
+        assert stories.expand_candidates(store, cfg, [], NOW + 1) == []
+        store.upsert_events([replace(root, text='學區描述清單：81 所可由村里範圍組合；78 所涉及鄰界。')])
+        add_rule(store, 'user', root.author_id)
+        assert stories.expand_candidates(store, cfg, [], NOW + 2) == []
+
+
+def test_recovered_share_does_not_rewrite_two_published_histories(tmp_path):
+    cfg, store = setup(tmp_path)
+    with store:
+        share = event('share', '')
+        original = event('original', '學區描述清單：81 所由村里組合；78 所涉及鄰界。 https://example.test/schools')
+        store.upsert_events([share, original])
+        old_share = publish(cfg, store, candidates(share)[0])
+        old_original = publish(cfg, store, candidates(original)[0])
+        stories.bootstrap(store, NOW)
+        before = {post_id: stories.info(store, post_id)['versions'] for post_id in (old_share.id, old_original.id)}
+        store.upsert_events([replace(share, text=original.text, meta={'references': [
+            {'event_id': original.id, 'container_id': original.container_id, 'public': True},
+        ]})])
+        assert stories.expand_candidates(store, cfg, [], NOW + 1) == []
+        assert before == {post_id: stories.info(store, post_id)['versions'] for post_id in before}
+
+
+def test_recovery_waits_for_canonical_original_and_ignores_attribution_boilerplate(tmp_path):
+    cfg, store = setup(tmp_path)
+    with store:
+        share = event('share', '')
+        store.upsert_events([share])
+        publish(cfg, store, candidates(share)[0])
+        stories.bootstrap(store, NOW)
+        share = replace(share, text='[Quoted public Slack message by Original author; source: https://example.test/source]\nhttps://example.test/resource', meta={
+            'references': [{'event_id': 'original', 'container_id': 'slack:C', 'public': True}],
+        })
+        store.upsert_events([share])
+        assert stories.expand_candidates(store, cfg, [], NOW + 1) == []
+        store.upsert_events([event('original', 'https://example.test/resource')])
+        assert stories.expand_candidates(store, cfg, [], NOW + 2) == []
+
+
 def test_collaborative_reply_publishes_once_but_thanks_does_not(tmp_path):
     cfg,store=setup(tmp_path)
     with store:
