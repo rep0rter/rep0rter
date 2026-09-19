@@ -1,7 +1,8 @@
 """Opt-in public GitHub releases, collaboration issues and explained merged PRs."""
 from __future__ import annotations
-import re
+import json
 import os
+import re
 import time
 from datetime import datetime, timezone
 from urllib.parse import quote
@@ -97,6 +98,7 @@ def collect(store, repos, session, metrics, days=2):
     # collect the same prefix every hour and never reach the tail. Rotating
     # turns that starvation into a delay the next round clears.
     repos = sorted(repos, key=lambda name: read_state(store, 'github:' + name.lower()).get('last_attempt', 0))
+    deferred = []
     for repo in repos:
         cid = 'github:' + repo.lower()
         if not container_allowed(store, cid):
@@ -150,14 +152,22 @@ def collect(store, repos, session, metrics, days=2):
             if new_state['error']:
                 from .registry import record_source_error
                 record_source_error(store, cid, new_state['error'])
+        except BudgetExceeded as exc:
+            # Running out of budget is pending work, not a failure, exactly as
+            # it is for Slack channels. The budget is checked before the request
+            # is sent, so keep the earlier attempt time or the skipped
+            # repositories go to the back of the rotation and starve for good.
+            # Reporting it as a source error would hold collector_health false
+            # every round, freeze last_healthy_at, and restart the worker over
+            # work that the next round picks up.
+            persist(store, cid, dict(state, error=str(exc), retry_at=0), [], metrics, now)
+            deferred.append(repo)
+            continue
         except Exception as exc:
-            # The budget is checked before the request is sent, so an exhausted
-            # repository issued nothing. Keep its earlier attempt time: bumping
-            # it would send exactly the skipped repositories to the back of the
-            # rotation and make the starvation permanent.
-            attempt = {} if isinstance(exc, BudgetExceeded) else {'last_attempt': now}
-            persist(store, cid, dict(state, **attempt, error=str(exc), retry_at=getattr(exc, 'retry_at', 0)), [], metrics, now)
+            persist(store, cid, dict(state, last_attempt=now, error=str(exc), retry_at=getattr(exc, 'retry_at', 0)), [], metrics, now)
             # Independent repository failures must not block the remaining allowlist.
             from .registry import record_source_error
             record_source_error(store, cid, exc)
+    # Deferred work stays observable without being an alert.
+    store.set_kv('github_deferred', json.dumps({'at': time.time(), 'repositories': deferred}))
     return total

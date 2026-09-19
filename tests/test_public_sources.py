@@ -281,3 +281,26 @@ def test_a_budget_starved_repository_keeps_its_place_in_the_rotation(tmp_path):
     assert first['last_attempt'] > 100, 'the repository that ran should record an attempt'
     assert second['last_attempt'] == 200, 'the starved repository must keep its older time'
     assert second['last_attempt'] < first['last_attempt'], 'so it sorts first next round'
+
+
+def test_budget_shortfall_is_deferred_work_not_a_source_failure(tmp_path):
+    """Otherwise collector_health stays false every round and restarts the worker."""
+    import json as _json
+    from rep0rter.collectors.state import BudgetSession, read_state, write_state
+
+    def reply(url, params=None, timeout=None, headers=None):
+        if '/repos/' in url and url.count('/') == 5:
+            return response({'id': 1, 'private': False, 'visibility': 'public',
+                             'html_url': 'https://example.test', 'description': ''})
+        return response([])
+
+    with Store(tmp_path / 'defer.sqlite') as store:
+        write_state(store, 'github:example/first', {'last_attempt': 100})
+        write_state(store, 'github:example/second', {'last_attempt': 200})
+        metrics = Metrics()
+        transport = BudgetSession(Mock(get=Mock(side_effect=reply)), metrics, limit=4, interval=0)
+        github.collect(store, ['example/first', 'example/second'], transport, metrics, days=2)
+        errors = _json.loads(store.get_kv('collector_errors', '{}'))
+        deferred = _json.loads(store.get_kv('github_deferred', '{}'))
+    assert 'github:example/second' not in errors, 'a budget shortfall must not read as a failure'
+    assert deferred['repositories'] == ['example/second'], 'but it must stay observable'
