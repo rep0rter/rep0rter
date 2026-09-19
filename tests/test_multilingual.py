@@ -5,7 +5,7 @@ from unittest.mock import Mock
 from rep0rter.cli import cmd_translate
 from rep0rter.config import Config
 from rep0rter.i18n import LANGUAGES, post_text
-from rep0rter.reporter import Candidate, translate_post, write_multilingual_item
+from rep0rter.reporter import Candidate, missing_languages, translate_post, write_multilingual_item
 from rep0rter.store import Event, Post, Store
 
 
@@ -70,6 +70,80 @@ def test_backfill_only_missing_languages_is_idempotent():
     assert post.headline == '既有標題'
     assert not translate_post(post, llm)
     assert llm.chat_json.call_count == 1
+
+
+def test_backfill_retries_only_rejected_editions_with_length_feedback():
+    saved = {'ja': {'headline': '既存', 'summary': '既存の要約'}}
+    post = Post('x', 1, 9, '既有標題', '既有摘要', translations=saved.copy())
+    first = translations()
+    first['en'] = {'headline': 'A' * 31, 'summary': 'B' * 91}
+    corrected = {'headline': 'Traccar sync merged', 'summary': 'A merged PR adds automatic Traccar device creation during vehicle registration.'}
+    second = {lang: {'headline': 'Unrequested change', 'summary': 'Do not replace saved text'} for lang in LANGUAGES}
+    second['en'] = corrected
+    llm = Mock()
+    llm.chat_json.side_effect = [first, second]
+
+    assert translate_post(post, llm)
+    retry = json.loads(llm.chat_json.call_args_list[1].args[1])
+    assert retry['languages'] == ['en']
+    assert retry['headline'] == '既有標題'
+    assert retry['validation_feedback']['en'] == {
+        'errors': ['headline:length', 'summary:length'],
+        'rejected_text': first['en'],
+        'lengths': {'headline': 31, 'summary': 91},
+        'limits': {'headline': 30, 'summary': 90},
+    }
+    assert post.translations['en'] == corrected
+    assert post.translations['ja'] == saved['ja']
+    assert post.translations['ko'] == first['ko']
+    assert post.translations['zh-TW'] == first['zh-TW']
+    assert not missing_languages(post)
+
+
+def test_backfill_keeps_partial_success_if_retry_fails():
+    post = Post('x', 1, 9, '既有標題', '既有摘要')
+    llm = Mock()
+    llm.chat_json.side_effect = [{'ko': translations()['ko']}, ValueError('invalid JSON')]
+    assert translate_post(post, llm)
+    assert post.translations == {'ko': translations()['ko']}
+    assert missing_languages(post) == ['zh-TW', 'ja', 'en']
+    assert llm.chat_json.call_count == 2
+
+
+def test_backfill_recovers_after_first_request_error():
+    post = Post('x', 1, 9, '既有標題', '既有摘要')
+    llm = Mock()
+    llm.chat_json.side_effect = [ValueError('invalid JSON'), translations()]
+    assert translate_post(post, llm)
+    assert not missing_languages(post)
+    assert llm.chat_json.call_count == 2
+
+
+def test_backfill_repairs_invalid_saved_editions_but_bounds_retries():
+    post = Post('x', 1, 9, '既有標題', '既有摘要',
+                translations={**translations(), 'en': {'headline': 'x' * 31, 'summary': 'Valid summary'}})
+    llm = Mock()
+    llm.chat_json.return_value = {'en': {'headline': 'x' * 31, 'summary': 'Valid summary'}}
+    assert missing_languages(post) == ['en']
+    assert not translate_post(post, llm)
+    assert llm.chat_json.call_count == 2
+    assert post.translations['en']['headline'] == 'x' * 31
+    # Subsequent attempts can recover without overwriting any valid saved edition.
+    llm.chat_json.return_value = translations()
+    assert translate_post(post, llm)
+    assert not missing_languages(post)
+
+
+def test_backfill_retries_malformed_response_and_reports_non_text_fields():
+    post = Post('x', 1, 9, '既有標題', '既有摘要')
+    llm = Mock()
+    llm.chat_json.side_effect = [[], {'en': {'headline': ['invalid'], 'summary': 'Fine'}}]
+    assert not translate_post(post, llm, ['en'])
+    retry = json.loads(llm.chat_json.call_args_list[1].args[1])
+    assert retry['validation_feedback']['en']['errors'] == [
+        'headline:nonempty_string_required', 'summary:nonempty_string_required']
+    assert post.translations == {}
+    assert llm.chat_json.call_count == 2
 
 
 def test_backfill_cli_does_not_send_or_change_delivery(tmp_path, monkeypatch):

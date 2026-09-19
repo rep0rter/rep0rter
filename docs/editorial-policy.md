@@ -64,6 +64,14 @@ and never cuts a date or URL to fit. When no safe excerpt exists, it creates an
 internal review entry and no published draft. Missing translations remain
 visibly missing; source excerpts are not mislabeled as translated text.
 
+Translation backfill makes at most two model calls per post. The corrective call
+contains only missing or invalid locales, the rejected text, validation reasons,
+actual Unicode lengths, and the 30/90 limits. Valid saved editions and successful
+first-attempt editions are preserved, including when the second request fails.
+The translator preserves attribution, uncertainty, corrections and lifecycle
+claims; it never truncates rejected text into a published translation. Backfill
+changes saved translations and rebuilt site assets without sending messages.
+
 Mechanical validation cannot establish semantic truth of every paraphrase or
 infer unspecified locations. The model is explicitly forbidden from adding
 facts, evidence snapshots allow review, and ambiguous cancellation/relative-time
