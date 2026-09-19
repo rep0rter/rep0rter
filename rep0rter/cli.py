@@ -54,13 +54,22 @@ def cmd_report(cfg: Config, args) -> int:
             _backfill_translations(store, cfg)
         site_publisher.build(store, cfg)
         deliver_pending(cfg, store)
-        if cfg.threads_enabled:
-            threads_delivery.enqueue_missing(cfg, store)
-        threads_delivery.deliver_pending(cfg, store)
+        _deliver_threads(cfg, store)
         from .retractions import process
         process(store,cfg)
     print(f"posted {len(drafts) + automatic_posts} item(s)")
     return 0
+
+
+def _deliver_threads(cfg: Config, store: Store) -> dict[str, str]:
+    """Run the optional Threads step without letting it abort Telegram retractions."""
+    try:
+        if cfg.threads_enabled:
+            threads_delivery.enqueue_missing(cfg, store)
+        return threads_delivery.deliver_pending(cfg, store)
+    except Exception as exc:
+        log.error('Threads delivery step failed (%s); continuing the reporting cycle', type(exc).__name__)
+        return {}
 
 
 def cmd_build_site(cfg: Config, args) -> int:
@@ -281,9 +290,7 @@ def run_once(cfg: Config, dry_run: bool = False, no_llm: bool = False, days: int
                     _backfill_translations(store, cfg)
                 site_publisher.build(store, cfg)
                 deliver_pending(cfg, store)
-                if cfg.threads_enabled:
-                    threads_delivery.enqueue_missing(cfg, store)
-                threads_delivery.deliver_pending(cfg, store)
+                _deliver_threads(cfg, store)
                 from .retractions import process
                 process(store,cfg)
             health=json.loads(store.get_kv('collector_health','{}'))

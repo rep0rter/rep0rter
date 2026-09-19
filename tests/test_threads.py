@@ -184,3 +184,14 @@ def test_withdrawal_scrubs_threads_queue(tmp_path, monkeypatch):
     row = store.conn.execute('SELECT * FROM threads_jobs').fetchone()
     assert row['payload'] == '{}' and row['status'] == 'unknown'
     assert box.claim(cfg.threads_user_id) is None
+
+
+def test_threads_step_failure_does_not_abort_cycle(monkeypatch):
+    from rep0rter import cli, threads_delivery
+
+    def boom(cfg, store):
+        raise RuntimeError('Threads API unavailable')
+
+    monkeypatch.setattr(threads_delivery, 'deliver_pending', boom)
+    cfg = type('Cfg', (), {'threads_enabled': 0})()
+    assert cli._deliver_threads(cfg, store=None) == {}
