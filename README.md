@@ -69,9 +69,9 @@ The Compose stack runs a `worker` (hourly cycle),
 `maintenance` (backups, health checks), `accounts` (Google login and owner project
 news), and `web` (Caddy, static files on `127.0.0.1:18090`).
 
-Production uses native Cloudflare Workers: Python runs the reporting pipeline
-and account features, a JavaScript Worker serves the generated site, Durable
-Objects persist data, and Browser Run renders cards. No Containers or Steam host
+Production uses native Cloudflare Workers: GitHub Actions runs the hourly Python and Chromium reporting job. Python Workers
+handle account features, a JavaScript Worker serves the generated site, and Durable
+Objects persist data and every reporting transaction. No Containers or Steam host
 are needed. See [Cloudflare deployment](docs/cloudflare.md) for migration,
 CI-gated deployment of `main`, configuration, and recovery.
 
