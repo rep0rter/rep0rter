@@ -254,16 +254,71 @@ def test_raw_merged_pr_evidence_includes_lifecycle_without_inventing_activity_da
     assert bundle['policy']['merge_does_not_prove_deployment_or_test_success']
 
 
-def test_pr_merge_time_can_support_occurrence_date_but_not_activity_event_date():
+@pytest.mark.parametrize('merge_date', ['2026-09-18', 'Sep 18, 2026', '2026年9月18日', '2026년 9월 18일'])
+def test_pr_merge_time_can_support_occurrence_date_but_not_activity_event_date(merge_date):
     c=merged_pull_request();bundle=evidence_bundle(c,NOW)
     data=software_response(c.event.id)
     for edition in data['translations'].values():
-        edition['summary']='The change was merged on 2026-09-18'
+        edition['summary']='The change was merged on ' + merge_date
     valid,errors=validate_response(data,bundle)
     assert len(valid)==4 and not errors
     data['event_date']='2026-09-18'
     valid,errors=validate_response(data,bundle)
     assert not valid and 'event_date:not_in_evidence' in errors
+
+
+@pytest.mark.parametrize('language,wrong,right', [
+    ('en', 'Jan 1, 2027', 'Sep 19, 2026'),
+    ('en', 'Sep 19, 2027', 'Sep 19, 2026'),
+    ('en', 'September 20', 'September 19'),
+    ('en', '20 Sept', '19 Sept'),
+    ('en', 'Sept 19–20', 'Sept 19'),
+    ('zh-TW', '2027年1月1日', '2026年9月19日'),
+    ('ja', '2027年9月19日', '2026年9月19日'),
+    ('ko', '2027년 1월 1일', '2026년 9월 19일'),
+])
+@pytest.mark.parametrize('field', ['headline', 'summary'])
+def test_writer_rejects_invented_localized_dates_and_accepts_grounded_dates(language, wrong, right, field):
+    bundle = evidence_bundle(candidate(), NOW)
+    data = response()
+    data['translations'][language][field] = wrong
+    valid, errors = validate_response(data, bundle)
+    assert language not in valid
+    assert errors == [language + ':date_not_in_evidence']
+    data['translations'][language][field] = right
+    valid, errors = validate_response(data, bundle)
+    assert set(valid) == set(LANGUAGES)
+    assert not errors
+
+
+@pytest.mark.parametrize('source,summary', [
+    ('Workshop on September 19, 2026', '2026年9月19日'),
+    ('2026년 9월 19일 워크숍', 'Sep 19, 2026'),
+    ('9/19–21 工作坊', 'Workshop on Sept 19–21'),
+])
+def test_writer_accepts_localized_source_dates_and_range_endpoints(source, summary):
+    bundle = evidence_bundle(candidate(source), NOW)
+    data = response()
+    data['event_date'] = None
+    for entry in data['translations'].values():
+        entry['headline'] = 'Workshop'
+        entry['summary'] = summary
+    valid, errors = validate_response(data, bundle)
+    assert set(valid) == set(LANGUAGES)
+    assert not errors
+
+
+def test_writer_retries_invented_localized_date_with_feedback():
+    bad, good = response(), response()
+    bad['translations']['en']['summary'] = 'Workshop on Jan 1, 2027'
+    good['translations']['en']['summary'] = 'Workshop on Sep 19, 2026'
+    llm = Mock()
+    llm.chat_json.side_effect = [bad, good]
+    result = write(candidate(), llm, NOW)
+    assert result.writer_mode == 'llm'
+    assert result.translations['en'] == good['translations']['en']
+    payload = json.loads(llm.chat_json.call_args.args[1])
+    assert 'en:date_not_in_evidence' in payload['rewrite_required']
 
 
 def test_missing_or_untyped_lifecycle_does_not_infer_merge_from_eligibility():
@@ -277,13 +332,13 @@ def test_missing_or_untyped_lifecycle_does_not_infer_merge_from_eligibility():
 
 def test_retry_includes_previous_rejected_copy_for_concrete_rewrite():
     c=merged_pull_request();bad=software_response(c.event.id)
-    bad['translations']['en']['headline']='A'*31
+    bad['translations']['en']['headline']='A'*51
     good=software_response(c.event.id)
     llm=Mock();llm.chat_json.side_effect=[bad,good]
     result=write(c,llm,NOW)
     assert not result.needs_review and len(result.translations)==4
     payload=json.loads(llm.chat_json.call_args.args[1])
-    assert payload['previous_output']['translations']['en']['headline']=='A'*31
+    assert payload['previous_output']['translations']['en']['headline']=='A'*51
     assert 'en:headline:length' in payload['rewrite_required']
 
 
