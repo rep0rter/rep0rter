@@ -8,7 +8,7 @@ from urllib.parse import quote
 
 from ..sources import normalize_text
 from ..store import Container, Event
-from .state import check_response, persist, read_state
+from .state import BudgetExceeded, check_response, persist, read_state
 
 API = 'https://api.github.com'
 COLLABORATION_LABELS = {'help wanted', 'good first issue', 'collaboration', 'call for participation', '徵求協作', '協作邀請'}
@@ -91,6 +91,13 @@ def collect(store, repos, session, metrics, days=2):
     for repo in repos:
         if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repo):
             raise ValueError('GitHub allowlist entries must be owner/repository')
+    # Least recently attempted first, as Slack orders its channels. Each
+    # repository costs the same four requests whether or not anything changed,
+    # so once the allowlist outgrows one round's share a fixed order would
+    # collect the same prefix every hour and never reach the tail. Rotating
+    # turns that starvation into a delay the next round clears.
+    repos = sorted(repos, key=lambda name: read_state(store, 'github:' + name.lower()).get('last_attempt', 0))
+    for repo in repos:
         cid = 'github:' + repo.lower()
         if not container_allowed(store, cid):
             continue
@@ -144,7 +151,12 @@ def collect(store, repos, session, metrics, days=2):
                 from .registry import record_source_error
                 record_source_error(store, cid, new_state['error'])
         except Exception as exc:
-            persist(store, cid, dict(state, last_attempt=now, error=str(exc), retry_at=getattr(exc, 'retry_at', 0)), [], metrics, now)
+            # The budget is checked before the request is sent, so an exhausted
+            # repository issued nothing. Keep its earlier attempt time: bumping
+            # it would send exactly the skipped repositories to the back of the
+            # rotation and make the starvation permanent.
+            attempt = {} if isinstance(exc, BudgetExceeded) else {'last_attempt': now}
+            persist(store, cid, dict(state, **attempt, error=str(exc), retry_at=getattr(exc, 'retry_at', 0)), [], metrics, now)
             # Independent repository failures must not block the remaining allowlist.
             from .registry import record_source_error
             record_source_error(store, cid, exc)

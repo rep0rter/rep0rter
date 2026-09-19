@@ -236,3 +236,48 @@ def test_github_token_is_optional_and_only_raises_the_rate_ceiling(monkeypatch):
     assert seen[-1]['Authorization'] == 'Bearer secret-value'
     # A token never widens what is collected; visibility is still checked.
     assert seen[-1]['X-GitHub-Api-Version'] == '2022-11-28'
+
+
+def test_github_rotates_so_a_long_allowlist_does_not_starve_its_tail(tmp_path, monkeypatch):
+    """Under budget pressure a fixed order would collect the same prefix forever."""
+    from rep0rter.collectors.state import read_state, write_state
+    names = ['example/one', 'example/two', 'example/three']
+    with Store(tmp_path / 'rotate.sqlite') as store:
+        write_state(store, 'github:example/one', {'last_attempt': 300})
+        write_state(store, 'github:example/two', {'last_attempt': 100})
+        attempted = []
+
+        def get(url, params=None, timeout=None, headers=None):
+            attempted.append(url.rsplit('/repos/', 1)[-1].split('/')[0:2])
+            raise RuntimeError('stop after the first call for each repository')
+
+        github.collect(store, names, Mock(get=Mock(side_effect=get)), Metrics(), days=2)
+    order = ['/'.join(pair) for pair in attempted]
+    # 'three' has never been attempted, then 'two' at 100, then 'one' at 300.
+    assert order == ['example/three', 'example/two', 'example/one']
+    assert sorted(order) == sorted(names)
+
+
+def test_a_budget_starved_repository_keeps_its_place_in_the_rotation(tmp_path):
+    """It issued no request, so it must not be pushed to the back of the queue."""
+    from rep0rter.collectors.state import BudgetSession, read_state, write_state
+
+    def reply(url, params=None, timeout=None, headers=None):
+        if '/repos/' in url and url.count('/') == 5:
+            return response({'id': 1, 'private': False, 'visibility': 'public',
+                             'html_url': 'https://example.test', 'description': ''})
+        return response([])
+
+    with Store(tmp_path / 'starve.sqlite') as store:
+        write_state(store, 'github:example/first', {'last_attempt': 100})
+        write_state(store, 'github:example/second', {'last_attempt': 200})
+        metrics = Metrics()
+        # Exactly one repository's worth of requests: the second one starves
+        # before it sends anything.
+        transport = BudgetSession(Mock(get=Mock(side_effect=reply)), metrics, limit=4, interval=0)
+        github.collect(store, ['example/first', 'example/second'], transport, metrics, days=2)
+        first = read_state(store, 'github:example/first')
+        second = read_state(store, 'github:example/second')
+    assert first['last_attempt'] > 100, 'the repository that ran should record an attempt'
+    assert second['last_attempt'] == 200, 'the starved repository must keep its older time'
+    assert second['last_attempt'] < first['last_attempt'], 'so it sorts first next round'
