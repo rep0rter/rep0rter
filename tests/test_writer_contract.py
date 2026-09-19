@@ -363,3 +363,25 @@ def test_recovered_root_model_must_label_correction_and_attribute_source():
         edition['summary']='The source describes school district boundaries'
     valid,errors=validate_response(data,bundle)
     assert len(valid)==4 and not errors
+
+
+@pytest.mark.parametrize('language,headline,summary', [
+    ('ko','정정: 학구 원문 맥락','원문에 따르면 81개 초등학교 학구는 마을 경계로 구성할 수 있다'),
+    ('ko','정정 보도: 학구 목록','원문은 초등학교 학구와 마을 경계를 설명한다'),
+    ('ja','訂正：学区の原文補足','原文では81校の学区を村里の境界から構成できると説明している'),
+    ('ja','補足：学区の原文情報','出典には小学校の学区と地域の境界が記載されている'),
+])
+def test_recovered_context_accepts_localized_original_source_attribution(language,headline,summary):
+    bundle=evidence_bundle(recovered_context_candidate(),NOW)
+    data=response();data['event_date']=None
+    for edition in data['translations'].values():
+        edition['headline']='Correction: source context'
+        edition['summary']='The source describes school district boundaries'
+    data['translations'][language]={'headline':headline,'summary':summary}
+    valid,errors=validate_response(data,bundle)
+    assert len(valid)==4 and not errors
+    # A correction label alone does not make an unattributed claim acceptable.
+    data['translations'][language]['summary']='학구 자료가 새로 출시됐다' if language=='ko' else '学区データが新たに公開された'
+    valid,errors=validate_response(data,bundle)
+    assert language not in valid
+    assert language+':recovered_context_requires_editorial_correction_and_source_attribution' in errors
