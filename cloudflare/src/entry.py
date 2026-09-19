@@ -99,7 +99,7 @@ class Runtime:
             return
         def write():
             for number, page in changes:
-                self.sql.exec('INSERT INTO db_pages VALUES (?,?) ON CONFLICT(number) DO UPDATE SET data=excluded.data', number, to_js(page))
+                self.sql.exec('INSERT INTO db_pages VALUES (?,?) ON CONFLICT(number) DO UPDATE SET data=excluded.data', number, page)
             self.sql.exec('DELETE FROM db_pages WHERE number>=?', len(current))
         self.transaction(write)
         self.pages = current
@@ -108,7 +108,7 @@ class Runtime:
     def persist_policy(self, path):
         data = path.read_bytes()
         self.sql.exec('INSERT INTO files VALUES (?,?,?) ON CONFLICT(path) DO UPDATE SET data=excluded.data,digest=excluded.digest',
-                      'exclusions.json', to_js(data), hashlib.sha256(data).hexdigest())
+                      'exclusions.json', data, hashlib.sha256(data).hexdigest())
 
     def hydrate_site(self):
         # Withdrawals scrub the complete durable generation before any render
@@ -158,7 +158,7 @@ class Runtime:
         def write():
             for path, data, digest in changed:
                 if existing.get(path) != digest:
-                    self.sql.exec('INSERT INTO files VALUES (?,?,?) ON CONFLICT(path) DO UPDATE SET data=excluded.data,digest=excluded.digest', path, to_js(data), digest)
+                    self.sql.exec('INSERT INTO files VALUES (?,?,?) ON CONFLICT(path) DO UPDATE SET data=excluded.data,digest=excluded.digest', path, data, digest)
             for path in existing.keys() - files.keys():
                 self.sql.exec('DELETE FROM files WHERE path=?', path)
             self.set_meta('site_built_at', time.time())
@@ -446,7 +446,7 @@ class Reporter(DurableObject):
                     if len(value) > MAX_FILE:
                         return Response('Asset too large', status=413)
                     runtime.sql.exec('INSERT INTO files VALUES (?,?,?)', item.filename,
-                                     to_js(value), hashlib.sha256(value).hexdigest())
+                                     value, hashlib.sha256(value).hexdigest())
                     if item.filename == 'exclusions.json':
                         (runtime.root / item.filename).write_bytes(value)
                     del value

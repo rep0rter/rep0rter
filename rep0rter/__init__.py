@@ -1,4 +1,4 @@
-"""rep0rter: a virtual reporter for the g0v community.
+"""rep0rter: an AI reporter covering civic-tech communities, including g0v, Code for Korea, and Code for Japan.
 
 Pipeline: collectors -> event store (SQLite) -> reporter (select + write)
 -> publishers (Telegram, static site + RSS).
