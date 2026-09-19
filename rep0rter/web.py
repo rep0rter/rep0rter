@@ -3,9 +3,10 @@ from __future__ import annotations
 
 from datetime import timedelta
 import hashlib
+import re
 import secrets
 import time
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 import uuid
 
 from authlib.integrations.base_client.errors import OAuthError
@@ -16,7 +17,7 @@ from joserfc.errors import JoseError as JOSEValidationError
 from requests import RequestException
 
 from .config import Config, load_config
-from .i18n import LANGUAGES, page_name
+from .i18n import COPY, LANGUAGES, page_name
 from . import community, hashtags, projects, project_automation
 from .publishers import site
 from .store import Store
@@ -95,8 +96,60 @@ def create_app(cfg: Config | None = None) -> Flask:
             with db.conn:
                 db.conn.execute('DELETE FROM project_sessions WHERE token_hash=?', (_hash(session['login_token']),))
 
+    def ui_language():
+        value = request.values.get('ui_language') or request.args.get('lang') or session.get('ui_language', 'en')
+        return {'ZH': 'zh-TW', 'EN': 'en', 'JA': 'ja', 'KO': 'ko'}.get(value, value) if value in (*LANGUAGES, 'ZH', 'EN', 'JA', 'KO') else 'en'
+
+    def reader_return(value):
+        # Only reader pages, never an external URL or an auth/action endpoint.
+        if not isinstance(value, str) or len(value) > 2048 or any(ord(c) < 32 for c in value) or '\\' in value:
+            return '/'
+        try:
+            parsed = urlsplit(value)
+        except ValueError:
+            return '/'
+        path = unquote(parsed.path)
+        if parsed.scheme or parsed.netloc or '%' in path or not re.fullmatch(
+            r'/(?:(?:posts|tags|sources)/[^/%\\?#]+/)?(?:index(?:\.(?:zh-TW|ja|ko))?\.html)?', path
+        ):
+            return '/'
+        parts = path.split('/')
+        if len(parts) > 2:
+            try:
+                if parts[1] == 'tags':
+                    if hashtags.normalize(parts[2]) != parts[2]:
+                        return '/'
+                elif not re.fullmatch(r'[\w-]+', parts[2]):
+                    return '/'
+            except ValueError:
+                return '/'
+        return value
+
+    @app.context_processor
+    def account_ui():
+        # Existing authoring forms remain English; the sign-in card is localized.
+        return {'copy': COPY['en'], 'account_language': 'en'}
+
+    def sign_in_page(*, error=None, status=200, destination='/auth/return', values=None):
+        language = ui_language()
+        return render_template(
+            '_login_card.html' if request.args.get('fragment') == '1' else 'login.html',
+            cfg=cfg, copy=COPY[language], account_language=language,
+            ui_language=language, owner=account() if cfg.google_login_enabled else None,
+            csrf=csrf_token() if cfg.google_login_enabled else '', error=error,
+            destination=destination, return_to=reader_return(request.values.get('return_to', session.get('reader_return', '/'))),
+            login_tag=(values or {}).get('hashtags', session.get('login_tag', '')),
+        ), status
+
+    @app.get('/auth/sign-in')
+    def sign_in():
+        return sign_in_page(status=200 if cfg.google_login_enabled else 503)
+
     def form_page(*, error=None, status=200, values=None, saved_post=None, story=False, preview=None):
         owner = account() if cfg.google_login_enabled else None
+        if not owner:
+            destination = '/write' if story else '/projects' if request.path.startswith('/projects') else '/submit'
+            return sign_in_page(error=error, status=status, destination=destination, values=values)
         token = None
         if owner:
             # A signed, account-bound id makes resubmission safe across tabs,
@@ -118,7 +171,7 @@ def create_app(cfg: Config | None = None) -> Flask:
             response.headers['X-Content-Type-Options'] = 'nosniff'
             response.headers['X-Frame-Options'] = 'DENY'
             response.headers['Content-Security-Policy'] = (
-                "default-src 'self'; script-src 'none'; style-src 'self'; "
+                f"default-src 'self'; script-src {cfg.site_url.rstrip('/')}/theme.js; style-src 'self'; "
                 # Chromium applies form-action to the OAuth POST's redirect too.
                 "img-src 'self'; form-action 'self' https://accounts.google.com; "
                 "frame-ancestors 'none'; base-uri 'none'"
@@ -176,10 +229,14 @@ def create_app(cfg: Config | None = None) -> Flask:
         check_csrf()
         destination = request.form.get('destination')
         # Only fixed local destinations can survive the OAuth round trip.
-        destination = destination if destination in ('/write', '/submit', '/projects') else '/projects'
+        destination = destination if destination in ('/write', '/submit', '/projects', '/auth/return') else '/projects'
         login_tag = request.form.get('tag', '') if destination == '/write' else ''
+        language = ui_language()
+        return_to = reader_return(request.form.get('return_to', '/'))
         revoke_session()
         session.clear()
+        session['ui_language'] = language
+        session['reader_return'] = return_to
         session['login_destination'] = destination
         if login_tag:
             try:
@@ -192,7 +249,7 @@ def create_app(cfg: Config | None = None) -> Flask:
             return google.authorize_redirect(cfg.site_url.rstrip('/') + '/auth/google/callback',
                                              prompt='select_account')
         except (OAuthError, RequestException, ValueError):
-            return form_page(story=destination == '/write', error='Google sign-in is temporarily unavailable. Please try again.', status=502)
+            return sign_in_page(destination=destination, error='Google sign-in is temporarily unavailable. Please try again.', status=502)
 
     @app.get('/auth/google/callback')
     def callback():
@@ -209,9 +266,15 @@ def create_app(cfg: Config | None = None) -> Flask:
             if not isinstance(subject, str) or not subject or info.get('email_verified') is not True:
                 raise ValueError('A verified Google account is required.')
         except (OAuthError, JOSEValidationError, RequestException, ValueError, KeyError):
-            writing = session.get('login_destination') == '/write'
+            destination = session.get('login_destination', '/auth/return')
+            language = session.get('ui_language', 'en')
+            return_to = reader_return(session.get('reader_return', '/'))
+            login_tag = session.get('login_tag', '')
             session.clear()
-            return form_page(story=writing, error='Google sign-in was cancelled or could not be verified. Please try again.', status=400)
+            session['ui_language'] = language
+            session['reader_return'] = return_to
+            session['login_tag'] = login_tag
+            return sign_in_page(destination=destination, error='Google sign-in was cancelled or could not be verified. Please try again.', status=400)
         db = store()
         now = time.time()
         login_token = secrets.token_urlsafe(32)
@@ -229,9 +292,14 @@ def create_app(cfg: Config | None = None) -> Flask:
                             (_hash(login_token), owner['id'], now + SESSION_SECONDS))
         destination = session.get('login_destination', '/projects')
         login_tag = session.get('login_tag')
+        return_to = reader_return(session.get('reader_return', '/'))
+        language = session.get('ui_language', 'en')
         session.clear()
         session.permanent = True
         session['login_token'] = login_token
+        session['ui_language'] = language
+        if destination == '/auth/return':
+            return redirect(return_to, code=303)
         if destination == '/write':
             return redirect(url_for('write_story', **({'tag': login_tag} if login_tag else {})), code=303)
         return redirect(destination if destination in ('/submit', '/projects') else '/projects', code=303)
@@ -325,7 +393,7 @@ def create_app(cfg: Config | None = None) -> Flask:
     @app.get('/<path:filename>')
     def static_site(filename='index.html'):
         # Also supports local development without a separate Caddy instance.
-        if filename == 'style.css':
+        if filename in ('style.css', 'theme.js', 'theme-transition.css', 'account.js', 'account.css', 'login.css'):
             return send_from_directory(app.root_path + '/templates', filename)
         return send_from_directory(cfg.site_dir, filename)
 

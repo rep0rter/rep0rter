@@ -1,0 +1,39 @@
+{% import '_ui.html' as ui %}
+{% set appearance_copy = copy|default({'appearance': 'Appearance', 'theme_light': 'Light', 'theme_dark': 'Dark', 'theme_system': 'Follow device'}) %}
+<!DOCTYPE html>
+<html lang="{% block page_language %}en{% endblock %}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="robots" content="noindex">
+  <title>{% block page_title %}Your account{% endblock %} · {{ cfg.site_title }}</title>
+  <script src="/theme.js"></script>
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/theme-transition.css">
+  <link rel="stylesheet" href="/account.css">
+  {% block extra_head %}{% endblock %}
+</head>
+<body class="account-page {% block body_class %}{% endblock %}">
+<a class="skip-link" href="#main">{% block skip_label %}Skip to content{% endblock %}</a>
+<div class="ambient" aria-hidden="true"><span></span><span></span><span></span></div>
+<header class="site-header">
+  <div class="masthead">
+    <a class="wordmark" href="/"><span>{{ cfg.site_title }}<small>{% block brand_note %}The community newsroom{% endblock %}</small></span></a>
+    <div class="account-header-actions">{{ ui.appearance(appearance_copy) }}</div>
+  </div>
+</header>
+<main id="main" tabindex="-1">
+  {% block introduction %}
+  <div class="account-intro">
+    <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{% block edition %}YOUR ACCOUNT{% endblock %}</p>
+    <h1>{% block heading %}{% endblock %}</h1>
+    <p class="tagline">{% block intro %}{% endblock %}</p>
+    <nav class="account-navigation" aria-label="Community navigation">{% block navigation %}{% endblock %}</nav>
+  </div>
+  {% endblock %}
+  {% block content %}{% endblock %}
+</main>
+<footer><p>{% block footer %}Community stories, shared by the people doing the work.{% endblock %}</p></footer>
+</body>
+</html>

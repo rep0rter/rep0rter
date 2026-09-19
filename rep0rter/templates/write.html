@@ -1,37 +1,12 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light dark">
-  <meta name="robots" content="noindex">
-  <title>Write a story · {{ cfg.site_title }}</title>
-  <link rel="stylesheet" href="/style.css">
-</head>
-<body class="account-page">
-<header>
-  <div class="masthead"><a class="wordmark" href="/">{{ cfg.site_title }}</a><span class="edition">COMMUNITY STORIES</span></div>
-  <h1>Write a story</h1>
-  <p class="tagline">Be the reporter of your own work. Share what happened, what you learned, and how others can take part.</p>
-  <nav class="links"><a href="/">← Back to the feed</a><a href="/submit">Post your project</a><a href="/projects">Manage automatic project news</a></nav>
-</header>
-<main>
+{% extends "_account_base.html" %}
+{% block page_title %}Write a story{% endblock %}
+{% block edition %}COMMUNITY STORIES{% endblock %}
+{% block heading %}Write a story{% endblock %}
+{% block intro %}Be the reporter of your own work. Share what happened, what you learned, and how others can take part.{% endblock %}
+{% block navigation %}<a href="/">← Back to the feed</a><a href="/submit">Post your project</a><a href="/projects">Manage automatic project news</a>{% endblock %}
+{% block content %}
 {% if error %}<p class="form-notice" role="alert">{{ error }}</p>{% endif %}
-{% if not cfg.google_login_enabled %}
-  <article><h2>Story publishing is not available yet</h2><p>Google sign-in is being set up. Please check back soon.</p></article>
-{% elif not owner %}
-  <article class="project-form">
-    <h2>Sign in to write your story</h2>
-    <p>Publish under your own name, with a “Self-reported” label. Add hashtags to connect your update to the community’s timelines.</p>
-    <form action="{{ url_for('login') }}" method="post">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <input type="hidden" name="destination" value="/write">
-      <input type="hidden" name="tag" value="{{ values.get('hashtags', '') }}">
-      <button class="google-login" type="submit">Sign in with Google</button>
-    </form>
-    <p class="form-help">Your email stays private. You choose your public display name. Nothing is published until you choose Publish story.</p>
-  </article>
-{% else %}
+
   <div class="account-bar"><span>Signed in as {{ owner.name }}</span>
     <form action="{{ url_for('logout') }}" method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="quiet-button">Sign out</button></form>
   </div>
@@ -78,8 +53,5 @@
       <div class="form-actions"><button type="submit" name="action" value="preview" class="quiet-button">Preview story</button><button type="submit" name="action" value="publish">{{ 'Retry publishing saved story' if saved_post else 'Publish story' }}</button></div>
     </form>
   </article>
-{% endif %}
-</main>
-<footer><p>Community stories, shared by the people doing the work.</p></footer>
-</body>
-</html>
+{% endblock %}
+{% block footer %}Community stories, shared by the people doing the work.{% endblock %}

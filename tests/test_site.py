@@ -945,3 +945,20 @@ def test_only_source_examples_publish_an_empty_site_without_sample_assets(publis
         assert not doc.select("article, [data-preview-post-id]")
         assert not ElementTree.parse(cfg.site_dir / feed).findall("channel/item")
     assert store.post_count() == len(entries)
+
+
+def test_reader_login_links_and_assets_are_published(published_site):
+    from urllib.parse import parse_qs
+    store, cfg, _, entries, _ = published_site
+    cfg = replace(cfg, site_url='https://example.test', google_client_id='offline-client',
+                  google_client_secret='offline-secret', web_secret_key='offline-session-secret-' * 3)
+    site.build(store, cfg)
+    for asset in ('account.js', 'account.css', 'login.css'):
+        assert (cfg.site_dir / asset).stat().st_size > 0
+    for relative in ('index.zh-TW.html', f'posts/{entries[0][0].id}/index.ja.html'):
+        doc = html(cfg.site_dir / relative)
+        link = doc.select_one('a[data-sign-in]')
+        assert link and 'projects' not in link['href']
+        assert urljoin('https://example.test/' + relative, link['href']).startswith('https://example.test/auth/sign-in?')
+        assert parse_qs(urlsplit(link['href']).query)['return_to'] == ['/' + relative]
+        assert doc.select_one('script[src$="account.js"]')
