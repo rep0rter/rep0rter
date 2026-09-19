@@ -90,7 +90,7 @@ def test_collect_recovers_old_root_and_skips_unchanged_channel(tmp_path,monkeypa
         assert store.get_event('slack:C:500000').text=='Original root'
         state=read_state(store,'slack:C')
         assert state['last_complete_ts']=='900000' and state['gap'] is False
-        assert get.call_args_list[-1].kwargs['before']=='500000.000001'
+        assert get.call_args_list[-1].kwargs['before']=='500001'
         count=get.call_count
         assert inc.collect(store,session=Mock(headers={}))==0
         assert get.call_count==count
@@ -267,3 +267,65 @@ def test_busy_channel_preserves_cursor_without_starving_quiet_channel(tmp_path, 
         assert session.get.call_args.kwargs['params']['before'] == '999600'
         assert read_state(store, 'slack:A')['last_complete_ts'] == '999900'
         assert read_state(store, 'slack:health')['healthy']
+
+
+def test_fractional_bounds_do_not_skip_microsecond_neighbors(monkeypatch):
+    get = pages(monkeypatch, [
+        [{'ts': '1789571778.900005'}, {'ts': '1789571777.383129'}],
+        [{'ts': '1789571777.383129'}, {'ts': '1789571777.383128'}, {'ts': '1789571777.100001'}],
+    ])
+    rows, complete, error, resume = inc.scan(Mock(), 'C', Decimal('1789571777.200001'))
+    assert complete and not error and resume is None
+    assert {row['ts'] for row in rows} == {'1789571778.900005', '1789571777.383129', '1789571777.383128'}
+    assert get.call_args_list[0].kwargs['after'] == '1789571777'
+    assert get.call_args_list[1].kwargs['before'] == '1789571778'
+
+
+def test_resumed_fractional_cursor_uses_wide_bound_and_exact_progress(monkeypatch):
+    get = pages(monkeypatch, [[{'ts': '1789571777.383129'}, {'ts': '1789571777.383128'}, {'ts': '1789571777.100001'}]])
+    rows, complete, error, resume = inc.scan(Mock(), 'C', Decimal('1789571777.200001'),
+                                           start_before='1789571777.383129')
+    assert complete and not error and resume is None
+    assert get.call_args.kwargs['before'] == '1789571778'
+    assert '1789571777.383128' in {row['ts'] for row in rows}
+
+
+def test_same_second_page_saturation_remains_a_gap(monkeypatch):
+    rows = [{'ts': '1789571777.' + str(900000 - n)} for n in range(100)]
+    pages(monkeypatch, [rows, rows])
+    saved, complete, error, resume = inc.scan(Mock(), 'C', Decimal('1789571776'))
+    assert not complete and len(saved) == 100
+    assert 'did not advance' in error and resume is None
+
+
+def test_root_lookup_widens_float_boundary_but_matches_only_exact_id(monkeypatch):
+    ts = '1789571777.383129'
+    get = pages(monkeypatch, [[{'ts': '1789571777.900000', 'text': 'other'}, {'ts': ts, 'text': 'exact root'}]])
+    root = inc.refresh_root(Mock(), 'C', ts, {'C'})
+    assert root.id == 'slack:C:' + ts and root.text == 'exact root'
+    assert get.call_args.kwargs['before'] == '1789571778'
+
+
+def test_ineligible_missing_roots_do_not_consume_refresh_slots(tmp_path, monkeypatch):
+    from rep0rter.collectors.state import write_state
+    now = 1000000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    channel = _scheduled_channel('C', now)
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda session: [channel])
+    get = pages(monkeypatch, [[{'ts': '500000', 'text': 'Recovered parent'}]])
+    with Store(tmp_path/'db') as store:
+        with store.conn:
+            write_state(store, 'slack:C', {'last_complete_ts': '900000', 'last_posted': now,
+                'total_messages': 10, 'last_refresh': now, 'last_reconciliation': now})
+        for index, ts in enumerate(['100000', '100001', '100002', '100003', '500000']):
+            parent_id = 'slack:C:' + ts
+            child = Event('slack:C:' + str(990000 + index), 'slack', 'thread_reply', 'slack:C',
+                          990000 + index, text='Reply', parent_id=parent_id, meta={'context_incomplete': True})
+            persist(store, 'fixture', {}, [child], Metrics(), now)
+            if index < 4:
+                with store.conn:
+                    store.conn.execute('INSERT INTO event_tombstones VALUES(?,?,?)', (parent_id, now, 'excluded'))
+        inc.collect(store, session=Mock(headers={}))
+        assert get.call_count == 1
+        assert store.get_event('slack:C:500000').text == 'Recovered parent'
+        assert store.get_event('slack:C:990004').meta['context_incomplete'] is False

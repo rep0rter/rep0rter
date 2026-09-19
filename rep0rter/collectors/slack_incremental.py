@@ -5,7 +5,7 @@ import logging
 import time
 from dataclasses import asdict
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
 
 from . import slack_archive as api
 from .state import BudgetExceeded, BudgetSession, Metrics, persist, read_state, write_state
@@ -37,7 +37,12 @@ def scan(session, channel_id, lower, *, max_pages=30, start_before=None):
     collected, before = {}, start_before
     for _ in range(max_pages):
         params = {'channel': channel_id, 'count': 100}
-        params['before' if before is not None else 'after'] = before if before is not None else str(lower)
+        # The archive turns query floats back into PHP strings before SQL,
+        # losing fractional precision at Slack-sized timestamps. Widen the wire
+        # bounds to whole seconds; exact Decimal bounds below retain correctness.
+        params['before' if before is not None else 'after'] = str(
+            Decimal(before).to_integral_value(rounding=ROUND_CEILING) if before is not None
+            else lower.to_integral_value(rounding=ROUND_FLOOR))
         try:
             payload = api._get(session, api.BASE_URL + '/index/getmessage', **params).json()
         except BudgetExceeded:
@@ -76,7 +81,7 @@ def scan(session, channel_id, lower, *, max_pages=30, start_before=None):
 def refresh_root(session, channel_id, root_ts, public_ids):
     """One bounded point lookup; never silently substitute a nearby message."""
     payload = api._get(session, api.BASE_URL + '/index/getmessage', channel=channel_id,
-                       before=str(Decimal(root_ts) + Decimal('0.000001')), count=100).json()
+                       before=str(Decimal(root_ts).to_integral_value(rounding=ROUND_FLOOR) + 1), count=100).json()
     if not isinstance(payload, dict) or not isinstance(payload.get('messages'), list):
         raise RuntimeError('invalid root refresh response')
     matches = [r for r in payload['messages'] if isinstance(r, dict) and str(r.get('ts')) == root_ts]
@@ -89,7 +94,7 @@ def refresh_root(session, channel_id, root_ts, public_ids):
 
 
 def collect(store, days=2, max_channels=None, session=None, *, metrics=None, request_budget=80):
-    metrics = metrics or Metrics()
+    metrics = metrics or (session.metrics if isinstance(session, BudgetSession) else Metrics())
     session = session or api.make_session()
     if not isinstance(session, BudgetSession):
         session = BudgetSession(session, metrics, limit=request_budget)
@@ -208,7 +213,8 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
     tracked = store.conn.execute("SELECT e.id FROM events e WHERE e.source='slack' AND e.kind='message' AND e.ts>=? AND NOT EXISTS(SELECT 1 FROM event_tombstones t WHERE t.event_id=e.id) AND json_extract(e.meta,'$.deleted_at') IS NULL ORDER BY e.last_seen LIMIT 100", (now - 48*3600,)).fetchall()
     older = store.conn.execute("SELECT e.id FROM events e WHERE e.source='slack' AND e.kind='message' AND e.ts<? AND NOT EXISTS(SELECT 1 FROM event_tombstones t WHERE t.event_id=e.id) AND json_extract(e.meta,'$.deleted_at') IS NULL ORDER BY e.last_seen LIMIT 2", (now - 48*3600,)).fetchall()
     due_ids = {r[0] for r in missing} | {r[0] for r in tracked} | {r[0] for r in older}
-    for root_id in sorted(due_ids, key=lambda root: queue.get(root, {}).get('attempted_at', 0))[:4]:
+    root_attempts = 0
+    for root_id in sorted(due_ids, key=lambda root: (queue.get(root, {}).get('attempted_at', 0), root)):
         last = queue.get(root_id, {})
         if now - last.get('attempted_at', 0) < REFRESH_INTERVAL:
             continue
@@ -220,7 +226,10 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         _, channel_id, root_ts = root_id.split(':', 2)
         if channel_id not in public_ids or not _allowed(store, container_id='slack:' + channel_id):
             continue
+        if root_attempts >= 4 or not session.remaining:
+            break
         try:
+            root_attempts += 1
             root = refresh_root(session, channel_id, root_ts, public_ids)
             queue[root_id] = {'attempted_at': now, 'resolved': root is not None}
             if root and _allowed(store, event=root):

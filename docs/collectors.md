@@ -21,11 +21,11 @@ GitHub 使用公開無認證 REST API：先確認 repository `private=false`，�
 
 ## Slack 游標與補抓
 
-每個 channel 的 `collector:v1:slack:<id>` JSON 保存 `last_complete_ts`（十進位原始字串）、首頁計數與時間、上次嘗試／成功／回掃、缺口原因。第一次從兩天回填；後續從完整高水位往前重疊兩小時。第一頁 `after=L`，下一頁改成 `before=min(ts)`，不會同時送兩者。短頁繼續、重複 ID 合併、游標必須遞減。
+每個 channel 的 `collector:v1:slack:<id>` JSON 保存 `last_complete_ts`（十進位原始字串）、首頁計數與時間、上次嘗試／成功／回掃、缺口原因。第一次從兩天回填；後續從完整高水位往前重疊兩小時。邏輯範圍從 `L` 開始，續頁使用 `min(ts)`；保存與比較皆用 Decimal 原始精度。上游會把 query float 轉回低精度 SQL 字串，因此實際 HTTP 的 `after` 向下取整秒、`before` 向上取整秒，以重疊取得邊界訊息，再以原始時間戳過濾／合併，不會同時送兩者。短頁繼續、重複 ID 合併、游標必須遞減。同一秒超過整頁且無法推進時保留 gap，不跨秒跳過。
 
 事件與完成高水位在同一個 SQLite transaction 寫入。每個 scan 最多 30 頁，並按本輪剩餘請求與待抓頻道數限制分頁，避免單一繁忙頻道耗盡全部額度；請求／分頁 budget 用完時保存 pending lower/high/before，下一輪續掃，完整高水位不會提前前進。程序在提交前中断不留半個游標。完整同步之後不會把游標直接跳成現在。額度不足屬於待補工作，下一輪立即重試，不套用來源錯誤的一小時退避；尚未發出 HTTP 的頻道保留原本嘗試／回掃時間，按最久未嘗試排序優先補抓。回掃時間只在完成時更新，所有未完成缺口仍列入健康狀態，不會因延後而變綠。
 
-首頁訊息數或 last-posted 改變會觸發增量，不以 last-synced 代表可見性。近期頻道每六小時回掃 48 小時；另以固定上限每輪挑兩個最久未檢查的舊頻道回掃七天。未解析的 thread parent 與近期／較舊 root 共用持久 bounded queue，每輪最多 4 次精確 timestamp 補抓；找不到 root 留 `context_incomplete`，不拿鄰近訊息替代。已觀測的 reaction 可以下降，歷史高點另存在 `engagement_high_water`。
+首頁訊息數或 last-posted 改變會觸發增量，不以 last-synced 代表可見性。近期頻道每六小時回掃 48 小時；另以固定上限每輪挑兩個最久未檢查的舊頻道回掃七天。未解析的 thread parent 與近期／較舊 root 共用持久 bounded queue，每輪最多 4 次精確 timestamp 補抓；已排除或刪除的 root 不占請求名額。補抓用下一個整秒作為 before 邊界，回應仍必須完全匹配原始 timestamp；找不到 root 留 `context_incomplete`，不拿鄰近訊息替代。已觀測的 reaction 可以下降，歷史高點另存在 `engagement_high_water`。
 
 上游在 SQL limit 之後才移除 subtype，而且沒有提供 raw-page bounds：空頁無法區分真正結尾與「整頁被過濾」。這種情況會保存已看到的事件、記錄 gap、不推高水位，來源健康顯示 degraded。重複同時間戳群、無進展頁亦然。這是上游協定限制，無法靠客戶端保證穿越；需要上游提供 stable opaque cursor 或 raw bounds。有限重疊／七天抽查也不能保證找到任意晚到、從未觀測過的舊訊息。
 
