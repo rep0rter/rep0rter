@@ -1,141 +1,104 @@
-# Native Cloudflare Workers deployment
+# Cloudflare hosting and GitHub reporting
 
-The Cloudflare target runs the existing Python application in Python Workers,
-with a separate JavaScript Worker serving public pages.
-It does not use Containers, Docker, a Cloudflare Tunnel, or the Steam host at
-runtime. Flask handles Google login and submissions, Browser Run renders cards
-and browser-only feeds, and a Cron Trigger asks a singleton Durable Object to
-run the hourly collector/editor/publisher cycle.
+Production uses native Cloudflare Workers, without Containers or a Steam host.
+GitHub Actions runs the hourly Python collector, model writer, Chromium card
+renderer, and publisher. Cloudflare serves the site, runs Google login and
+account features, and holds the durable SQLite database and generated assets.
 
-## Storage and concurrency
+## Reporting and storage
 
-The singleton `Reporter` Durable Object serializes application writers. The
-Python SQLite file is an ephemeral working copy. Every committed transaction
-synchronously saves its changed 4 KiB pages in one Durable Object SQLite
-transaction before returning to the caller. This preserves existing transaction
-and Telegram outbox semantics. If persistence fails, the invocation aborts and
-its local working copy is discarded before the next application operation.
+`.github/workflows/report.yml` runs hourly at minute 7 and supports manual
+`report` and `build` dispatches. GitHub cron can be delayed. The workflow requires
+passing Offline tests for its exact main commit; the Worker also rejects a
+runner whose source commit differs from the deployed engine.
 
-Generated files are copied through a private service binding to the JavaScript
-Worker and published to its `PublishedSite` Durable Object in a single transaction;
-removed paths disappear at that same boundary. Website reads do not wait for a
-collector or model request. Neither the database nor private account/session
-records are available through the static file route. Local file locks are
-replaced by the singleton's application mutex in Workers only.
+The runner takes an exclusive, expiring write lease and downloads a private
+snapshot into its temporary workspace. Public pages remain available. Account
+writes return HTTP 503 with Retry-After during the lease, rather than overwriting
+concurrent changes. The runner renews the lease with progress; abandoned leases
+expire after twenty minutes. GitHub concurrency prevents overlapping jobs.
 
-This deployment is sized for the current small publication. The database working
-copy is capped at 32 MiB and individual generated assets at 1.9 MB. A larger
-publication needs storage and memory profiling before raising those caps. Keep
-Cloudflare's Durable Object storage limits, Browser Run quota, and CPU limits in
-view. Browser failures fail the build instead of silently producing broken cards.
+Every SQLite commit synchronously checkpoints its changed 4 KiB pages to the
+Worker before returning. Checkpoints have monotonically increasing sequence
+numbers and idempotent retry handling. If persistence is uncertain, the runner
+aborts. In particular, Telegram outbox reservations are durable before sending;
+a runner crash cannot turn an ambiguous send into an automatic duplicate.
 
-## Build and test
+The snapshot and credentials are never uploaded as workflow artifacts. GitHub
+secrets `REP0RTER_CONFIG` (the existing application configuration as JSON) and
+`REP0RTER_RUNNER_TOKEN` authorize the runner. The same runner token is the engine's
+`RUNNER_TOKEN` secret. Tokens are sent only in headers. Rotate both copies together.
+`REP0RTER_CONFIG` also remains a Worker secret for account operations.
 
-Install `uv`, Node.js, and the pinned Python Workers tools:
+The engine's `Reporter` Durable Object stores database pages and files. The
+separate JavaScript frontend's `PublishedSite` Durable Object atomically switches
+public generations. Withdrawals persist their exclusions ledger and scrub the
+public generation before attempting a new render. Native account submissions
+can still use Browser Run; the large scheduled workload uses GitHub's Chromium.
+Native Worker cron publication stays disabled to prevent duplicate schedulers.
 
-```sh
-uv tool install workers-py==1.17.3
-python3 cloudflare/prepare.py
-cd cloudflare
-pywrangler dev
-# Update an existing preview (see bootstrap ordering below for first deployment):
-pywrangler deploy
-npx wrangler@4.135.0 deploy --config wrangler-web.jsonc
-```
+## Code deployment
 
-`prepare.py` copies only application source and checked-in assets into the build
-folder. It never copies `.env`, runtime data, deployment state, or Docker files.
-`pylock.toml` locks the Python dependencies. Run the repository's offline tests
-before deployment; `tests/test_worker_runtime.py` checks commit recovery,
-rollback, persistence failure, and WAL snapshot recovery.
-
-## Configuration and migration
-
-Store application configuration as the JSON object in the Worker secret
-`REP0RTER_CONFIG`. Its keys are the existing `REP0RTER_*`, `AI_*`, and `TELEGRAM_*`
-variables. Upload it through Wrangler's stdin; never put values in command
-arguments, source, logs, or git. `REP0RTER_SITE_URL` is the public origin configured
-in Wrangler. Google OAuth continues using the same callback URL.
-
-The Python engine and public frontend each have separate Wrangler configs.
-The preview config defaults to `RUN_ENABLED=false`. The separate
-`wrangler-production.jsonc` enables engine scheduling;
-`wrangler-web-production.jsonc` attaches the public route. This prevents preview
-and pre-cutover deployments from publishing duplicate Telegram messages. Use
-preview credentials without a Telegram token. A temporary `MIGRATION_TOKEN`
-secret protects the import and validation endpoints. The local admin client
-reads this from an ignored, mode-0600 `.dev.vars` file.
+Install Node.js, `uv`, and `uv tool install workers-py==1.17.3`. Authenticate
+Wrangler, merge changes through a pull request, and wait for the merged commit's
+successful **Offline tests** push run. From its clean checkout:
 
 ```sh
-python3 cloudflare/export.py --data-dir /path/to/readable/data --output /private/snapshot.zip
-python3 cloudflare/manage.py import --url https://WORKER.workers.dev --archive /private/snapshot.zip
-python3 cloudflare/manage.py check --url https://WORKER.workers.dev
-python3 cloudflare/manage.py collect --url https://PREVIEW.workers.dev
-python3 cloudflare/manage.py build --url https://PREVIEW.workers.dev
+python3 cloudflare/deploy.py --production
 ```
 
-Export uses SQLite's online backup API, checks integrity, and archives one
-published site generation plus the exclusions ledger and image cache. The
-archive includes private account/session data: store it privately and never
-commit it. Import validates the database and paths, and is disabled after the
-first successful import or after scheduling is enabled. Never use an initial
-preview snapshot as the final cutover snapshot while local writers are running.
+This checks remote main and the exact commit's CI, prepares a source-only bundle,
+and deploys the engine and frontend. Verify `/healthz` reports that commit, then
+run and verify the Production reporting workflow. Green CI alone is not a
+production deployment. Future automatic code deployments need a separately
+provisioned Cloudflare deployment API token; the reporting token cannot upload
+Worker code. The old Steam deployment timer must remain disabled.
 
-## Subsequent code deployments
+For local development, run `python3 cloudflare/prepare.py`, then `pywrangler dev`
+from `cloudflare/`. The preview config has scheduling disabled. Bootstrap new
+resources by creating the engine without its SITE service binding, creating the
+frontend without its public route, then restoring the engine binding. Temporary
+configs must sit beside the checked-in configs, under ignored `.env.*.json`
+names, so Python dependency resolution uses the same project directory.
 
-Push the commit to `main`, wait for its passing **Offline tests** push run, then
-run `python3 cloudflare/deploy.py --production` from a clean checkout of that
-commit. This verifies GitHub tests and remote main before deploying. Wrangler
-uses its saved OAuth login or `CLOUDFLARE_API_TOKEN`; no Steam service is involved.
-Automatic GitHub deployment requires a separately provisioned deployment API
-token. The old Steam deployment timer must remain disabled.
+## Migration and verification
 
-## Cutover
+The `cloudflare/export.py` tool uses SQLite online backup and captures one site
+generation, image cache, and exclusions ledger. Archives contain private account
+and session records and must stay private. A temporary `MIGRATION_TOKEN` protects
+`cloudflare/manage.py` import and validation operations. Import is allowed once
+and must precede scheduler activation.
 
-1. Validate the preview's database integrity, collection, Browser Run, all four
-   editions, RSS, Google-login form and callback destination, and recovery after
-   a Worker version change. Keep preview Telegram credentials absent.
-2. Commit and push to `main`, and wait for the exact commit's successful GitHub
-   **Offline tests** push run before deploying production code. Bootstrap the engine with scheduling disabled
-   and its `SITE` binding omitted, then the frontend with its public route omitted,
-   then restore the engine binding. Keep those temporary configs beside the checked-in configs with an ignored
-   `.env.bootstrap-*.json` filename (Python dependencies resolve relative to the config). Both service bindings must exist before importing.
-3. Pause local writers through `cloudflare/cutover.py pause`. This acquires the
-   installed deployment controller's lock and uses its existing stop method.
-   Exit 75 means another deployment is active; wait and retry. The website stays
-   available during the transfer.
-4. Export a fresh snapshot with writers paused, import it into production, and
-   compare database counts and published file hashes. Preserve the local data
-   and previous deployment for recovery.
-5. Route `rep0rter.observe.tw/*` to the production Worker, verify public pages and
-   Google callback behavior, then deploy with `RUN_ENABLED=true`. Keep the local
-   deployment timer disabled. Verify a complete Cloudflare reporting cycle and
-   its health record before retiring the local web service. The protected
-   `manage.py start` action can request the first alarm immediately; it retains
-   the hourly duplicate-run guard.
-6. Delete `MIGRATION_TOKEN` from production and preview. Record the Worker version,
-   route, source commit, and health result. The unprotected `/healthz` exposes only
-   runtime readiness and scheduling timestamps, never credentials or content.
+1. Validate the preview and merge tested migration code to main.
+2. Run `cloudflare/cutover.py pause` under the installed Singa controller lock.
+   Exit 75 means busy: wait and retry. Local writers stop; the website stays up.
+3. Export a fresh snapshot, import it, and compare the database checksum/counts
+   and public asset hashes. Never reuse a preview snapshot while writers run.
+4. Deploy matching tested source, install runner secrets, and dispatch `build`.
+   Verify all four editions, RSS, source examples, images, and Google callback.
+5. Attach `rep0rter.observe.tw/*` to the frontend. Dispatch `report` and verify
+   the workflow result plus the Worker's last_started/last_finished health data.
+6. Retire local web through `cloudflare/cutover.py retire-web`; retain local data
+   and recovery releases. Remove temporary migration credentials from both
+   production and preview. Record source commit and Cloudflare versions.
 
-The first scheduled request durably reserves its hourly slot. A crash retry does
-not immediately rerun the entire pipeline; the next hour resumes the normal
-cycle. Telegram's existing unknown-delivery handling remains in effect.
+Never restart the old publisher after Cloudflare starts writing without
+reconciling the database and delivery outbox. Use Cloudflare code rollback for
+code recovery; durable data is independent of Worker versions.
 
-Native Workers replace host maintenance snapshots with Durable Object SQLite
-point-in-time recovery. The old daily filesystem backups and SSH/rsync jobs do
-not run in Workers. The current installation has no offsite destination, Notion
-proposal discovery, or administrator alert transport configured. Configure and
-verify any future equivalents explicitly before enabling those features.
+## Capacity and recovery
 
-Use Cloudflare version rollback for code recovery. Data persists independently
-of Worker versions. Never restart the old local publisher after Cloudflare starts
-writing without reconciling its database and delivery outbox. Before any Durable
-Object point-in-time data restore, preserve the current exclusions ledger and
-reapply it; restoring old data must not resurrect withdrawn material.
+The in-memory database copy is capped at 32 MiB, individual files at 1.9 MB,
+and a public-site transfer at 24 MiB. Profile storage and memory before raising
+these limits. Native Browser Run calls honor transient rate limits and explicitly
+fail if the daily browser quota is exhausted.
 
-## References
+Durable Object SQLite point-in-time recovery replaces the old host's daily
+filesystem/SSH backups. Preserve the current exclusions ledger before a data
+restore and reapply it; old backups must never resurrect withdrawn material.
+No offsite destination, Notion proposal discovery, or admin alert transport is
+currently configured. Verify corresponding workflows before enabling them.
 
 - [Python Workers](https://developers.cloudflare.com/workers/languages/python/)
-- [Python Flask support](https://developers.cloudflare.com/workers/languages/python/packages/flask/)
-- [Durable Object SQLite storage](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/)
-- [Browser Run Quick Actions](https://developers.cloudflare.com/browser-run/quick-actions/)
+- [Durable SQLite](https://developers.cloudflare.com/durable-objects/api/sqlite-storage-api/)
+- [Browser Run limits](https://developers.cloudflare.com/browser-run/limits/)

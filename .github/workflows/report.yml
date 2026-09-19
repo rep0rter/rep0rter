@@ -1,0 +1,60 @@
+name: Production reporting
+on:
+  schedule:
+    - cron: '7 * * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Reporting cycle or site rebuild only
+        type: choice
+        options: [report, build]
+        default: report
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: production-reporting
+  cancel-in-progress: false
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require tested deployed main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json,os,subprocess
+          sha=os.environ['GITHUB_SHA']
+          data=json.loads(subprocess.check_output(['gh','api',f'repos/rep0rter/rep0rter/actions/workflows/tests.yml/runs?event=push&branch=main&head_sha={sha}']))
+          runs=[r for r in data['workflow_runs'] if r['head_sha']==sha and r['event']=='push' and r['head_branch']=='main']
+          latest=max(runs,key=lambda r:r['id'],default={})
+          assert latest.get('conclusion')=='success', 'This exact main commit must pass Offline tests first'
+          PY
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install Python and Chromium
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk
+          python -m pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+      - name: Collect, write and publish with durable checkpoints
+        env:
+          REP0RTER_CONFIG: ${{ secrets.REP0RTER_CONFIG }}
+          REP0RTER_RUNNER_TOKEN: ${{ secrets.REP0RTER_RUNNER_TOKEN }}
+          REP0RTER_WORKER_URL: https://rep0rter-engine.sky-hong.workers.dev
+          REPORT_MODE: ${{ inputs.mode || 'report' }}
+          PYTHONPATH: .
+        run: |
+          python - <<'PY'
+          import json,os
+          for key,value in json.loads(os.environ['REP0RTER_CONFIG']).items():
+              if value and any(part in key for part in ('TOKEN','KEY','SECRET','CHAT')):
+                  print('::add-mask::'+str(value).replace('%','%25').replace('\r','%0D').replace('\n','%0A'))
+          PY
+          python cloudflare/github_runner.py --mode "$REPORT_MODE"

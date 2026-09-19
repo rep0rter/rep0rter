@@ -35,9 +35,4 @@
     {% if it.story.sources | length > 1 %}<p class="meta">{{ copy.sources }}: {% for source in it.story.sources %}<a href="{{ source.url }}" rel="noopener">{{ source.name }}</a>{% endfor %}</p>{% endif %}
   </div>
   {% endif %}
-  <details class="original-source"{% if detail and language != 'en' %} open{% endif %}>
-    <summary><span>{{ copy.original }}</span>{{ ui.icon('down') }}</summary>
-    <blockquote dir="auto">{{ it.original }}</blockquote>
-    {% if language == 'en' %}<figure><button type="button" class="image-link" data-image-view data-image-src="{{ prefix }}{{ it.original_image }}" data-image-light="{{ prefix }}{{ it.original_image }}" data-image-dark="{{ prefix }}{{ it.original_image_dark }}" aria-haspopup="dialog" aria-controls="image-viewer" aria-label="{{ copy.view_image }}" disabled><picture><source data-theme-source media="(prefers-color-scheme: dark)" srcset="{{ prefix }}{{ it.original_image_dark }}"><img class="source-card" src="{{ prefix }}{{ it.original_image }}" width="1200" height="630" loading="lazy" alt="{{ copy.image_alt }}{{ it.event.author_name or it.channel }}"></picture></button><figcaption>{{ copy.card_label }}</figcaption></figure>{% endif %}
-  </details>
 </article>

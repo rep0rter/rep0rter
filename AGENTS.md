@@ -3,7 +3,8 @@
 - Production runs on native Cloudflare Workers. Read `docs/cloudflare.md`.
   Push to `main`, require passing GitHub **Offline tests** for that exact commit,
   and run `python3 cloudflare/deploy.py --production` from its clean checkout.
-  Verify the public route, health record, and reporting cycle; green CI alone
+  The hourly reporting job runs in GitHub Actions; keep native Worker cron
+  publication disabled. Verify the public route, health record, and Actions cycle; green CI alone
   is not deployment success. Never enable Containers for this deployment.
 - The former Singa services and deployment timer must remain stopped. Its
   recovery releases are managed by

@@ -99,7 +99,7 @@ class Runtime:
             return
         def write():
             for number, page in changes:
-                self.sql.exec('INSERT INTO db_pages VALUES (?,?) ON CONFLICT(number) DO UPDATE SET data=excluded.data', number, to_js(page))
+                self.sql.exec('INSERT INTO db_pages VALUES (?,?) ON CONFLICT(number) DO UPDATE SET data=excluded.data', number, page)
             self.sql.exec('DELETE FROM db_pages WHERE number>=?', len(current))
         self.transaction(write)
         self.pages = current
@@ -108,7 +108,7 @@ class Runtime:
     def persist_policy(self, path):
         data = path.read_bytes()
         self.sql.exec('INSERT INTO files VALUES (?,?,?) ON CONFLICT(path) DO UPDATE SET data=excluded.data,digest=excluded.digest',
-                      'exclusions.json', to_js(data), hashlib.sha256(data).hexdigest())
+                      'exclusions.json', data, hashlib.sha256(data).hexdigest())
 
     def hydrate_site(self):
         # Withdrawals scrub the complete durable generation before any render
@@ -158,7 +158,7 @@ class Runtime:
         def write():
             for path, data, digest in changed:
                 if existing.get(path) != digest:
-                    self.sql.exec('INSERT INTO files VALUES (?,?,?) ON CONFLICT(path) DO UPDATE SET data=excluded.data,digest=excluded.digest', path, to_js(data), digest)
+                    self.sql.exec('INSERT INTO files VALUES (?,?,?) ON CONFLICT(path) DO UPDATE SET data=excluded.data,digest=excluded.digest', path, data, digest)
             for path in existing.keys() - files.keys():
                 self.sql.exec('DELETE FROM files WHERE path=?', path)
             self.set_meta('site_built_at', time.time())
@@ -169,7 +169,8 @@ class Runtime:
     def health(self):
         return {'ready': self.meta('imported') == 'true' and self.meta('site_built_at') is not None,
                 'runtime': 'cloudflare-workers', 'source_commit': SOURCE_COMMIT,
-                'scheduled': getattr(self.env, 'RUN_ENABLED', 'false') == 'true',
+                'scheduled': getattr(self.env, 'RUN_ENABLED', 'false') == 'true' or getattr(self.env, 'RUNNER_ENABLED', 'false') == 'true',
+                'scheduler': 'github-actions' if getattr(self.env, 'RUNNER_ENABLED', 'false') == 'true' else 'cloudflare',
                 'last_started': self.meta('last_started'), 'last_finished': self.meta('last_finished'),
                 'last_error': self.meta('last_error', ''),
                 'collection_healthy': self.meta('collection_healthy')}
@@ -351,7 +352,7 @@ class Reporter(DurableObject):
 
     async def fetch(self, request):
         path = urlsplit(request.url).path
-        if path == '/healthz' or (not path.startswith(('/__admin/', '/auth/', '/projects')) and path not in ('/submit', '/write')):
+        if path == '/healthz' or (not path.startswith(('/__admin/', '/__runner/', '/auth/', '/projects')) and path not in ('/submit', '/write')):
             # Durable site transactions are atomic. Reading their published
             # files does not wait for a slow collector or model request.
             return await self.respond(request, path)
@@ -362,6 +363,9 @@ class Reporter(DurableObject):
         runtime = self.load()
         token = services.set(runtime)
         try:
+            if path.startswith('/__runner/'):
+                from runner_api import handle
+                return await handle(self, request, path)
             if path.startswith('/__admin/'):
                 return await self.admin(request, path)
             if path == '/healthz':
@@ -370,6 +374,8 @@ class Reporter(DurableObject):
             if runtime.meta('imported') != 'true':
                 return Response('Migration is not yet complete.', status=503)
             if path.startswith(('/auth/', '/projects')) or path in ('/submit', '/write'):
+                if float(runtime.meta('runner_until', '0')) > time.time():
+                    return Response('Reporting update in progress. Please retry shortly.', status=503, headers={'Retry-After': '60'})
                 if self.app is None:
                     from rep0rter.web import create_app
                     self.app = create_app()
@@ -440,7 +446,7 @@ class Reporter(DurableObject):
                     if len(value) > MAX_FILE:
                         return Response('Asset too large', status=413)
                     runtime.sql.exec('INSERT INTO files VALUES (?,?,?)', item.filename,
-                                     to_js(value), hashlib.sha256(value).hexdigest())
+                                     value, hashlib.sha256(value).hexdigest())
                     if item.filename == 'exclusions.json':
                         (runtime.root / item.filename).write_bytes(value)
                     del value

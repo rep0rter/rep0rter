@@ -5,6 +5,7 @@ template, never arbitrary remote pages. Identity images are embedded locally.
 """
 
 from __future__ import annotations
+import sys
 
 import base64
 import hashlib
@@ -68,7 +69,7 @@ def _public_image_url(url: str) -> bool:
 
 def _fetch_image(url: str) -> bytes | None:
     """Pin each public DNS result, verify original TLS identity, and bound reads."""
-    if services.get() is not None:
+    if services.get() is not None and sys.platform == 'emscripten':
         return services.get().fetch_image(url)
     deadline = time.monotonic() + 20
     for _ in range(4):
@@ -320,7 +321,7 @@ class CardRenderer:
         with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".png", delete=False) as output:
             temporary = Path(output.name)
         try:
-            runtime = services.get()
+            runtime = services.get() if sys.platform == 'emscripten' else None
             page = None if runtime else self._page()
             if runtime:
                 temporary.write_bytes(runtime.render_card(rendered))

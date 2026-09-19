@@ -2,7 +2,7 @@
 
 # rep0rter
 
-**An AI reporter for the g0v civic-tech community.** Every hour it reads public
+**An AI reporter covering civic-tech communities, including g0v, Code for Korea, and Code for Japan.** Every hour it reads public
 collaboration spaces (Slack, GitHub, Mastodon, RSS/Atom/JSON Feed, public Notion), picks what matters, writes a short
 story in four languages, and publishes it to a website, RSS and Telegram.
 
@@ -38,8 +38,8 @@ The homepage, story pages, source pages and default RSS feed open in English.
 Use the language links for Chinese, Japanese or Korean; old browser language
 preferences do not redirect the homepage. Chinese uses `index.zh-TW.html` and
 `feed.zh-TW.xml`. Existing `index.en.html` and `feed.en.xml` links remain available.
-English pages show English report images and keep original text and excerpt cards
-collapsed until opened. Missing translations display an explicit English pending
+English pages show English report images. Follow each story's external source
+link to read the original text. Missing translations display an explicit English pending
 notice; they never substitute untranslated copy into the default edition.
 
 ## Run it
@@ -69,9 +69,9 @@ The Compose stack runs a `worker` (hourly cycle),
 `maintenance` (backups, health checks), `accounts` (Google login and owner project
 news), and `web` (Caddy, static files on `127.0.0.1:18090`).
 
-Production uses native Cloudflare Workers: Python runs the reporting pipeline
-and account features, a JavaScript Worker serves the generated site, Durable
-Objects persist data, and Browser Run renders cards. No Containers or Steam host
+Production uses native Cloudflare Workers: GitHub Actions runs the hourly Python and Chromium reporting job. Python Workers
+handle account features, a JavaScript Worker serves the generated site, and Durable
+Objects persist data and every reporting transaction. No Containers or Steam host
 are needed. See [Cloudflare deployment](docs/cloudflare.md) for migration,
 CI-gated deployment of `main`, configuration, and recovery.
 
