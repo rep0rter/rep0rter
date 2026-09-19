@@ -11,6 +11,7 @@ import json
 import fcntl
 from urllib.parse import urlsplit
 from datetime import datetime, timezone
+from dataclasses import replace
 from email.utils import format_datetime
 from pathlib import Path
 
@@ -70,6 +71,17 @@ def _safe_url(url):
         return ''
 
 
+def _display_text(post, language):
+    if language == 'en':
+        translated = post.translations.get('en')
+        if not isinstance(translated, dict) or not all(
+            isinstance(translated.get(field), str) and translated[field].strip()
+            for field in ('headline', 'summary')
+        ):
+            return COPY['en']['pending_headline'], COPY['en']['pending_summary'], False
+    return post_text(post, language)
+
+
 def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
     cfg.ensure_dirs()
     # Homepage is bounded; permanent pages survive falling out of that window.
@@ -81,6 +93,12 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
     with CardRenderer(cfg) as cards:
         for post, event, container in rows:
             image = cards.render(event, container, names)
+            headline, summary, _ = _display_text(post, 'en')
+            # A missing translation uses an explicit English pending card. This
+            # presentation-only placeholder never becomes stored article copy.
+            report_post = replace(post, translations={**post.translations,
+                                  'en': {'headline': headline, 'summary': summary}})
+            report_image = cards.render_report(event, container, report_post, 'en')
             source_key = hashlib.sha256((event.source + ":" + event.container_id).encode()).hexdigest()[:20]
             source_path = f"sources/{source_key}/"
             items.append({
@@ -95,6 +113,9 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
                 "event_local": _fmt_local(event.ts),
                 "day": datetime.fromtimestamp(post.published_at, TAIPEI).strftime("%Y-%m-%d"),
                 "image": image.relative_to(cfg.site_dir).as_posix(), "image_size": image.stat().st_size,
+                "original_image": image.relative_to(cfg.site_dir).as_posix(),
+                "report_image": report_image.relative_to(cfg.site_dir).as_posix(),
+                "report_image_size": report_image.stat().st_size,
                 "original": to_plain(event.text, names) if event.source == "slack" else plain_text(event),
                 "source_path": source_path,
             })
@@ -134,13 +155,15 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
     for language in LANGUAGES:
         localized = []
         for item in items:
-            headline, summary, translated = post_text(item["post"], language)
+            headline, summary, translated = _display_text(item["post"], language)
             newer = [version for version in item['story']['versions']
                      if version['revision'] > item['story']['revision'] and version['id'] in visible_posts]
             latest = max(newer, key=lambda version: version['revision']) if newer else None
             latest_path = f"posts/{latest['id']}/{page_name(language)}" if latest else None
-            latest_summary = post_text(visible_posts[latest['id']], language)[1] if latest else None
+            latest_summary = _display_text(visible_posts[latest['id']], language)[1] if latest else None
             localized.append({**item, "headline": headline, "summary": summary, "translated": translated,
+                              "image": item['report_image'] if language == 'en' else item['original_image'],
+                              "image_size": item['report_image_size'] if language == 'en' else item['image_size'],
                               "latest_path": latest_path,
                               "page_description": COPY[language]['superseded'] + ' ' + latest_summary if latest else summary,
                               "story_path": f"posts/{item['post'].id}/{page_name(language)}"})
@@ -162,7 +185,7 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
             for filename in (page_name(language), *page_aliases(language)):
                 _write(cfg.site_dir / 'posts' / str(row['post_id']) / filename,
                        env.get_template('withdrawn.html').render(language=language,copy=COPY[language],languages=LANGUAGES,page_name=page_name))
-    keep={Path(item['image']).name for item in items}
+    keep={Path(item[key]).name for item in items for key in ('original_image', 'report_image')}
     for path in (cfg.site_dir/'cards').glob('*.png'):
         if path.name not in keep: path.unlink()
     log.info("site written to %s (%d posts, four languages)", cfg.site_dir, len(items))

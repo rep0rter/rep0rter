@@ -38,6 +38,12 @@ def published_site(tmp_path, monkeypatch):
         return path
 
     monkeypatch.setattr(site.CardRenderer, "render", render)
+    def render_report(renderer, event, container, post, language):
+        path = renderer.cfg.site_dir / 'cards' / f'report-{post.id}-{language}.png'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        Image.new('RGB', (2, 2), 'blue').save(path)
+        return path
+    monkeypatch.setattr(site.CardRenderer, "render_report", render_report)
     with Store(cfg.db_path) as store:
         container = Container(id="slack:C_TEST", source="slack", name="Original channel")
         store.upsert_container(container)
@@ -122,7 +128,7 @@ def test_older_stories_keep_permanent_pages_outside_homepage_window(published_si
         doc = html(permanent)
         assert doc.select_one("article")["id"] == str(oldest.id)
         assert doc.select_one("blockquote").get_text() == original.text
-        assert doc.select_one("details").has_attr("open")
+        assert doc.select_one("details").has_attr("open") == (language != 'en')
         assert doc.select_one('meta[property="og:type"]')["content"] == "article"
 
 
@@ -170,6 +176,51 @@ global.location = {pathname: '/', hash: '', replace: () => assert.fail('unexpect
 global.localStorage = {getItem: () => 'zh-TW'};
 """ + (cfg.site_dir / "language.js").read_text()
     subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
+
+
+def test_english_report_cards_keep_originals_collapsed_and_feed_images_localized(published_site):
+    _, cfg, _, entries, _ = published_site
+    latest = entries[-1][0]
+    for page in (cfg.site_dir / 'index.html', cfg.site_dir / f'posts/{latest.id}/index.html'):
+        doc = html(page)
+        article = doc.find('article', id=str(latest.id))
+        report = article.select_one('figure img')
+        assert report['src'].endswith(f'cards/report-{latest.id}-en.png')
+        assert report['alt'].startswith('English report card.')
+        assert 'Summary by rep0rter' in article.select_one('figcaption').get_text()
+        original = article.select_one('details.original-source')
+        assert not original.has_attr('open')
+        assert original.select_one('img')['src'] != report['src']
+        if 'posts' in str(page):
+            assert doc.select_one('meta[property="og:image"]')['content'].endswith(report['src'].removeprefix('../../'))
+    english_image = ElementTree.parse(cfg.site_dir / 'feed.xml').find('channel/item/enclosure').get('url')
+    chinese_image = ElementTree.parse(cfg.site_dir / 'feed.zh-TW.xml').find('channel/item/enclosure').get('url')
+    assert english_image != chinese_image
+    assert english_image.endswith(f'cards/report-{latest.id}-en.png')
+
+
+def test_missing_english_translation_uses_honest_pending_copy_without_saving_it(published_site, monkeypatch):
+    store, cfg, _, entries, _ = published_site
+    latest = entries[-1][0]
+    translations = {key: value for key, value in latest.translations.items() if key != 'en'}
+    with store.conn:
+        store.conn.execute('UPDATE posts SET headline=?,summary=?,translations=? WHERE id=?',
+                           ('原本的標題', '原本的摘要', json.dumps(translations), latest.id))
+    captured = []
+    original_render_report = site.CardRenderer.render_report
+    def capture(renderer, event, container, post, language):
+        if post.id == latest.id:
+            captured.append(post.translations['en'])
+        return original_render_report(renderer, event, container, post, language)
+    monkeypatch.setattr(site.CardRenderer, 'render_report', capture)
+    site.build(store, cfg)
+    doc = html(cfg.site_dir / 'index.html')
+    assert doc.select_one('h3').get_text() == 'English translation pending'
+    assert 'Open the original or choose another language.' in doc.select_one('p.summary').get_text()
+    assert captured[0]['headline'] == 'English translation pending'
+    assert '原本的' not in (cfg.site_dir / 'feed.xml').read_text()
+    saved = store.conn.execute('SELECT translations FROM posts WHERE id=?', (latest.id,)).fetchone()[0]
+    assert 'en' not in json.loads(saved)
 
 
 def test_source_rename_keeps_same_url_and_source_history(published_site):

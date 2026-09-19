@@ -72,10 +72,14 @@ COPY = {
         "empty": "No stories yet. The first community update is on its way.", "source": "View source",
         "original": "Show original text", "published": "Originally posted", "download": "Download image",
         "image_alt": "Original excerpt card. Author or source: ", "missing": "This translation is not available yet. Showing the saved text.",
-        "footer": "Summaries are prepared by software and language models. Refer to the linked original for accuracy. Images keep the original language; long messages are excerpted.",
+        "footer": "Summaries and English report images are prepared by rep0rter. Refer to the linked source for accuracy. Open the original text to see its excerpt image in the source language.",
         "stats": "{events} events · {posts} stories", "updated": "Updated (Taipei time)",
         "optout": "To request removal of a story, tell us in #rep0rter on g0v Slack.",
         "card_label": "Original excerpt", "read": "Read story",
+        "report_card_label": "English report · Summary by rep0rter",
+        "report_image_alt": "English report card. Source: ",
+        "pending_headline": "English translation pending",
+        "pending_summary": "An English version is not available yet. Open the original or choose another language.",
     },
 }
 

@@ -39,14 +39,14 @@
       <div class="story-top"><a class="channel" href="{{ prefix }}{{ it.source_path }}{{ page_name(language) }}">{{ it.source_label }}</a><a class="permalink" href="{{ prefix }}{{ it.story_path }}" aria-label="{{ copy.read }} {{ it.post.id }}">↗</a></div>
       {% if it.content_warning %}<p class="translation-note">{{ it.content_warning }}</p>{% endif %}
       {% if it.latest_path %}<p class="revision-notice"><strong>{{ copy.superseded }}</strong> <a href="{{ prefix }}{{ it.latest_path }}">{{ copy.latest_report }} ↗</a></p>{% endif %}
-      <h3 lang="{{ language if it.translated else 'und' }}"><a href="{{ prefix }}{{ it.story_path }}">{{ it.headline }}</a></h3>
+      <h3 lang="{{ language if it.translated or language == 'en' else 'und' }}"><a href="{{ prefix }}{{ it.story_path }}">{{ it.headline }}</a></h3>
       {% if it.latest_path %}<details class="previous-summary"><summary>{{ copy.previous_report }}</summary>{% endif %}
-      <p class="summary" lang="{{ language if it.translated else 'und' }}">{{ it.summary }}</p>
+      <p class="summary" lang="{{ language if it.translated or language == 'en' else 'und' }}">{{ it.summary }}</p>
       {% if it.latest_path %}</details>{% endif %}
-      {% if not it.translated %}<p class="translation-note">{{ copy.missing }}</p>{% endif %}
+      {% if not it.translated and language != 'en' %}<p class="translation-note">{{ copy.missing }}</p>{% endif %}
       <figure>
-        <a href="{{ prefix }}{{ it.image }}" aria-label="{{ copy.download }}"><img class="source-card" src="{{ prefix }}{{ it.image }}" width="1200" height="630" loading="lazy" alt="{{ copy.image_alt }}{{ it.event.author_name or it.channel }}"></a>
-        <figcaption><span>{{ copy.card_label }}</span><a href="{{ prefix }}{{ it.image }}" download>{{ copy.download }} ↓</a></figcaption>
+        <a href="{{ prefix }}{{ it.image }}" aria-label="{{ copy.download }}"><img class="source-card" src="{{ prefix }}{{ it.image }}" width="1200" height="630" loading="lazy" alt="{{ copy.report_image_alt if language == 'en' else copy.image_alt }}{{ it.event.author_name or it.channel }}"></a>
+        <figcaption><span>{{ copy.report_card_label if language == 'en' else copy.card_label }}</span><a href="{{ prefix }}{{ it.image }}" download>{{ copy.download }} ↓</a></figcaption>
       </figure>
       <p class="meta"><span>{{ it.event.author_name }}</span><span>{{ copy.published }} {{ it.event_local }}</span>
         {% if it.event.reply_count %}<span>💬 {{ it.event.reply_count }}</span>{% endif %}
@@ -56,7 +56,7 @@
       {% if detail %}<p class="meta">{{ copy.reported }} {{ it.published_local }}{% if it.story.revision > 1 %} · {{ copy.revision }} {{ it.story.revision }}{% endif %}</p>
       {% if it.story.versions | length > 1 %}<nav class="links" aria-label="{{ copy.revision }}">{% for version in it.story.versions %}<a href="../{{ version.id }}/{{ page_name(language) }}">{{ copy.revision }} {{ version.revision }}</a>{% endfor %}</nav>{% endif %}
       {% if it.story.sources | length > 1 %}<p class="meta">{{ copy.sources }}: {% for source in it.story.sources %}<a href="{{ source.url }}" rel="noopener">{{ source.name }}</a>{% endfor %}</p>{% endif %}{% endif %}
-      <details{% if detail %} open{% endif %}><summary>{{ copy.original }}</summary><blockquote dir="auto">{{ it.original }}</blockquote></details>
+      <details class="original-source"{% if detail and language != 'en' %} open{% endif %}><summary>{{ copy.original }}</summary><blockquote dir="auto">{{ it.original }}</blockquote>{% if language == 'en' %}<figure><a href="{{ prefix }}{{ it.original_image }}" aria-label="{{ copy.download }}"><img class="source-card" src="{{ prefix }}{{ it.original_image }}" width="1200" height="630" loading="lazy" alt="{{ copy.image_alt }}{{ it.event.author_name or it.channel }}"></a><figcaption>{{ copy.card_label }}</figcaption></figure>{% endif %}</details>
     </article>
     {% endfor %}
   </section>
