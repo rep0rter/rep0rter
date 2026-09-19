@@ -304,3 +304,31 @@ def test_budget_shortfall_is_deferred_work_not_a_source_failure(tmp_path):
         deferred = _json.loads(store.get_kv('github_deferred', '{}'))
     assert 'github:example/second' not in errors, 'a budget shortfall must not read as a failure'
     assert deferred['repositories'] == ['example/second'], 'but it must stay observable'
+
+
+def test_paginated_repository_cannot_monopolize_later_rounds(tmp_path):
+    from rep0rter.collectors.state import BudgetSession, read_state, write_state
+    calls = []
+
+    def reply(url, params=None, **kwargs):
+        calls.append(url)
+        if url.endswith(('/busy', '/quiet')):
+            return response({'private': False, 'visibility': 'public',
+                             'html_url': 'https://github.com/example/quiet'})
+        if url.endswith('/busy/releases') and params['page'] == 1:
+            return response([{'id': n, 'created_at': '2000-01-01T00:00:00Z'} for n in range(100)])
+        return response([])
+
+    with Store(tmp_path / 'pagination.sqlite') as store:
+        write_state(store, 'github:example/busy', {'last_attempt': 100, 'last_complete_ts': 100})
+        write_state(store, 'github:example/quiet', {'last_attempt': 200})
+        for _ in range(2):
+            metrics = Metrics()
+            transport = BudgetSession(Mock(get=Mock(side_effect=reply)), metrics, limit=4, interval=0)
+            github.collect(store, ['example/busy', 'example/quiet'], transport, metrics)
+        busy = read_state(store, 'github:example/busy')
+        quiet = read_state(store, 'github:example/quiet')
+    assert busy['last_attempt'] > 100
+    assert busy['last_complete_ts'] == 100, 'partial work must not advance the collection cursor'
+    assert quiet['last_success'] > 200, 'the quiet repository must complete on the second round'
+    assert sum('/quiet' in url for url in calls) == 4

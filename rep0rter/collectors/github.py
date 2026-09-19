@@ -93,10 +93,9 @@ def collect(store, repos, session, metrics, days=2):
         if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repo):
             raise ValueError('GitHub allowlist entries must be owner/repository')
     # Least recently attempted first, as Slack orders its channels. Each
-    # repository costs the same four requests whether or not anything changed,
-    # so once the allowlist outgrows one round's share a fixed order would
-    # collect the same prefix every hour and never reach the tail. Rotating
-    # turns that starvation into a delay the next round clears.
+    # repository costs at least four requests, with more for pagination. Rotate
+    # attempted repositories so a long allowlist or a busy repository cannot
+    # monopolize every round's share.
     repos = sorted(repos, key=lambda name: read_state(store, 'github:' + name.lower()).get('last_attempt', 0))
     deferred = []
     for repo in repos:
@@ -109,6 +108,7 @@ def collect(store, repos, session, metrics, days=2):
             from .registry import record_source_error
             record_source_error(store, cid, 'waiting for upstream rate limit reset')
             continue
+        requests_before = metrics.requests
         try:
             info = get(session, '/repos/' + repo)
             if info.get('private') is not False or info.get('visibility', 'public') != 'public':
@@ -153,14 +153,15 @@ def collect(store, repos, session, metrics, days=2):
                 from .registry import record_source_error
                 record_source_error(store, cid, new_state['error'])
         except BudgetExceeded as exc:
-            # Running out of budget is pending work, not a failure, exactly as
-            # it is for Slack channels. The budget is checked before the request
-            # is sent, so keep the earlier attempt time or the skipped
-            # repositories go to the back of the rotation and starve for good.
+            # Running out of budget is pending work, not a failure. Only keep
+            # the earlier attempt time when this repository issued no requests.
+            # Pagination may exhaust the budget after making progress; rotate
+            # that repository so it cannot monopolize the next round too.
             # Reporting it as a source error would hold collector_health false
             # every round, freeze last_healthy_at, and restart the worker over
             # work that the next round picks up.
-            persist(store, cid, dict(state, error=str(exc), retry_at=0), [], metrics, now)
+            attempt = {'last_attempt': now} if metrics.requests > requests_before else {}
+            persist(store, cid, dict(state, **attempt, error=str(exc), retry_at=0), [], metrics, now)
             deferred.append(repo)
             continue
         except Exception as exc:

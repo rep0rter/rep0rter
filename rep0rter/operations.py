@@ -508,29 +508,31 @@ def maintenance(cfg, *, backup_dir=None, offsite=None, send_alerts=False, now=No
         elif not send_alerts:
             # Dry-run state cannot suppress a future actual alert.
             _atomic_json(directory / 'alerts-preview.json', alert_state)
-        # Source discovery is paced separately and kept out of the health report.
-        proposals = None
-        # Explicit 'never ran' rather than a subtraction against zero, so the
-        # first maintenance pass discovers regardless of the clock's origin.
-        if 'discovered_at' not in state or now - state['discovered_at'] >= 7 * 86400:
-            state['discovered_at'] = now
-            try:
+        # Cache weekly discovery separately from notification delivery. Preview
+        # runs and failed sends must leave actual notifications pending, without
+        # repeating the upstream lookup on each hourly delivery attempt.
+        try:
+            proposals = _read_json(directory / 'proposals-report.json')
+            if (not proposals or proposals.get('portal') != os.environ.get('REP0RTER_NOTION_PORTAL') or
+                    'discovered_at' not in state or now - state['discovered_at'] >= 7 * 86400):
                 proposals = source_proposals(cfg, now=now)
-                previous_proposals = _read_json(directory / ('proposals.json' if send_alerts else 'proposals-preview.json'))
-                proposal_notices, proposal_state = alert_transitions(proposals, previous_proposals, now=now,
-                                                                    repeat_seconds=7 * 86400)
-                if send_alerts and proposal_notices:
-                    send_admin_alerts(proposal_notices, token=os.environ.get('REP0RTER_ADMIN_BOT_TOKEN'),
-                                      target=os.environ.get('REP0RTER_ADMIN_CHAT_ID'),
-                                      public_targets=(cfg.telegram_chat_id, cfg.telegram_test_chat_id))
-                    _atomic_json(directory / 'proposals.json', proposal_state)
-                elif not send_alerts:
-                    _atomic_json(directory / 'proposals-preview.json', proposal_state)
-                notices = notices + proposal_notices
-            except (OSError, ValueError, RuntimeError):
-                # Proposals are advisory. Losing them must not cost the backup
-                # record, the health report, or this run's alert state.
-                proposals = {'issues': {}, 'error': 'source_proposals_failed'}
+                _atomic_json(directory / 'proposals-report.json', proposals)
+                state['discovered_at'] = now
+            previous_proposals = _read_json(directory / ('proposals.json' if send_alerts else 'proposals-preview.json'))
+            proposal_notices, proposal_state = alert_transitions(proposals, previous_proposals, now=now,
+                                                                repeat_seconds=7 * 86400)
+            if send_alerts and proposal_notices:
+                send_admin_alerts(proposal_notices, token=os.environ.get('REP0RTER_ADMIN_BOT_TOKEN'),
+                                  target=os.environ.get('REP0RTER_ADMIN_CHAT_ID'),
+                                  public_targets=(cfg.telegram_chat_id, cfg.telegram_test_chat_id))
+                _atomic_json(directory / 'proposals.json', proposal_state)
+            elif not send_alerts:
+                _atomic_json(directory / 'proposals-preview.json', proposal_state)
+            notices = notices + proposal_notices
+        except (OSError, ValueError, RuntimeError):
+            # Proposals are advisory. Losing them must not cost the backup
+            # record, the health report, or this run's alert state.
+            proposals = {'issues': {}, 'error': 'source_proposals_failed'}
         _atomic_json(directory / 'maintenance.json', state)
         return {'health': report, 'notifications': notices, 'proposals': proposals,
                 'notifications_sent': bool(send_alerts and notices)}

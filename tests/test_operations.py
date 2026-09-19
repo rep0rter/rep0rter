@@ -316,3 +316,44 @@ def test_proposals_survive_a_database_without_a_policy_table(tmp_path, monkeypat
                         lambda *a, **k: {'complete': True, 'candidates': [{'repository': 'example/fresh'}]})
     monkeypatch.setattr('rep0rter.collectors.slack_archive.make_session', lambda: None)
     assert ops.source_proposals(cfg, now=1000)['candidates'] == ['example/fresh']
+
+
+@pytest.mark.parametrize('failed_delivery', [False, True], ids=['preview', 'failed-send'])
+def test_pending_proposals_are_sent_next_hour_without_rediscovery(tmp_path, monkeypatch, failed_delivery):
+    cfg = _proposal_cfg(tmp_path, monkeypatch)
+    discoveries, deliveries = [], []
+
+    def discover(*args, **kwargs):
+        discoveries.append(1)
+        return {'complete': True, 'candidates': [{'repository': 'example/fresh'}]}
+
+    def send(notices, **kwargs):
+        deliveries.append(notices)
+        if failed_delivery and len(deliveries) == 1:
+            raise RuntimeError('temporary delivery failure')
+
+    monkeypatch.setattr('rep0rter.notion_discovery.discover', discover)
+    monkeypatch.setattr('rep0rter.collectors.slack_archive.make_session', lambda: None)
+    monkeypatch.setattr(ops, 'check_health', lambda *a, **k: {'healthy': True, 'issues': {}})
+    monkeypatch.setattr(ops, 'send_admin_alerts', send)
+    ops.maintenance(cfg, now=1000, send_alerts=failed_delivery)
+    assert not (tmp_path / 'backups' / 'proposals.json').exists()
+    result = ops.maintenance(cfg, now=4600, send_alerts=True)
+    assert len(discoveries) == 1, 'retry notification delivery without repeating discovery'
+    assert len(deliveries) == 1 + int(failed_delivery)
+    assert deliveries[-1][0]['key'] == 'source_candidates'
+    assert result['notifications_sent'] is True
+    ops.maintenance(cfg, now=8200, send_alerts=True)
+    assert len(deliveries) == 1 + int(failed_delivery), 'successful delivery must suppress duplicates'
+    assert len(discoveries) == 1
+
+
+def test_legacy_discovery_timestamp_without_report_does_not_delay_proposals(tmp_path, monkeypatch):
+    cfg = _proposal_cfg(tmp_path, monkeypatch)
+    monkeypatch.setattr('rep0rter.notion_discovery.discover',
+                        lambda *a, **k: {'complete': True, 'candidates': [{'repository': 'example/fresh'}]})
+    monkeypatch.setattr('rep0rter.collectors.slack_archive.make_session', lambda: None)
+    monkeypatch.setattr(ops, 'check_health', lambda *a, **k: {'healthy': True, 'issues': {}})
+    ops._atomic_json(tmp_path / 'backups' / 'maintenance.json', {'discovered_at': 1000})
+    result = ops.maintenance(cfg, now=4600)
+    assert result['proposals']['candidates'] == ['example/fresh']
