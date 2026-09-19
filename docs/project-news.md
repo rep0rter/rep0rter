@@ -35,6 +35,44 @@ See Google's [OpenID Connect setup](https://developers.google.com/identity/openi
 and [web application OAuth instructions](https://developers.google.com/identity/protocols/oauth2/web-server).
 The implementation uses [Authlib's Flask OpenID Connect client](https://docs.authlib.org/en/latest/oauth2/client/web/flask.html).
 
+### Reusing another project's Google client
+
+You can reuse an existing **Web application** OAuth client. In
+[Google Auth Platform → Clients](https://console.cloud.google.com/auth/clients),
+select the Cloud project and the client used by the existing application. Under
+**Authorized redirect URIs**, add
+`https://rep0rter.observe.tw/auth/google/callback` and save. Keep every existing
+redirect URI so the other application keeps working. Google requires this exact
+URI to be registered; otherwise login fails with `redirect_uri_mismatch`.
+
+For the local `urtube` project, copy only these credentials into rep0rter's private
+`.env`, without printing or committing their values:
+
+| urtube setting | rep0rter setting |
+| --- | --- |
+| `GOOGLE_LOGIN_CLIENT_ID` | `REP0RTER_GOOGLE_CLIENT_ID` |
+| `GOOGLE_LOGIN_CLIENT_SECRET` | `REP0RTER_GOOGLE_CLIENT_SECRET` |
+
+Generate a separate `REP0RTER_WEB_SECRET_KEY` for rep0rter. Do not copy the other
+application's session keys, redirect URI, users, or data. Reusing its client also
+reuses that Cloud project's OAuth branding. If you want independent client
+credentials, click **Create client → Web application**, name it `rep0rter`, and
+register the same callback above. Separate consent-screen branding requires a
+separate Cloud project. Download and securely save the new client credentials
+when creating them; Google may not show the client secret again later.
+
+After changing local environment settings, recreate `accounts` and `worker` so
+they receive them, reload Caddy, and rebuild the feed navigation:
+
+```sh
+docker compose up -d --build accounts worker
+docker compose exec web caddy reload --config /etc/caddy/Caddyfile
+docker compose exec accounts python -m rep0rter build-site
+```
+
+Changing a registered Google callback alone does not require restarting the app.
+Allow time for the Console change to propagate, then try signing in again.
+
 All three login values are required. Without them, the feed keeps working and
 the login page explains that posting is not available. Never put credentials in
 templates, static files, or a git commit. Public deployments require an HTTPS
