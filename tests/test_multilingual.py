@@ -10,7 +10,8 @@ from rep0rter.config import Config
 from rep0rter.i18n import LANGUAGES, post_text
 from rep0rter.reporter import Candidate, missing_languages, translate_post, write_multilingual_item
 from rep0rter.store import Event, Post, Store
-from rep0rter.writer_contract import TZ
+from rep0rter.writer_contract import (ATTRIBUTION, EDITORIAL_CORRECTION, PROMPT_EXAMPLES, PROMPT_VERSION, SPECULATIVE,
+                                      SYSTEM_PROMPT, TRANSLATION_STYLE, TZ, text_errors)
 
 
 def translations():
@@ -265,3 +266,62 @@ def test_backfill_cli_does_not_send_or_change_delivery(tmp_path, monkeypatch):
         assert set(post.translations) == set(LANGUAGES)
     assert cmd_translate(cfg, SimpleNamespace(limit=1, language=None)) == 0
     assert llm.chat_json.call_count == 1
+
+
+def test_prompt_examples_pass_the_validator_in_every_language():
+    for scene, editions in PROMPT_EXAMPLES:
+        assert set(editions) == set(LANGUAGES), scene
+        for language, entry in editions.items():
+            assert not text_errors(entry['headline'], entry['summary']), (scene, language)
+    recovered = dict(PROMPT_EXAMPLES)['source_context_recovered=true 的更正']
+    for language, entry in recovered.items():
+        assert EDITORIAL_CORRECTION.search(entry['headline']), language
+        assert ATTRIBUTION.search(entry['summary']), language
+
+
+def test_writer_prompt_is_versioned_and_carries_shared_style_and_examples():
+    assert PROMPT_VERSION == 'grounded-four-locale-v5'
+    assert TRANSLATION_STYLE in SYSTEM_PROMPT
+    assert 'zh-TW 不是原稿' in SYSTEM_PROMPT
+    for _, editions in PROMPT_EXAMPLES:
+        assert editions['ja']['headline'] in SYSTEM_PROMPT
+    assert SYSTEM_PROMPT.rstrip().endswith('四種文字都需遵守相同長度與事實限制。')
+    assert '明确' not in SYSTEM_PROMPT
+
+
+def test_backfill_prompt_names_source_language_and_shares_style_guide():
+    post = Post('x', 1, 9, '既有標題', '既有摘要')
+    llm = Mock()
+    llm.chat_json.return_value = translations()
+    assert translate_post(post, llm)
+    prompt = llm.chat_json.call_args[0][0]
+    assert 'supplied text is Taiwan Traditional Chinese' in prompt
+    assert TRANSLATION_STYLE in prompt
+
+
+def test_prompt_examples_keep_speculation_markers_and_avoid_template_leakage():
+    proposal = dict(PROMPT_EXAMPLES)['根訊息是既定事實，回覆只提出建議']
+    for language, entry in proposal.items():
+        combined = entry['headline'] + ' ' + entry['summary']
+        assert SPECULATIVE.search(combined), language
+        assert ATTRIBUTION.search(combined), language
+    # Phrases the model copied verbatim from an earlier example (v5 comparison run).
+    for _, editions in PROMPT_EXAMPLES:
+        for entry in editions.values():
+            text = entry['headline'] + ' ' + entry['summary']
+            assert not text.startswith('Thread:')
+            for leaked in ('not stated', 'is absent', '未說明', '未説明', '未記載', '언급 없음'):
+                assert leaked not in text
+
+
+def test_writer_prompt_requires_reply_hedges_and_forbids_invented_absences():
+    assert '包含回覆' in SYSTEM_PROMPT and '推測標記' in SYSTEM_PROMPT
+    assert '不要加入來源沒有的否定或缺漏陳述' in TRANSLATION_STYLE
+    assert '「提案」不算推測標記' in TRANSLATION_STYLE
+
+
+def test_style_guide_keeps_source_currency_instead_of_converting_it():
+    # v5 comparison run: source "$100 / 人" became "100元", "100円" and "100" in three editions.
+    assert '照來源原樣書寫（如 $100）' in TRANSLATION_STYLE
+    assert '不可寫成「円」' in TRANSLATION_STYLE
+
