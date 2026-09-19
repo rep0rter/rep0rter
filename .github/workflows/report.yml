@@ -5,10 +5,14 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: Reporting cycle or site rebuild only
+        description: Reporting cycle, site rebuild, or publish an existing post to Telegram
         type: choice
-        options: [report, build]
+        options: [report, build, deliver]
         default: report
+      post_id:
+        description: Existing post ID (required only for deliver)
+        type: string
+        default: ''
 permissions:
   contents: read
   actions: read
@@ -53,6 +57,7 @@ jobs:
           THREADS_BATCH_SIZE: ${{ vars.REP0RTER_THREADS_BATCH_SIZE || '10' }}
           REP0RTER_WORKER_URL: https://rep0rter-engine.sky-hong.workers.dev
           REPORT_MODE: ${{ inputs.mode || 'report' }}
+          POST_ID: ${{ inputs.post_id }}
           PYTHONPATH: .
         run: |
           python - <<'PY'
@@ -61,4 +66,6 @@ jobs:
               if value and any(part in key for part in ('TOKEN','KEY','SECRET','CHAT')):
                   print('::add-mask::'+str(value).replace('%','%25').replace('\r','%0D').replace('\n','%0A'))
           PY
-          python cloudflare/github_runner.py --mode "$REPORT_MODE"
+          args=(--mode "$REPORT_MODE")
+          if [ -n "$POST_ID" ]; then args+=(--post-id "$POST_ID"); fi
+          python cloudflare/github_runner.py "${args[@]}"

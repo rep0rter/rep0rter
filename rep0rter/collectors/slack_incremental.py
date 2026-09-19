@@ -74,6 +74,12 @@ def scan(session, channel_id, lower, *, max_pages=30, start_before=None):
             page[ts] = api._merge_duplicate(page[ts], raw) if ts in page else raw
         oldest = min(page)
         if before is not None and oldest >= Decimal(before):
+            if Decimal(before) != Decimal(before).to_integral_value() and len(payload['messages']) < 100:
+                try:
+                    if api.channel_window_is_complete(session, channel_id, lower, collected):
+                        return list(collected.values()), True, '', None
+                except BudgetExceeded:
+                    return list(collected.values()), False, 'request budget exhausted while verifying repeated page', before
             return list(collected.values()), False, 'pagination did not advance (duplicate timestamp/page)', None
         for ts, raw in page.items():
             if ts >= lower:

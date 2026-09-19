@@ -112,8 +112,13 @@ def install_configuration():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--mode', choices=('build', 'report'), default='report')
+    parser.add_argument('--mode', choices=('build', 'report', 'deliver'), default='report')
+    parser.add_argument('--post-id', type=int)
     args = parser.parse_args()
+    if args.mode == 'deliver' and (args.post_id is None or args.post_id < 1):
+        parser.error('deliver requires a positive --post-id')
+    if args.mode != 'deliver' and args.post_id is not None:
+        parser.error('--post-id requires deliver mode')
     os.umask(0o077)
     install_configuration()
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
@@ -137,6 +142,16 @@ def main():
                 with Store(cfg.db_path) as store:
                     healthy = json.loads(store.get_kv('collector_health', '{}')).get('healthy', False)
                 print(f'Reporting complete: collected={collected}, posted={posted}, collection_healthy={healthy}')
+            elif args.mode == 'deliver':
+                from rep0rter.delivery import enqueue_existing, deliver_pending
+                with Store(cfg.db_path) as store:
+                    job_id = enqueue_existing(cfg, store, args.post_id)
+                    build(store, cfg)
+                    deliver_pending(cfg, store)
+                    job = store.conn.execute('SELECT status,message_id FROM delivery_jobs WHERE id=?', (job_id,)).fetchone()
+                    if job['status'] != 'sent':
+                        raise RuntimeError(f'Telegram job {job_id} is {job["status"]}; inspect the outbox before retrying')
+                    print(f'Telegram delivered: post={args.post_id}, job={job_id}, message={job["message_id"]}')
             else:
                 with Store(cfg.db_path) as store:
                     build(store, cfg)

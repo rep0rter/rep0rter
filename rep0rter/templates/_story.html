@@ -4,7 +4,6 @@
     <a class="permalink" href="{{ prefix }}{{ it.story_path }}" aria-label="{{ copy.view_details }}: {{ it.headline }}"><span>{{ copy.view_details }}</span>{{ ui.icon('external') }}</a>
   </div>
   {% if it.event.meta.get('self_reported') %}<p class="translation-note">{{ copy.self_reported }}{% if it.event.meta.get('project_name') %} · {{ it.event.meta.project_name }}{% endif %}{% if not it.source_url %} · {{ copy.no_evidence }}{% endif %}</p>{% elif it.event.meta.get('owner_submitted') %}<p class="translation-note">{{ copy.owner_submission }}</p>{% endif %}
-  {% if 'source_example' in it.post.reasons %}<p class="translation-note">{{ copy.source_example_note }}</p>{% endif %}
   {% if it.content_warning %}<p class="translation-note">{{ it.content_warning }}</p>{% endif %}
   {% if it.latest_path %}<p class="revision-notice"><strong>{{ copy.superseded }}</strong> <a href="{{ prefix }}{{ it.latest_path }}">{{ copy.latest_report }} {{ ui.icon('arrow') }}</a></p>{% endif %}
   <div class="story-content">
