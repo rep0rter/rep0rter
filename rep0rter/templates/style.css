@@ -90,12 +90,13 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   background: radial-gradient(240px circle at var(--glass-x, 50%) var(--glass-y, 0%), var(--highlight), transparent 70%);
   opacity: calc(var(--glass-light, 0) * .11); transition: opacity 240ms ease-out;
 }
-.masthead { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(240px, 560px) minmax(112px, 1fr); align-items: center; gap: 20px; min-height: 80px; border: 1px solid var(--line); border-radius: 28px; padding: 12px 20px;
+.masthead { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(240px, 560px) minmax(112px, 1fr); align-items: center; gap: 24px; min-height: 88px; border: 1px solid var(--line); border-radius: 28px; padding: 16px 24px;
   background: light-dark(rgb(255 255 255 / calc(.5 + var(--nav-depth) * .28)), rgb(28 36 47 / calc(.62 + var(--nav-depth) * .24)));
   -webkit-backdrop-filter: blur(calc(16px + var(--nav-depth) * 12px)) saturate(1.15);
   backdrop-filter: blur(calc(16px + var(--nav-depth) * 12px)) saturate(1.15); box-shadow: var(--shadow-card);
 }
 .wordmark { display: inline-flex; align-items: center; gap: 12px; font-size: 25px; font-weight: 700; color: var(--ink); text-decoration: none; letter-spacing: -.055em; min-height: 44px; }
+.wordmark > span { display: grid; gap: 4px; min-width: 0; }
 .wordmark img { border-radius: 50%; box-shadow: 0 2px 8px var(--shade); }
 .wordmark small { display: block; font: 500 11px/1.6 var(--font-body); letter-spacing: .03em; color: var(--muted); }
 .languages { position: relative; isolation: isolate; display: flex; flex-wrap: wrap; gap: 5px; padding: 5px; background: var(--recess); border-radius: 24px; }
@@ -125,7 +126,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 :root[data-search-active="true"] .page-home .reading-layout { margin-top: 28px; }
 
 /* A quiet report stack illustrates search, organization, and source context. */
-.hero { display: grid; grid-template-columns: 1.25fr 1fr; align-items: center; gap: 30px; padding: 62px 12px 80px; }
+.hero { display: grid; grid-template-columns: 1.25fr 1fr; align-items: center; gap: 40px; padding: 48px 12px 56px; }
 .eyebrow { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; line-height: 1.5; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; }
 .eyebrow-dot, .source-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: 0 0 auto; }
 .eyebrow-dot { box-shadow: 0 0 0 5px var(--accent-soft); margin: 0 5px; }
@@ -181,8 +182,8 @@ input[type="search"]::-webkit-search-cancel-button { display: none; }
 .search-filters > summary > .icon:last-child { margin-left: auto; transition: transform var(--motion); }
 .search-filters[open] > summary > .icon:last-child { transform: rotate(180deg); }
 .filter-count { display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 20px; background: var(--accent-soft); color: var(--accent); font-size: 12px; }
-.filter-panel { padding: 4px 18px 18px; }
-.filter-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.filter-panel { padding: 16px 20px 20px; }
+.filter-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
 .filter-panel label { display: flex; flex-direction: column; gap: 7px; min-width: 0; color: var(--muted); font-size: 12px; font-weight: 600; }
 .filter-panel select, .filter-panel input { width: 100%; min-width: 0; min-height: 48px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); color: var(--ink); font-size: 14px; }
 .filter-panel option { background: var(--surface); color: var(--ink); }
@@ -352,7 +353,7 @@ body > main, body > .site-footer { transform: scale(calc(1 - .015 * var(--viewer
 @media (max-width: 640px) {
   .page-shell { width: calc(100% - 36px); }
   .site-header { padding-block: 10px; }
-  .masthead { padding: 10px; gap: 10px; border-radius: 26px; }
+  .masthead { padding: 14px; gap: 14px; border-radius: 26px; }
   .wordmark { font-size: 22px; gap: 8px; }
   .wordmark img { width: 36px; height: 36px; }
   .filter-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }

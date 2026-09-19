@@ -271,6 +271,8 @@ def test_reading_assets_and_self_hosted_fonts_are_published(published_site):
         doc = html(path)
         theme = doc.select_one('script[src$="theme.js"]')
         stylesheet = doc.select_one('link[rel="stylesheet"]')
+        version = hashlib.sha256((cfg.site_dir / 'style.css').read_bytes()).hexdigest()[:12]
+        assert urlsplit(stylesheet['href']).query == f'v={version}'
         assert theme and not theme.has_attr("defer") and not theme.has_attr("async")
         assert list(doc.head.children).index(theme) < list(doc.head.children).index(stylesheet)
         reading = doc.select_one('script[src$="reading.js"]')
