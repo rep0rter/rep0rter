@@ -59,6 +59,6 @@
   </section>
 {% endfor %}
 </main>
-<footer><p>{{ copy.footer }}</p><p>{{ stats }}<br>{{ copy.updated }} {{ generated_local }}{% if last_healthy %}<br>{{ copy.healthy }} {{ last_healthy }}{% endif %}</p><p>{{ copy.optout }} <a href="https://g0v-slack-archive.g0v.ronny.tw/index/channel/C069ARZJNE9">#rep0rter</a></p></footer>
+<footer><p>{{ copy.footer }}</p><p>{{ stats }}<br>{{ copy.updated }} {{ generated_local }}{% if last_healthy %}<br>{{ copy.healthy }} {{ last_healthy }}{% endif %}</p>{% if not collection_complete %}<p class="source-update-status">{{ copy.collection_delayed }}</p>{% endif %}<p>{{ copy.optout }} <a href="https://g0v-slack-archive.g0v.ronny.tw/index/channel/C069ARZJNE9">#rep0rter</a></p></footer>
 </body>
 </html>

@@ -1,6 +1,8 @@
 """Offline regressions for localized feeds, durable URLs, and generated assets."""
 
 import hashlib
+import json
+import time
 from dataclasses import replace
 from urllib.parse import unquote, urljoin, urlsplit
 from xml.etree import ElementTree
@@ -165,6 +167,31 @@ def test_failed_generation_keeps_complete_previous_release(published_site,monkey
     assert cfg.site_dir.resolve()==old_target
     assert (cfg.site_dir/'index.html').read_bytes()==old_page
     assert len(list((cfg.data_dir/'.site-releases').iterdir()))==1
+
+
+@pytest.mark.parametrize('state', ['unknown', 'partial', 'stale', 'complete'])
+def test_source_freshness_is_not_confused_with_site_generation(published_site, state):
+    from rep0rter.i18n import COPY
+    store, cfg, _, _, _ = published_site
+    last_complete = time.time() - (10000 if state == 'stale' else 60)
+    health = {} if state == 'unknown' else {
+        'healthy': state != 'partial', 'last_healthy_at': last_complete,
+    }
+    store.set_kv('collector_health', json.dumps(health))
+    site.build(store, cfg)
+    for language, (page, _) in EDITIONS.items():
+        doc = html(cfg.site_dir / page)
+        notice = doc.select_one('.source-update-status')
+        if state == 'complete':
+            assert notice is None
+        else:
+            assert notice.get_text() == COPY[language]['collection_delayed']
+        footer = doc.footer.get_text()
+        assert COPY[language]['updated'] in footer
+        if state == 'unknown':
+            assert COPY[language]['healthy'] not in footer
+        else:
+            assert COPY[language]['healthy'] + ' ' + site._fmt_local(last_complete) in footer
 
 
 def test_withdrawal_removes_all_editions_feeds_assets_and_prior_releases(published_site):

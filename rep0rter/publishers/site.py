@@ -99,11 +99,16 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
                 "source_path": source_path,
             })
     now = datetime.now(timezone.utc).timestamp()
+    health = json.loads(store.get_kv('collector_health', '{}'))
+    last_healthy_at = health.get('last_healthy_at')
+    collection_complete = bool(health.get('healthy') and last_healthy_at
+                               and 0 <= now - last_healthy_at <= 9000)
     ctx = {"cfg": cfg, "languages": LANGUAGES, "page_name": page_name,
            "generated_local": _fmt_local(now), "generated_rfc822": _fmt_rfc822(now),
            "event_count": store.event_count(), "post_count": store.post_count(),
            "branding": _branding(cfg),
-           "last_healthy": _fmt_local(health['last_healthy_at']) if (health := json.loads(store.get_kv('collector_health','{}'))).get('last_healthy_at') else None}
+           "last_healthy": _fmt_local(last_healthy_at) if last_healthy_at else None,
+           "collection_complete": collection_complete}
     template = env.get_template("index.html")
 
     def render_page(language: str, page_items: list[dict], relative_path: str, prefix: str, title: str = "", detail=False):
