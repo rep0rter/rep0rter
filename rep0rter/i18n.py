@@ -227,3 +227,11 @@ for _language, _values in {
     'ko': {'scene_label': '커뮤니티 소식', 'scene_title': '소식에서', 'scene_title_next': '다음 걸음으로.', 'scene_search': '관심 있는 소식 찾기', 'scene_organize': '날짜 · 주제 · 작성자', 'scene_source': '요약과 원문을 함께 읽기', 'scene_note': '소식을 찾고, 진행 상황을 살피고, 참여하세요.'},
 }.items():
     COPY[_language].update(_values)
+
+for _language, _values in {
+    'en': {'archive_import': 'Archive entry · original source date', 'source_excerpt': 'Original Korean feed text · may be an excerpt'},
+    'ko': {'archive_import': '지난 소식 · 원문 게시일 기준', 'source_excerpt': '한국어 피드 원문 · 일부 내용일 수 있습니다'},
+    'ja': {'archive_import': '過去の記事 · 原文の投稿日', 'source_excerpt': '韓国語フィード原文 · 抜粋の場合があります'},
+    'zh-TW': {'archive_import': '歷史文章 · 依原文日期', 'source_excerpt': '韓文 feed 原文 · 可能為節錄'},
+}.items():
+    COPY[_language].update(_values)
