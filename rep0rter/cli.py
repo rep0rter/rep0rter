@@ -267,7 +267,7 @@ def cmd_serve(cfg: Config, args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="rep0rter", description="g0v virtual reporter")
+    parser = argparse.ArgumentParser(prog="rep0rter", description="AI reporter covering civic-tech communities, including g0v, Code for Korea, and Code for Japan")
     parser.add_argument("--version", action="version", version=f"rep0rter {__version__}")
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="command", required=True)
