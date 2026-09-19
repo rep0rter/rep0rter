@@ -101,6 +101,10 @@ class BudgetSession:
     def post(self, *args, **kwargs):
         return self._request(self.session.post, *args, **kwargs)
 
+    def get_browser(self, *args, **kwargs):
+        from .browser import get_document
+        return self._request(get_document, *args, **kwargs)
+
     def _request(self, send, *args, **kwargs):
         if self.metrics.requests >= self.limit:
             raise BudgetExceeded('collector request budget exhausted')

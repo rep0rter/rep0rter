@@ -1,4 +1,4 @@
-"""Allowlisted public RSS 2.0 feeds, with stable IDs and excerpt-only evidence."""
+"""Allowlisted public RSS 2.0 feeds, with stable IDs and feed-supplied evidence."""
 from __future__ import annotations
 
 import hashlib
@@ -10,6 +10,9 @@ from xml.etree import ElementTree as ET
 from ..sources import normalize_text
 from ..store import Container, Event
 from .state import check_response, persist, read_state
+
+ODF_PROJECTS = 'https://www.odf.or.kr/archive-project'
+ODF_RSS = 'https://www.odf.or.kr/rss'
 
 
 def public_url(value):
@@ -32,8 +35,9 @@ def to_event(item, feed_url, source_name):
     if published.tzinfo is None:
         raise ValueError('RSS pubDate must include a timezone')
     title = normalize_text(item.findtext('title') or '', 'html')
+    content = normalize_text(item.findtext('{http://purl.org/rss/1.0/modules/content/}encoded') or '', 'html')
     description = normalize_text(item.findtext('description') or '', 'html')
-    text = '\n\n'.join(part for part in (title, description) if part)
+    text = '\n\n'.join(part for part in (title, content or description) if part)
     author = (item.findtext('author') or item.findtext('{http://purl.org/dc/elements/1.1/}creator') or '').strip()
     parsed = urlsplit(feed_url)
     return Event(
@@ -45,7 +49,7 @@ def to_event(item, feed_url, source_name):
               'source_name': source_name, 'external_id': guid,
               'canonical_object_id': url, 'feed_url': feed_url,
               'visibility': 'public', 'content_format': 'plain', 'plain_text': text,
-              'content_scope': 'feed_excerpt', 'eligible': bool(text),
+              'content_scope': 'feed_content' if content else 'feed_excerpt', 'eligible': bool(text),
               'container_kind': 'feed', 'raw_version': 1})
 
 
@@ -65,17 +69,28 @@ def collect(store, feeds, session, metrics, days=2):
             continue
         try:
             public_url(feed_url)
-            response = session.get(feed_url, timeout=30)
+            response = (session.get_browser(ODF_RSS, timeout=30) if feed_url == ODF_PROJECTS
+                        else session.get(feed_url, timeout=30))
             check_response(response)
             root = ET.fromstring(response.content)
             channel = root.find('channel')
             if root.tag != 'rss' or root.get('version') != '2.0' or channel is None:
                 raise ValueError('Expected an RSS 2.0 channel')
             source_name = normalize_text(channel.findtext('title') or '', 'html') or urlsplit(feed_url).hostname
+            if feed_url == ODF_PROJECTS:
+                source_name += ' - 프로젝트'
             events = []
             lower = min(now - days * 86400, state.get('last_success', now) - 7200)
             for item in channel.findall('item'):
+                if feed_url == ODF_PROJECTS:
+                    link = urlsplit((item.findtext('link') or '').strip())
+                    if (link.scheme != 'https' or link.netloc != 'www.odf.or.kr'
+                            or link.path.rstrip('/') != '/archive-project'):
+                        continue
                 event = to_event(item, feed_url, source_name)
+                if feed_url == ODF_PROJECTS:
+                    event.meta['content_scope'] = 'feed_listing'
+                    event.meta['feed_url'] = ODF_RSS
                 # Re-read existing items for edits even after their publication window.
                 if event.ts < lower and not store.get_event(event.id):
                     continue

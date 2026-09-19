@@ -6,7 +6,7 @@ from xml.etree import ElementTree as ET
 import pytest
 
 from rep0rter.collectors import registry, rss
-from rep0rter.collectors.state import Metrics, read_state
+from rep0rter.collectors.state import BudgetExceeded, BudgetSession, Metrics, read_state
 from rep0rter.config import Config
 from rep0rter.policy import add_rule
 from rep0rter.reporter import select_candidates
@@ -69,6 +69,69 @@ def test_scoped_guid_and_link_fallback():
     assert first.id != rss.to_event(item, 'https://example.test/feed.xml', 'News').id
     item.remove(item.find('guid'))
     assert rss.to_event(item, FEED, 'News').id == rss.object_id(FEED, first.url)
+
+
+def test_medium_encoded_content_and_author_preserve_publication_date():
+    item = ET.fromstring(ITEM)
+    ET.SubElement(item, '{http://purl.org/rss/1.0/modules/content/}encoded').text = (
+        '<p>Article body from Medium.</p><script>unsafe()</script>')
+    ET.SubElement(item, '{http://purl.org/dc/elements/1.1/}creator').text = 'Code for Korea'
+    ET.SubElement(item, '{http://www.w3.org/2005/Atom}updated').text = '2026-09-19T00:00:00Z'
+    event = rss.to_event(item, FEED, 'Medium')
+    assert 'Article body from Medium.' in event.text
+    assert '교통 지도' not in event.text and 'unsafe' not in event.text
+    assert event.meta['content_scope'] == 'feed_content'
+    assert event.author_name == 'Code for Korea'
+    assert event.ts == NOW - 86400
+    item.find('{http://purl.org/rss/1.0/modules/content/}encoded').text = '<p> </p>'
+    fallback = rss.to_event(item, FEED, 'Medium')
+    assert '교통 지도' in fallback.text
+    assert fallback.meta['content_scope'] == 'feed_excerpt'
+
+
+def test_odf_project_archive_filters_sitewide_feed_and_charges_budget(tmp_path, monkeypatch):
+    from rep0rter.collectors import browser
+    project = ITEM.replace('https://codefor.kr/posts/example',
+                           'https://www.odf.or.kr/archive-project/?idx=123&amp;bmode=view')
+    items = project + project.replace('/archive-project/', '/notice/') + project.replace(
+        'www.odf.or.kr', 'unrelated.example')
+    fetch = Mock(return_value=response(items))
+    monkeypatch.setattr(browser, 'get_document', fetch)
+    metrics = Metrics()
+    reserve = Mock()
+    session = BudgetSession(Mock(headers={}), metrics, limit=1, interval=0, reserve=reserve)
+    with Store(tmp_path / 'db') as store:
+        assert rss.collect(store, [rss.ODF_PROJECTS], session, metrics) == 1
+        assert store.event_count() == 1
+        event = store.get_event(rss.object_id(rss.ODF_PROJECTS, 'codefor-news-1'))
+        assert event.meta['content_scope'] == 'feed_listing'
+        assert event.meta['feed_url'] == rss.ODF_RSS
+        assert event.meta['source_name'].endswith(' - 프로젝트')
+        assert event.ts == NOW - 86400
+        assert metrics.requests == 1 and metrics.bytes == len(response(items).content)
+        reserve.assert_called_once()
+        fetch.assert_called_once_with(rss.ODF_RSS, timeout=30)
+        session.session.get.assert_not_called()
+        with pytest.raises(BudgetExceeded):
+            session.get_browser(rss.ODF_RSS)
+        assert fetch.call_count == 1
+
+
+def test_odf_browser_error_preserves_success_and_reports_failure(tmp_path, monkeypatch):
+    from rep0rter.collectors import browser
+    fetch = Mock(return_value=response(''))
+    monkeypatch.setattr(browser, 'get_document', fetch)
+    metrics = Metrics()
+    session = BudgetSession(Mock(headers={}), metrics, interval=0)
+    cid = 'rss-feed:' + rss.ODF_PROJECTS
+    with Store(tmp_path / 'db') as store:
+        rss.collect(store, [rss.ODF_PROJECTS], session, metrics)
+        fetch.side_effect = RuntimeError('browser unavailable')
+        rss.collect(store, [rss.ODF_PROJECTS], session, metrics)
+        assert read_state(store, cid)['last_success'] == NOW
+        assert read_state(store, cid)['error'] == 'browser unavailable'
+        assert cid in json.loads(store.get_kv('collector_errors'))
+        assert metrics.requests == 2
 
 
 @pytest.mark.parametrize('scope,subject', [

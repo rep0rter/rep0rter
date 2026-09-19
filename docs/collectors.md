@@ -5,7 +5,7 @@
 ```dotenv
 REP0RTER_GITHUB_REPOS=owner/repository,another/project
 REP0RTER_MASTODON_ACCOUNTS=https://social.example/@civic
-REP0RTER_FEEDS=https://codefor.kr/boards/news.xml,https://codefor.kr/boards/civic-tech-projects.xml,https://code4japan-community.notion.site/Home-9dd9cd85f07942c1bd5f6ef73efdb122
+REP0RTER_FEEDS=https://codefor.kr/boards/news.xml,https://codefor.kr/boards/civic-tech-projects.xml,https://code4japan-community.notion.site/Home-9dd9cd85f07942c1bd5f6ef73efdb122,https://civictech.kr/boards/news.xml,https://www.odf.or.kr/archive-project,https://medium.com/feed/codeforkorea
 REP0RTER_COLLECT_REQUEST_BUDGET=80
 REP0RTER_COLLECT_DAILY_BUDGET=1500
 ```
@@ -16,15 +16,25 @@ GitHub 使用公開無認證 REST API：先確認 repository `private=false`，�
 
 ## RSS 新聞來源
 
-`REP0RTER_FEEDS` 是逗號分隔的公開 RSS 2.0 / Notion URL 允許清單；舊 `REP0RTER_RSS_FEEDS` 仍可使用，兩者合併後去重。兩者皆空值時停用。
+`REP0RTER_FEEDS` 是逗號分隔的公開 RSS 2.0 / Notion URL 允許清單（另支援下述 ODF 專案典藏入口）；舊 `REP0RTER_RSS_FEEDS` 仍可使用，兩者合併後去重。兩者皆空值時停用。
 每輪每個 feed 只抓一次，沿用共用 request budget、錯誤隔離、Retry-After 退避及退出政策。
 目前加入 Code for Korea 的兩個獨立來源：[新聞公告](https://codefor.kr/boards/news.xml)及[公民科技專案典藏](https://codefor.kr/boards/civic-tech-projects.xml)。兩者無須認證，保留各自的 feed 標題、摘要、原文連結及含時區的 `pubDate`。
 專案典藏是專案介紹清單，`pubDate` 是典藏條目的日期，不能據此推論專案剛推出。加入來源不會自動匯入整個歷史典藏，也不會把舊專案當成新發布。
-事件以 feed URL + GUID 去重；缺 GUID 時使用文章連結。摘要轉純文字並標記 `content_scope=feed_excerpt`，不視為完整文章，也不自動抓取全文。
+事件以 feed URL + GUID 去重；缺 GUID 時使用文章連結。優先讀取 `content:encoded` 並標記 `content_scope=feed_content`；缺少有效內容時讀取 description、標記 `feed_excerpt`。兩者皆轉純文字，不宣稱 feed 必然包含全文，也不自動抓取文章頁。Medium 的 `dc:creator` 保留為作者；更新日期不取代原始 `pubDate`。
 首次只納入採集時間窗內的文章；每輪重新讀取 feed 內已存項目以更新文字。RSS 只代表目前提供的項目，無法保證補回已離開 feed 的歷史文章；項目消失不視為刪文。
 無效 XML、文章日期或連結會使該 feed 本輪失敗並保留上次成功狀態。
 RSS 文章仍需通過既有主題、內容及新鮮度選稿規則，不會僅因在 feed 中就發布。
 新聞來源退出 ID 為 `rss-feed:https://codefor.kr/boards/news.xml`；專案典藏為 `rss-feed:https://codefor.kr/boards/civic-tech-projects.xml`。個別文章沿用儲存的 `rss:` 事件 ID。
+
+另外啟用 [Civic Tech Network 活動典藏](https://civictech.kr/boards/news.xml)及 [Code for Korea Medium](https://medium.com/feed/codeforkorea)，各自保留 feed 標題，Civic Tech Network 不歸入 Code for Korea。Medium 目前提供歷史文章；不因新增來源就當成新消息。
+
+### Open Data Forum 專案典藏
+
+在清單加入 `https://www.odf.or.kr/archive-project`。此明確入口對應 [ODF 公開 RSS](https://www.odf.or.kr/rss)，只收錄同網域 `/archive-project/` 文章，排除全站 feed 的公告、活動及其他典藏分類。來源名稱為「오픈데이터포럼 - 프로젝트」，退出 ID 為 `rss-feed:https://www.odf.or.kr/archive-project`。
+
+2026-09-19 驗證：一般 HTTP client 回傳 403，無登入的標準 Chromium 可讀 RSS；使用既有 Playwright Chromium，每輪只允許一個 XML 文件請求，禁止 script、子資源及 redirect，並計入同一個每輪／每日 budget。未使用帳號、cookie、代理或驗證碼處理。瀏覽器失敗、403、429、無效 XML 均保留上次成功時間並記錄來源失敗。
+
+全站 50 筆 feed 中有 12 筆專案條目，提供標題、原始日期及連結但沒有內文，標記 `content_scope=feed_listing`。這是發現專案的入口，不是完整專案文章匯入；資訊不足的條目仍由共同選稿政策處理，不會只憑新增來源就發布。日期代表典藏條目時間，不代表專案推出時間；正常採集仍使用既有時間窗。
 
 ## 公開 Notion 頁面與資料庫
 
