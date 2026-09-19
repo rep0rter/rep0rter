@@ -38,8 +38,11 @@
     <article id="{{ it.post.id }}">
       <div class="story-top"><a class="channel" href="{{ prefix }}{{ it.source_path }}{{ page_name(language) }}">{{ it.source_label }}</a><a class="permalink" href="{{ prefix }}{{ it.story_path }}" aria-label="{{ copy.read }} {{ it.post.id }}">↗</a></div>
       {% if it.content_warning %}<p class="translation-note">{{ it.content_warning }}</p>{% endif %}
+      {% if it.latest_path %}<p class="revision-notice"><strong>{{ copy.superseded }}</strong> <a href="{{ prefix }}{{ it.latest_path }}">{{ copy.latest_report }} ↗</a></p>{% endif %}
       <h3 lang="{{ language if it.translated else 'und' }}"><a href="{{ prefix }}{{ it.story_path }}">{{ it.headline }}</a></h3>
+      {% if it.latest_path %}<details class="previous-summary"><summary>{{ copy.previous_report }}</summary>{% endif %}
       <p class="summary" lang="{{ language if it.translated else 'und' }}">{{ it.summary }}</p>
+      {% if it.latest_path %}</details>{% endif %}
       {% if not it.translated %}<p class="translation-note">{{ copy.missing }}</p>{% endif %}
       <figure>
         <a href="{{ prefix }}{{ it.image }}" aria-label="{{ copy.download }}"><img class="source-card" src="{{ prefix }}{{ it.image }}" width="1200" height="630" loading="lazy" alt="{{ copy.image_alt }}{{ it.event.author_name or it.channel }}"></a>

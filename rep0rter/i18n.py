@@ -84,3 +84,11 @@ for _language, _text in {
     'en': 'Some sources are updating slowly. Recent news may not appear yet.',
 }.items():
     COPY[_language]['collection_delayed'] = _text
+
+for _language, _values in {
+    'zh-TW': ('這篇報導已有後續修訂，請以最新版本為準。', '閱讀最新報導', '舊版報導（已修訂）'),
+    'ko': ('이 소식은 수정되었습니다. 최신 내용을 확인해 주세요.', '최신 소식 읽기', '이전 소식 (수정됨)'),
+    'ja': ('この記事には改訂版があります。最新の内容をご確認ください。', '最新版を読む', '旧版の記事（改訂済み）'),
+    'en': ('This story has been revised. Please refer to the latest version.', 'Read the latest story', 'Previous report (superseded)'),
+}.items():
+    COPY[_language].update(zip(('superseded', 'latest_report', 'previous_report'), _values))
