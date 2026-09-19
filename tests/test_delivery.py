@@ -6,6 +6,7 @@ import requests
 
 from rep0rter import delivery
 from rep0rter.config import Config
+from rep0rter.i18n import page_name
 from rep0rter.publishers import telegram
 from rep0rter.reporter import Candidate
 from rep0rter.store import Event, Post, Store
@@ -147,7 +148,7 @@ def test_caption_localization_urls_limits_and_unsafe_scheme(setup_delivery):
     assert len(result.encode('utf-16-le')) // 2 <= 1024
     assert '/posts/12/index.ko.html' in result
     assert '/posts/12/index.ja.html' in result
-    assert '/posts/12/index.en.html' in result
+    assert f'/posts/12/{page_name("zh-TW")}' in result
     assert '/posts/12/index.html' in result
     c.event.url = 'https://example.org/?x=" onclick="bad'
     assert 'href="https://example.org/?x=&quot; onclick=&quot;bad"' in telegram.format_item(c, p)
@@ -155,7 +156,7 @@ def test_caption_localization_urls_limits_and_unsafe_scheme(setup_delivery):
 
 def test_oversized_single_legacy_text_rejected(setup_delivery):
     _, _, items = setup_delivery
-    items[0][1].summary = 'x' * 5000
+    items[0][1].translations['en']['summary'] = 'x' * 5000
     with pytest.raises(ValueError, match='4096'):
         telegram.format_messages(items[:1])
 

@@ -67,7 +67,7 @@ class Config:
     telegram_chat_id: str | None = _env("TELEGRAM_CHAT_ID")
     telegram_test_chat_id: str | None = _env("TELEGRAM_TEST_CHAT_ID")
     telegram_use_test_chat: bool = (_env("REP0RTER_TELEGRAM_TEST", "0") or "0").lower() in ("1", "true", "yes")
-    telegram_language: str = _env("REP0RTER_TELEGRAM_LANGUAGE", "zh-TW") or "zh-TW"
+    telegram_language: str = _env("REP0RTER_TELEGRAM_LANGUAGE", "en") or "en"
 
     # Original-text cards (Noto CJK is installed in the Docker image).
     card_font: str | None = _env("REP0RTER_CARD_FONT")

@@ -18,6 +18,10 @@ MAX_LEN = 4096
 CAPTION_LEN = 1024
 
 
+class TranslationPending(ValueError):
+    """The chosen edition is not ready; do not publish another language instead."""
+
+
 class TelegramRejected(RuntimeError):
     """Telegram explicitly rejected the request; it was not delivered."""
     def __init__(self, status: int, retry_after: int | None = None):
@@ -39,7 +43,17 @@ def _link(url: str, label: str) -> str:
     return f'<a href="{_esc(url)}">{_esc(label)}</a>' if valid else _esc(label)
 
 
-def format_item(c: Candidate, post: Post) -> str:
+def _localized_text(post: Post, language: str) -> tuple[str, str]:
+    if language not in LANGUAGES:
+        raise ValueError(f"Unsupported Telegram language: {language}")
+    headline, summary, translated = post_text(post, language)
+    if not translated and language != "zh-TW":
+        raise TranslationPending(f"Telegram {language} translation is not available; keep delivery pending")
+    return headline, summary
+
+
+def format_item(c: Candidate, post: Post, language: str = "en") -> str:
+    headline, summary = _localized_text(post, language)
     channel = c.container.name if c.container else c.event.container_id
     stats = []
     if c.event.reply_count:
@@ -50,14 +64,14 @@ def format_item(c: Candidate, post: Post) -> str:
     meta = f"{_esc(label)} · {_esc(c.event.author_name)}"
     if stats:
         meta += " · " + " ".join(stats)
-    return f"<b>{_esc(post.headline)}</b>\n{_esc(post.summary)}\n{meta} · {_link(c.event.url, '原文')}"
+    return f"<b>{_esc(headline)}</b>\n{_esc(summary)}\n{meta} · {_link(c.event.url, COPY[language]['source'])}"
 
 
-def format_messages(items: list[tuple[Candidate, Post]]) -> list[str]:
+def format_messages(items: list[tuple[Candidate, Post]], language: str = "en") -> list[str]:
     """Legacy text preview. Reject oversized items without breaking HTML."""
     messages, current = [], ""
     for c, p in items:
-        block = format_item(c, p)
+        block = format_item(c, p, language)
         if len(block.encode("utf-16-le")) // 2 > MAX_LEN:
             raise ValueError("Single Telegram text item exceeds 4096 characters")
         joined = block if not current else current + "\n\n" + block
@@ -76,14 +90,11 @@ def format_caption(cfg: Config, c: Candidate, post: Post) -> str:
     if post.id is None:
         raise ValueError("Persist posts before preparing Telegram captions")
     language = cfg.telegram_language
-    if language not in LANGUAGES:
-        raise ValueError(f"Unsupported Telegram language: {language}")
-    headline, summary, translated = post_text(post, language)
+    headline, summary = _localized_text(post, language)
+    labels = {"en": "English", "zh-TW": "Chinese", "ja": "Japanese", "ko": "Korean"} if language == "en" else LANGUAGES
     links = " · ".join(_link(f"{cfg.site_url.rstrip('/')}/posts/{post.id}/{page_name(lang)}", name)
-                       for lang, name in LANGUAGES.items())
+                       for lang, name in labels.items())
     footer = f"\n{_link(c.event.url, COPY[language]['source'])}\n{links}"
-    if not translated:
-        footer = "\n" + _esc(COPY[language]["missing"]) + footer
     # Measure encoded HTML conservatively. Never truncate an entity or HTML tag.
     while True:
         caption = f"<b>{_esc(headline)}</b>\n{_esc(summary)}{footer}"
@@ -126,5 +137,5 @@ def publish(cfg: Config, items: list[tuple[Candidate, Post]], dry_run: bool = Fa
     if not dry_run:
         raise RuntimeError("Use the durable Telegram outbox for delivery")
     for c, p in items:
-        print(format_caption(cfg, c, p) if p.id else format_item(c, p))
+        print(format_caption(cfg, c, p) if p.id else format_item(c, p, cfg.telegram_language))
     return []
