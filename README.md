@@ -2,7 +2,7 @@
 
 # rep0rter
 
-**An AI reporter for the g0v civic-tech community.** Every hour it reads public
+**An AI reporter covering civic-tech communities, including g0v, Code for Korea, and Code for Japan.** Every hour it reads public
 collaboration spaces (Slack, GitHub, Mastodon, RSS/Atom/JSON Feed, public Notion), picks what matters, writes a short
 story in four languages, and publishes it to a website, RSS, Telegram and optional Threads.
 
