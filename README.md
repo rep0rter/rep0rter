@@ -59,8 +59,10 @@ Other commands: `collect`, `report`, `build-site`, `translate`, `outbox`, `statu
 
 `REP0RTER_FEEDS` accepts a comma-separated mix of RSS 2.0 feeds and public Notion
 page/database URLs. Notion uses anonymous web JSON requests without an API token;
-these unofficial endpoints may change. The Code for Korea news feed and Code for
-Japan community portal are included in `.env.example`. See [collector limits](docs/collectors.md).
+these unofficial endpoints may change. Code for Korea's news and project archive
+feeds, plus the Code for Japan community portal, are included in `.env.example`.
+Archive publication dates describe archive entries, not necessarily project launches.
+See [collector limits](docs/collectors.md).
 
 Production runs with `docker compose up -d --build`: a `worker` (hourly cycle),
 `maintenance` (backups, health checks), `accounts` (Google login and owner project

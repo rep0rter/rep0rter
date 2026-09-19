@@ -5,7 +5,7 @@
 ```dotenv
 REP0RTER_GITHUB_REPOS=owner/repository,another/project
 REP0RTER_MASTODON_ACCOUNTS=https://social.example/@civic
-REP0RTER_FEEDS=https://codefor.kr/boards/news.xml,https://code4japan-community.notion.site/Home-9dd9cd85f07942c1bd5f6ef73efdb122
+REP0RTER_FEEDS=https://codefor.kr/boards/news.xml,https://codefor.kr/boards/civic-tech-projects.xml,https://code4japan-community.notion.site/Home-9dd9cd85f07942c1bd5f6ef73efdb122
 REP0RTER_COLLECT_REQUEST_BUDGET=80
 REP0RTER_COLLECT_DAILY_BUDGET=1500
 ```
@@ -18,12 +18,13 @@ GitHub 使用公開無認證 REST API：先確認 repository `private=false`，�
 
 `REP0RTER_FEEDS` 是逗號分隔的公開 RSS 2.0 / Notion URL 允許清單；舊 `REP0RTER_RSS_FEEDS` 仍可使用，兩者合併後去重。兩者皆空值時停用。
 每輪每個 feed 只抓一次，沿用共用 request budget、錯誤隔離、Retry-After 退避及退出政策。
-目前加入 [Code for Korea 新聞](https://codefor.kr/boards/news.xml)：無須認證，保留標題、摘要、原文連結及含時區的 `pubDate`。
+目前加入 Code for Korea 的兩個獨立來源：[新聞公告](https://codefor.kr/boards/news.xml)及[公民科技專案典藏](https://codefor.kr/boards/civic-tech-projects.xml)。兩者無須認證，保留各自的 feed 標題、摘要、原文連結及含時區的 `pubDate`。
+專案典藏是專案介紹清單，`pubDate` 是典藏條目的日期，不能據此推論專案剛推出。加入來源不會自動匯入整個歷史典藏，也不會把舊專案當成新發布。
 事件以 feed URL + GUID 去重；缺 GUID 時使用文章連結。摘要轉純文字並標記 `content_scope=feed_excerpt`，不視為完整文章，也不自動抓取全文。
 首次只納入採集時間窗內的文章；每輪重新讀取 feed 內已存項目以更新文字。RSS 只代表目前提供的項目，無法保證補回已離開 feed 的歷史文章；項目消失不視為刪文。
 無效 XML、文章日期或連結會使該 feed 本輪失敗並保留上次成功狀態。
 RSS 文章仍需通過既有主題、內容及新鮮度選稿規則，不會僅因在 feed 中就發布。
-來源退出 ID 為 `rss-feed:https://codefor.kr/boards/news.xml`；個別文章沿用儲存的 `rss:` 事件 ID。
+新聞來源退出 ID 為 `rss-feed:https://codefor.kr/boards/news.xml`；專案典藏為 `rss-feed:https://codefor.kr/boards/civic-tech-projects.xml`。個別文章沿用儲存的 `rss:` 事件 ID。
 
 ## 公開 Notion 頁面與資料庫
 
