@@ -1,9 +1,10 @@
 # Telegram delivery and recovery
 
-New publication sends one source-text image and one localized caption per post.
+New publication defaults to one English report image and one English caption per post.
 Every caption links to that post's four language pages. `REP0RTER_TELEGRAM_LANGUAGE`
-selects `zh-TW` (default), `ko`, `ja`, or `en`; missing translations are identified
-in the caption. Text is shortened before HTML escaping to stay within Telegram's
+selects `en` (default), `zh-TW`, `ja`, or `ko`. Missing configured translations
+wait for backfill and retry after one hour; they never fall back to Chinese.
+English images identify rep0rter as the summary author and preserve source attribution. Text is shortened before HTML escaping to stay within Telegram's
 1024-character photo caption limit. The complete text remains on the website.
 
 Website posts and Telegram delivery are separate. `prepare_posts` commits each
@@ -72,11 +73,41 @@ An incorrect decision to retry an ambiguous send can create a duplicate.
 New messages contain exactly one post, so modifying or deleting that Telegram
 message cannot affect another post. Its `delivery.telegram` value stores
 `chat_id`, `message_id`, and `outbox_id`; do not treat it as the legacy integer.
-The complete payload is retained for audit/reconciliation. This release does
-not add a Telegram edit/delete management command or migrate previously bundled
-messages into per-post messages. Legacy posts are not silently sent again.
-Withdrawal/reconstruction of old multi-post Telegram bundles remains work for
-issue #13; inspect every post sharing a legacy message ID before editing it.
+The complete payload is retained for audit/reconciliation. Legacy posts are not
+silently sent again. `retraction-delivery` handles proven withdrawal mappings;
+inspect every post sharing a legacy message ID before confirming a group.
+
+## Explicit English replacement batch
+
+Pause the worker and maintenance service and take a backup first. Confirm legacy
+message ownership, including every report in each bundled message. Then:
+
+```sh
+python -m rep0rter telegram-republish --plan
+python -m rep0rter telegram-republish --batch <batch-id> --apply
+```
+
+The plan checks English captions and rendered images before any deletion. It
+archives message/job IDs and selects only the latest visible revision per story.
+Withdrawn reports are never republished. Apply deletes known old messages and
+stages replacement jobs only after all remote removals are confirmed. Website
+post IDs and RSS GUIDs remain unchanged. Resume the same batch after a failure;
+applying a staged batch again does not reset sent jobs.
+
+Telegram can reject deletion of messages older than 48 hours. For an explicitly
+rejected `message_cannot_be_deleted` job, replace that message with an English
+navigation notice:
+
+```sh
+python -m rep0rter telegram-republish-notice --batch <batch-id> --mutation <job-id>
+python -m rep0rter telegram-republish --batch <batch-id> --apply
+```
+
+The original deletion failure stays in the audit trail. A separately confirmed
+notice edit satisfies the replacement barrier. Ambiguous edits block progress
+and must be checked manually; they are never automatically repeated. Once the
+batch is staged, normal `deliver_pending` sends the English photo messages.
+Resume the worker and maintenance service after verifying delivery.
 
 All automated delivery tests use temporary databases and mocked transports.
 Do not use a production bot to test retries or unknown-state recovery.
