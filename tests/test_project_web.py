@@ -45,11 +45,11 @@ def fields(response):
     return {node['name']: node.get('value', '') for node in soup.select('input[type=hidden]')}
 
 
-def login(web, monkeypatch, client=None, claims=None, signing_key=None):
+def login(web, monkeypatch, client=None, claims=None, signing_key=None, login_data=None):
     app, cfg, google, key = web
     client = client or app.test_client()
     csrf = fields(client.get('/submit'))['csrf']
-    response = client.post('/auth/google', data={'csrf': csrf})
+    response = client.post('/auth/google', data={'csrf': csrf, **(login_data or {})})
     assert response.status_code == 302
     params = parse_qs(urlsplit(response.location).query)
     assert params['redirect_uri'] == ['http://localhost/auth/google/callback']

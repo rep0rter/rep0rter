@@ -17,7 +17,7 @@ from requests import RequestException
 
 from .config import Config, load_config
 from .i18n import LANGUAGES, page_name
-from . import projects, project_automation
+from . import community, hashtags, projects, project_automation
 from .publishers import site
 from .store import Store
 
@@ -47,8 +47,8 @@ def create_app(cfg: Config | None = None) -> Flask:
         SESSION_COOKIE_SAMESITE='Lax',
         PERMANENT_SESSION_LIFETIME=timedelta(seconds=SESSION_SECONDS),
         SESSION_REFRESH_EACH_REQUEST=False,
-        MAX_CONTENT_LENGTH=24 * 1024,
-        MAX_FORM_MEMORY_SIZE=24 * 1024,
+        MAX_CONTENT_LENGTH=128 * 1024,
+        MAX_FORM_MEMORY_SIZE=128 * 1024,
         MAX_FORM_PARTS=20,
     )
     oauth = OAuth(app)
@@ -95,24 +95,24 @@ def create_app(cfg: Config | None = None) -> Flask:
             with db.conn:
                 db.conn.execute('DELETE FROM project_sessions WHERE token_hash=?', (_hash(session['login_token']),))
 
-    def form_page(*, error=None, status=200, values=None, saved_post=None):
+    def form_page(*, error=None, status=200, values=None, saved_post=None, story=False, preview=None):
         owner = account() if cfg.google_login_enabled else None
         token = None
         if owner:
             # A signed, account-bound id makes resubmission safe across tabs,
             # request races, lost responses and failed site builds.
             token = request.form.get('submission_token') or URLSafeTimedSerializer(
-                cfg.web_secret_key, salt='project-submission'
+                cfg.web_secret_key, salt='story-submission' if story else 'project-submission'
             ).dumps({'account': owner['id'], 'id': uuid.uuid4().hex})
         return render_template(
-            'submit.html', cfg=cfg, owner=owner, error=error, values=values or {},
+            'write.html' if story else 'submit.html', cfg=cfg, owner=owner, error=error, values=values or {},
             languages=LANGUAGES, csrf=csrf_token() if cfg.google_login_enabled else '',
-            submission_token=token, saved_post=saved_post,
+            submission_token=token, saved_post=saved_post, preview=preview,
         ), status
 
     @app.after_request
     def security_headers(response):
-        if request.path.startswith(('/auth/', '/submit', '/projects')):
+        if request.path.startswith(('/auth/', '/submit', '/projects', '/write')):
             response.headers['Cache-Control'] = 'no-store'
             response.headers['Referrer-Policy'] = 'no-referrer'
             response.headers['X-Content-Type-Options'] = 'nosniff'
@@ -129,20 +129,70 @@ def create_app(cfg: Config | None = None) -> Flask:
     def submit():
         return form_page(status=200 if cfg.google_login_enabled else 503)
 
+    @app.route('/write', methods=['GET', 'POST'])
+    def write_story():
+        if not cfg.google_login_enabled:
+            return form_page(story=True, status=503)
+        if request.method == 'GET':
+            values = {}
+            try:
+                tag = hashtags.normalize(request.args.get('tag', ''))
+                values['hashtags'] = '#' + tag
+            except ValueError:
+                pass
+            return form_page(story=True, values=values)
+        owner = account()
+        if owner is None:
+            return form_page(story=True, error='Sign in with Google before publishing a story.', status=401)
+        check_csrf()
+        try:
+            identity = URLSafeTimedSerializer(cfg.web_secret_key, salt='story-submission').loads(
+                request.form.get('submission_token', ''), max_age=SESSION_SECONDS,
+            )
+            if identity['account'] != owner['id']:
+                abort(403)
+        except (BadSignature, KeyError, TypeError):
+            abort(400, 'Your form expired. Reload the page and try again.')
+        try:
+            values = community.validate(request.form)
+            if request.form.get('action') == 'preview':
+                return form_page(story=True, values=request.form, preview=values)
+            post_id = projects.publish(store(), owner['id'], identity['id'], values, story=True)
+        except projects.SubmissionError as exc:
+            return form_page(story=True, error=str(exc), status=exc.status, values=request.form)
+        try:
+            site.build(store(), cfg)
+        except Exception:
+            app.logger.error('Site build failed after saving community story %s', post_id)
+            return form_page(story=True, error='Your story is saved, but the feed could not refresh yet. '
+                             'Retry publishing to refresh it, or wait for the next scheduled update.',
+                             status=503, values=request.form, saved_post=post_id)
+        return redirect(f'/posts/{post_id}/index.html', code=303)
+
     @app.post('/auth/google')
     def login():
         if not cfg.google_login_enabled:
             return form_page(status=503)
         check_csrf()
+        destination = request.form.get('destination')
+        # Only fixed local destinations can survive the OAuth round trip.
+        destination = destination if destination in ('/write', '/submit', '/projects') else '/projects'
+        login_tag = request.form.get('tag', '') if destination == '/write' else ''
         revoke_session()
         session.clear()
+        session['login_destination'] = destination
+        if login_tag:
+            try:
+                session['login_tag'] = hashtags.normalize(login_tag)
+            except ValueError:
+                pass
         session.permanent = True
         try:
             # Fixed configuration prevents Host/forwarded-header redirect poisoning.
             return google.authorize_redirect(cfg.site_url.rstrip('/') + '/auth/google/callback',
                                              prompt='select_account')
         except (OAuthError, RequestException, ValueError):
-            return form_page(error='Google sign-in is temporarily unavailable. Please try again.', status=502)
+            return form_page(story=destination == '/write', error='Google sign-in is temporarily unavailable. Please try again.', status=502)
 
     @app.get('/auth/google/callback')
     def callback():
@@ -159,8 +209,9 @@ def create_app(cfg: Config | None = None) -> Flask:
             if not isinstance(subject, str) or not subject or info.get('email_verified') is not True:
                 raise ValueError('A verified Google account is required.')
         except (OAuthError, JOSEValidationError, RequestException, ValueError, KeyError):
+            writing = session.get('login_destination') == '/write'
             session.clear()
-            return form_page(error='Google sign-in was cancelled or could not be verified. Please try again.', status=400)
+            return form_page(story=writing, error='Google sign-in was cancelled or could not be verified. Please try again.', status=400)
         db = store()
         now = time.time()
         login_token = secrets.token_urlsafe(32)
@@ -176,10 +227,14 @@ def create_app(cfg: Config | None = None) -> Flask:
             db.conn.execute('DELETE FROM project_sessions WHERE expires_at<=?', (now,))
             db.conn.execute('INSERT INTO project_sessions VALUES (?, ?, ?)',
                             (_hash(login_token), owner['id'], now + SESSION_SECONDS))
+        destination = session.get('login_destination', '/projects')
+        login_tag = session.get('login_tag')
         session.clear()
         session.permanent = True
         session['login_token'] = login_token
-        return redirect(url_for('managed_project'), code=303)
+        if destination == '/write':
+            return redirect(url_for('write_story', **({'tag': login_tag} if login_tag else {})), code=303)
+        return redirect(destination if destination in ('/submit', '/projects') else '/projects', code=303)
 
     @app.post('/auth/logout')
     def logout():

@@ -22,7 +22,7 @@ body { margin: 0; font-family: "Noto Sans CJK TC", "Noto Sans CJK JP", "Noto San
     {% if avatar %}<img class="avatar" src="{{ avatar }}" alt="">{% else %}<div class="avatar">{{ initial }}</div>{% endif %}
     <div class="byline"><div class="author">Source: {{ author }}</div><div class="source">{{ source }} · #{{ channel }}</div></div>
   </div>
-  <div class="report-label">{{ 'OWNER SUBMISSION · Ownership self-declared' if owner_submitted else 'ENGLISH REPORT · Summary by rep0rter' }}</div>
+  <div class="report-label">{{ 'SELF-REPORTED · Written by the contributor' if self_reported else 'OWNER SUBMISSION · Ownership self-declared' if owner_submitted else 'ENGLISH REPORT · Summary by rep0rter' }}</div>
   <div class="headline">{{ headline }}</div>
   <div class="quote">{{ summary }}</div>
   <div class="footer"><div class="provenance">SOURCE POSTED · {{ date }}<div class="permalink">{{ url }}</div></div><span class="brand">{{ brand }}</span></div>

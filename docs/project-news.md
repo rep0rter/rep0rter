@@ -171,3 +171,37 @@ Offline tests validate signed Google ID tokens with local test keys, request
 forgery defenses, account isolation, source fetching and duplicate-free
 publication. A real Google browser login requires your registered client and
 must be checked after deployment; no credentials are included with the project.
+
+## Community stories and hashtags
+
+Choose **Write a story** in the site header, or visit `/write`. Google sign-in
+returns to the writer (including a tag selected from a timeline). The existing
+Google client and callback above are reused; no additional scopes are needed.
+The writer supports an English headline and update, optional project name,
+participation details, up to five evidence links, original text in any language,
+and the date the work happened. Preview does not publish. Published stories are
+marked **Self-reported**, including their downloadable English cards. Stories
+without evidence explicitly say so. Other editions retain the existing honest
+translation fallback; submitting does not automatically translate the story.
+
+Add up to eight hashtags separated by spaces or commas. Tags are Unicode-aware,
+normalized for width and case, and deduplicated. Letters, numbers, underscores,
+and hyphens are supported (48 characters maximum, at least one letter). Hashtags
+in story text are also discovered; URL fragments and numeric issue references
+are excluded. Existing Slack channel names become tags when they meet these
+rules, so their historical stories are immediately discoverable.
+
+Each tag links to `/tags/<tag>/index.html` and the corresponding language pages.
+Timelines include all published, allowed stories, even outside the homepage's
+300-post window, sorted by their original event date, newest first. Source pages
+also use this dated timeline presentation. The existing date, author, source and
+sort filters work within each timeline. The main feed remains ordered by
+publication time. Tag counts appear in the discovery sidebar, and RSS includes
+hashtags as categories.
+
+Stories share the existing five-publications-per-account daily limit and the
+same transactional, account-bound retry protection as project submissions.
+They do not send Telegram messages. Exclusions and emergency withdrawal scrub
+stories, tag discovery and timeline headings from cached generations; rebuilding
+removes empty tag pages. No database migration or extra service is required.
+Caddy sends `/write` to the existing accounts service.

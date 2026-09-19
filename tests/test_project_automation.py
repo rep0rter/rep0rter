@@ -96,7 +96,7 @@ def test_rate_limit_is_shared_by_manual_and_automatic_posts(managed, monkeypatch
     store, project_id, values, now = managed
     monkeypatch.setattr(project_sources, 'fetch', lambda url: json.dumps([release(n, now + 1) for n in range(8)]).encode())
     assert automation.run_due(store, now=now + 2) == 5
-    assert 'five projects' in store.conn.execute('SELECT last_error FROM managed_projects').fetchone()[0]
+    assert 'five stories or projects' in store.conn.execute('SELECT last_error FROM managed_projects').fetchone()[0]
     with pytest.raises(projects.SubmissionError) as exc:
         projects.publish(store, 'owner', 'manual', dict(title='Test', description='Test', author='Owner', language='en', url='https://example.test'))
     assert exc.value.status == 429

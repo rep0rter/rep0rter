@@ -38,7 +38,7 @@ def validate(form) -> dict[str, str]:
     return values
 
 
-def publish(store: Store, account_id: str, submission_id: str, values: dict[str, str], *, automation=None) -> int:
+def publish(store: Store, account_id: str, submission_id: str, values: dict, *, automation=None, story=False) -> int:
     """Commit the source, owner and post together; retries cannot duplicate a post.
 
     Site generation happens after this transaction. If generation fails, the
@@ -51,6 +51,13 @@ def publish(store: Store, account_id: str, submission_id: str, values: dict[str,
                   author_name=values['author'], text=values['title'] + '\n\n' + values['description'],
                   url=values['url'], meta={'visibility': 'public', 'content_format': 'plain',
                                           'owner_submitted': True, 'language': values['language']})
+    if story:
+        event.kind = 'story'
+        event.ts = values['event_ts']
+        event.text = values['original'] or event.text
+        event.meta.update(self_reported=True, hashtags=values['hashtags'],
+                          project_name=values['project_name'], take_part=values['take_part'],
+                          evidence=values['evidence'], event_date=values['event_date'])
     with store.conn:
         store.conn.execute('BEGIN IMMEDIATE')
         if automation:
@@ -73,7 +80,7 @@ def publish(store: Store, account_id: str, submission_id: str, values: dict[str,
             (account_id, now - 86400),
         ).fetchone()[0]
         if count >= 5:
-            raise SubmissionError('You can publish up to five projects in 24 hours. Please try again later.', 429)
+            raise SubmissionError('You can publish up to five stories or projects in 24 hours. Please try again later.', 429)
         store.conn.execute(
             "INSERT OR IGNORE INTO containers (id, source, name, last_seen) VALUES (?, ?, ?, ?)",
             (event.container_id, 'project', 'Owner-submitted projects', now),
@@ -82,14 +89,15 @@ def publish(store: Store, account_id: str, submission_id: str, values: dict[str,
             '''INSERT INTO events (id, source, kind, container_id, author_id, author_name, text,
                url, ts, meta, first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
             (event.id, event.source, event.kind, event.container_id, event.author_id, event.author_name,
-             event.text, event.url, now, json.dumps(event.meta), now, now),
+             event.text, event.url, event.ts, json.dumps(event.meta), now, now),
         )
         translation = {values['language']: {'headline': values['title'], 'summary': values['description']}}
         cursor = store.conn.execute(
             '''INSERT INTO posts (event_id, published_at, score, headline, summary, translations, reasons)
                VALUES (?, ?, 0, ?, ?, ?, ?)''',
             (event.id, now, values['title'], values['description'], json.dumps(translation, ensure_ascii=False),
-             json.dumps(['Submitted directly by a project owner or authorized representative'])),
+             json.dumps(['Self-reported community story' if story else
+                         'Submitted directly by a project owner or authorized representative'])),
         )
         post_id = int(cursor.lastrowid)
         store.conn.execute('INSERT INTO project_submissions VALUES (?, ?, ?, ?)',
