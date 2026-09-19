@@ -1,1 +1,24 @@
-<!DOCTYPE html><html lang="{{ language }}"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex"><title>{{ copy.withdrawn }} · rep0rter</title><link rel="stylesheet" href="../../style.css"><main><h1>{{ copy.withdrawn }}</h1><p>{{ copy.withdrawal_notice }}</p><a href="../../{{ page_name(language) }}">rep0rter</a><nav>{% for lang,label in languages.items() %}<a href="{{ page_name(lang) }}" lang="{{ lang }}">{{ label }}</a> {% endfor %}</nav></main></html>
+{% import '_ui.html' as ui %}
+<!DOCTYPE html>
+<html lang="{{ language }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex">
+<title>{{ copy.withdrawn }} · rep0rter</title>
+<script src="../../theme.js"></script>
+<link rel="stylesheet" href="../../style.css">
+<link rel="stylesheet" href="../../theme-transition.css">
+<link rel="stylesheet" href="../../enchantment.css">
+<link rel="stylesheet" href="../../language.css">
+<script defer src="../../language.js"></script>
+<script defer src="../../enchantment.js"></script>
+<script defer src="../../glass-motion.js"></script>
+</head>
+<body class="withdrawal-page">
+<div class="ambient" aria-hidden="true"><span></span><span></span><span></span></div>
+<header class="site-header page-shell"><a class="wordmark" href="../../{{ page_name(language) }}">rep0rter</a>{{ ui.appearance(copy) }}</header>
+<main class="withdrawal-card"><span class="icon-orb orb-violet">{{ ui.icon('chat') }}</span><h1>{{ copy.withdrawn }}</h1><p>{{ copy.withdrawal_notice }}</p><a class="button button-primary" href="../../{{ page_name(language) }}">{{ ui.icon('back') }} {{ copy.back_home }}</a>{{ ui.language_links(copy, language, languages, page_name) }}</main>
+</body>
+</html>

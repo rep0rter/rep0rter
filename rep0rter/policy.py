@@ -276,14 +276,18 @@ def _withdrawn_page(language):
     import html
     from .i18n import COPY, LANGUAGES, page_name
     copy = COPY[language]
-    links = ' '.join(f'<a href="{page_name(code)}" lang="{code}">{html.escape(label)}</a>'
+    links = ' '.join(f'<a href="{page_name(code)}" lang="{code}"' +
+                     (' aria-current="page"' if code == language else '') +
+                     f'>{html.escape(label)}</a>'
                      for code, label in LANGUAGES.items())
     return (f'<!DOCTYPE html><html lang="{language}"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width, initial-scale=1">'
-            '<meta name="robots" content="noindex"><title>' + html.escape(copy['withdrawn']) +
-            '</title></head><body><main><h1>' + html.escape(copy['withdrawn']) + '</h1><p>' +
-            html.escape(copy['withdrawal_notice']) + '</p><a href="../../' + page_name(language) +
-            '">rep0rter</a><nav>' + links + '</nav></main></body></html>')
+            '<meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>' + html.escape(copy['withdrawn']) +
+            '</title><script src="../../theme.js"></script><link rel="stylesheet" href="../../style.css">'
+            '</head><body class="withdrawal-page"><main class="withdrawal-card"><h1>' + html.escape(copy['withdrawn']) + '</h1><p>' +
+            html.escape(copy['withdrawal_notice']) + '</p><a class="button button-primary" href="../../' + page_name(language) +
+            '">' + html.escape(copy['back_home']) + '</a><nav class="languages" aria-label="' + html.escape(copy['language']) +
+            '">' + links + '</nav></main></body></html>')
 
 
 def _sanitize_site(store, root, withdrawn_urls=()):
@@ -321,9 +325,25 @@ def _sanitize_site(store, root, withdrawn_urls=()):
             continue
         document = BeautifulSoup(path.read_text(encoding='utf-8'), 'html.parser')
         removed = False
+        # Discovery counts/tags can reveal a withdrawn story even on pages
+        # whose own articles all survive. Rebuild these from allowed posts.
+        for discovery in document.select('.hashtag-discovery'):
+            discovery.decompose()
+            removed = True
         for article in list(document.find_all('article')):
             if str(article.get('id')) in withdrawn:
                 article.decompose()
+                removed = True
+        # Homepage highlights duplicate selected article text outside the feed.
+        # Remove the whole preview, including its source, summary, and links,
+        # before any full rebuild can fail and leave an old release in service.
+        for preview in list(document.select('[data-preview-post-id]')):
+            if str(preview.get('data-preview-post-id')) in withdrawn:
+                preview.decompose()
+                removed = True
+        for highlights in list(document.select('.hero-latest')):
+            if not highlights.select('[data-preview-post-id]'):
+                highlights.decompose()
                 removed = True
         # Related-source lists in an otherwise surviving story must also stop
         # exposing an excluded author's name/link. All other links remain intact.
@@ -333,6 +353,11 @@ def _sanitize_site(store, root, withdrawn_urls=()):
                 removed = True
         if not removed:
             continue
+        if relative.parts[0] == 'tags' and not document.find('article'):
+            _atomic_text(path, _withdrawn_page(document.html.get('lang', DEFAULT_LANGUAGE)))
+            continue
+        for context in document.select('.timeline-context'):
+            context.decompose()
         # A source page may have used a withdrawn source's name or headline in
         # metadata. Retain canonical/navigation links; never retain old previews.
         for meta in list(document.find_all('meta')):
@@ -449,7 +474,7 @@ def redact(store, event_ids, reason='withdrawn'):
 
 
 def register_commands(sub):
-    p=sub.add_parser('exclusion',help='manage stable-ID optouts; verify requester identity before adding')
+    p=sub.add_parser('exclusion',help='manage stable-ID optouts and editorial source exclusions; verify requester identity before adding an optout')
     p.add_argument('action',choices=('add','list','remove'))
     p.add_argument('--scope',choices=SCOPES)
     p.add_argument('--subject')

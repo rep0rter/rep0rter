@@ -7,7 +7,7 @@ import time
 from dataclasses import asdict
 from datetime import datetime, timezone
 
-from . import github, mastodon, slack_archive, slack_incremental
+from . import github, mastodon, notion, rss, slack_archive, slack_incremental
 from .state import BudgetExceeded, BudgetSession, Metrics, read_state
 
 log = logging.getLogger(__name__)
@@ -53,13 +53,24 @@ def collect_all(store, days=2, max_channels=None, config=None, *, session=None):
     total, failures, containers = 0, 0, 0
     sources = {}
     store.set_kv('collector_errors', '{}')
-    jobs = [('slack', lambda: slack_incremental.collect(store, days, max_channels, transport, metrics=metrics))]
+    jobs = []
     repos = _allowlist(os.getenv('REP0RTER_GITHUB_REPOS', ''))
     accounts = _allowlist(os.getenv('REP0RTER_MASTODON_ACCOUNTS', ''))
+    feeds = list(dict.fromkeys(_allowlist(os.getenv('REP0RTER_FEEDS', '')) +
+                               _allowlist(os.getenv('REP0RTER_RSS_FEEDS', ''))))
+    notion_feeds = [url for url in feeds if notion.is_notion_url(url)]
+    rss_feeds = [url for url in feeds if not notion.is_notion_url(url)]
     if repos:
         jobs.append(('github', lambda: github.collect(store, repos, transport, metrics, days)))
     if accounts:
         jobs.append(('mastodon', lambda: mastodon.collect(store, accounts, transport, metrics, days)))
+    if rss_feeds:
+        jobs.append(('rss', lambda: rss.collect(store, rss_feeds, transport, metrics, days)))
+    if notion_feeds:
+        jobs.append(('notion', lambda: notion.collect(store, notion_feeds, transport, metrics, days)))
+    # Complete bounded independent snapshots first. Slack's incremental backlog
+    # can use their unspent allowance while retaining the same global budget.
+    jobs.append(('slack', lambda: slack_incremental.collect(store, days, max_channels, transport, metrics=metrics)))
     total_budget = transport.limit
     for index, (name, collect) in enumerate(jobs):
         # Reserve a fair remaining share for each independent source.

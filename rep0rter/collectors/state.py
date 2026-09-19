@@ -72,7 +72,8 @@ def persist(store, key, state, events, metrics, now=None):
                 (id,source,kind,container_id,author_id,author_name,text,html,url,ts,parent_id,reply_count,reaction_count,meta,first_seen,last_seen)
                 VALUES (:id,:source,:kind,:container_id,:author_id,:author_name,:text,:html,:url,:ts,:parent_id,:reply_count,:reaction_count,:meta,:now,:now)
                 ON CONFLICT(id) DO UPDATE SET text=excluded.text,html=excluded.html,author_name=excluded.author_name,
-                reply_count=excluded.reply_count,reaction_count=excluded.reaction_count,meta=excluded.meta,last_seen=excluded.last_seen''', values)
+                url=excluded.url,reply_count=excluded.reply_count,reaction_count=excluded.reaction_count,
+                meta=excluded.meta,last_seen=excluded.last_seen''', values)
         write_state(store, key, state)
     metrics.duplicate_payloads += delta.duplicate_payloads
     metrics.updated_events += delta.updated_events
@@ -96,6 +97,16 @@ class BudgetSession:
         return max(0, self.limit - self.metrics.requests)
 
     def get(self, *args, **kwargs):
+        return self._request(self.session.get, *args, **kwargs)
+
+    def post(self, *args, **kwargs):
+        return self._request(self.session.post, *args, **kwargs)
+
+    def get_browser(self, *args, **kwargs):
+        from .browser import get_document
+        return self._request(get_document, *args, **kwargs)
+
+    def _request(self, send, *args, **kwargs):
         if self.metrics.requests >= self.limit:
             raise BudgetExceeded('collector request budget exhausted')
         wait = self.interval - (time.monotonic() - self.last)
@@ -105,7 +116,7 @@ class BudgetSession:
             self.reserve()
         self.metrics.requests += 1
         try:
-            response = self.session.get(*args, **kwargs)
+            response = send(*args, **kwargs)
             self.metrics.bytes += len(response.content)
             self.metrics.pages += 1
             return response

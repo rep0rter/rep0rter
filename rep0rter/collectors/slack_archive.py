@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from decimal import Decimal, InvalidOperation
 from dataclasses import dataclass
@@ -135,6 +136,63 @@ def _timestamp(value) -> Decimal:
         return stamp
     except (InvalidOperation, ValueError) as exc:
         raise RuntimeError("archive returned an invalid message timestamp") from exc
+
+
+def channel_is_older_than(session, channel_id: str, lower: Decimal) -> bool:
+    """Verify a quiet channel using the unfiltered latest-month HTML archive.
+
+    JSON filters subtype rows after its LIMIT, so even a nonempty raw head can
+    return no messages. The HTML month index covers raw rows, including joins.
+    Only prove an empty window when the entire latest month precedes its start.
+    Missing/changed markup is not proof; callers retain their existing gap.
+    """
+    response = _get(session, BASE_URL + '/index/channel/' + channel_id)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    feed = soup.select_one('section[role="feed"]')
+    nav = soup.select_one('nav[role="pagination"]')
+    if feed is None or nav is None:
+        return False
+    pattern = re.compile(r'/index/channel/' + re.escape(channel_id) + r'/(\d{4}-\d{2})')
+    months = []
+    for link in nav.select('a.dropdown-item'):
+        match = pattern.fullmatch(link.get('href', ''))
+        if not match:
+            return False
+        try:
+            months.append(datetime.strptime(match[1], '%Y-%m').replace(tzinfo=ARCHIVE_TZ))
+        except ValueError:
+            return False
+    active = nav.select('a.nav-link.active')
+    if not months or len(active) != 1:
+        return False
+    latest = max(months)
+    if active[0].get('href') != '/index/channel/' + channel_id + '/' + latest.strftime('%Y-%m'):
+        return False
+    end = latest.replace(year=latest.year + 1, month=1) if latest.month == 12 else latest.replace(month=latest.month + 1)
+    if Decimal(str(end.timestamp())) > lower:
+        return False
+    raw_stamps = []
+    for node in feed.select('.message[id]'):
+        if node.find_parent(class_='message') is not None:
+            continue  # Replies rendered under an old root do not define its month.
+        metadata = node.select_one('.message-time[title]')
+        if metadata is None or metadata.find_parent(class_='message') is not node:
+            return False
+        try:
+            raw = json.loads(metadata['title'])
+            stamp = _timestamp(raw['ts'])
+            if node.get('id') != 'ts-' + str(raw['ts']):
+                return False
+        except (ValueError, KeyError, TypeError, RuntimeError):
+            return False
+        if not Decimal(str(latest.timestamp())) <= stamp < Decimal(str(end.timestamp())):
+            return False
+        raw_stamps.append(stamp)
+    if not raw_stamps:
+        return False
+    log.info('Verified quiet Slack channel %s: latest raw month %s precedes scan lower %s',
+             channel_id, latest.strftime('%Y-%m'), lower)
+    return True
 
 
 def _merge_duplicate(left: dict, right: dict) -> dict:

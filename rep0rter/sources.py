@@ -4,7 +4,7 @@ import re
 from bs4 import BeautifulSoup
 from .slack_text import to_plain
 
-ELIGIBLE_KINDS = {'slack': {'message'}, 'github': {'release', 'issue', 'pull_request'}, 'mastodon': {'status'}}
+ELIGIBLE_KINDS = {'slack': {'message'}, 'github': {'release', 'issue', 'pull_request'}, 'mastodon': {'status'}, 'rss': {'article'}, 'notion': {'article'}}
 
 
 def normalize_text(text, content_format):

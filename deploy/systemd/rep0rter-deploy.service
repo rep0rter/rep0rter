@@ -1,0 +1,11 @@
+[Unit]
+Description=Deploy tested rep0rter main to Singa
+
+[Service]
+Type=oneshot
+ExecStart=@PYTHON@ @SCRIPT@ --config @CONFIG@
+Environment=PATH=@PATH@
+Environment=PYTHONUNBUFFERED=1
+UMask=0077
+# Each external command has its own timeout. Leave time for rollback as well.
+TimeoutStartSec=0

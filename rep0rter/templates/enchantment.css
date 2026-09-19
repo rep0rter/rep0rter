@@ -1,0 +1,34 @@
+/* Exact text ranges are hidden, never their parent controls or icon children. */
+::highlight(rep0rter-enchantment) { color: transparent; text-shadow: none; }
+.enchantment-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  contain: strict;
+}
+.enchantment-cell {
+  position: absolute;
+  display: inline-block;
+  white-space: pre;
+  line-height: normal;
+  pointer-events: none;
+}
+.enchantment-letter { display: inline; }
+.enchantment-rune {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  font-size: .78em;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+@media (prefers-reduced-motion: reduce), (forced-colors: active) {
+  ::highlight(rep0rter-enchantment) { color: inherit; }
+  .enchantment-layer { display: none !important; }
+}

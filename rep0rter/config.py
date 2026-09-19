@@ -52,6 +52,11 @@ class Config:
     site_title: str = _env("REP0RTER_SITE_TITLE", "rep0rter") or "rep0rter"
     site_url: str = _env("REP0RTER_SITE_URL", "https://rep0rter.observe.tw") or "https://rep0rter.observe.tw"
 
+    # Owner submissions: optional Google OpenID Connect web application.
+    google_client_id: str | None = field(default_factory=lambda: _env("REP0RTER_GOOGLE_CLIENT_ID"))
+    google_client_secret: str | None = field(default_factory=lambda: _env("REP0RTER_GOOGLE_CLIENT_SECRET"))
+    web_secret_key: str | None = field(default_factory=lambda: _env("REP0RTER_WEB_SECRET_KEY"))
+
     # collection
     collect_days: int = _env_int("REP0RTER_COLLECT_DAYS", 2)
 
@@ -78,6 +83,10 @@ class Config:
     ai_api_key: str | None = _env("AI_API_KEY")
     ai_model: str | None = _env("AI_MODEL")
     ai_timeout_seconds: int = _env_int("AI_TIMEOUT_SECONDS", 120)
+
+    @property
+    def google_login_enabled(self) -> bool:
+        return bool(self.google_client_id and self.google_client_secret and self.web_secret_key)
 
     @property
     def db_path(self) -> Path:

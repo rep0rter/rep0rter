@@ -280,7 +280,8 @@ class CardRenderer:
                "headline": translated["headline"].strip(), "summary": translated["summary"].strip(),
                "date": datetime.fromtimestamp(event.ts, TAIPEI).strftime("%Y.%m.%d · %H:%M UTC+8"),
                "initial": author.strip()[:1].upper() or "r", "host": host, "url": event.url,
-               "brand": "rep0rter", "report": True,
+               "brand": "rep0rter", "report": True, "owner_submitted": event.meta.get('owner_submitted', False),
+               "self_reported": event.meta.get('self_reported', False),
                "avatar": "data:image/png;base64," + base64.b64encode(avatar).decode() if avatar else ""}
         rendered = env.get_template("report-card.html").render(ctx)
         return self._render_image(event, ctx, avatar, rendered, version="report-card-en-v1")
@@ -338,7 +339,10 @@ class CardRenderer:
         draw.text((164, 109), _wrap(label, _font(self.cfg, 20), 920, 1)[0], font=_font(self.cfg, 20), fill="#637069")
         draw.line((60, 170, 1140, 170), fill="#e5eae2", width=2)
         if ctx.get("report"):
-            draw.text((68, 190), "ENGLISH REPORT · Summary by rep0rter", font=_font(self.cfg, 18), fill="#637069")
+            report_label = ("SELF-REPORTED · Written by the contributor" if ctx.get("self_reported") else
+                            "OWNER SUBMISSION · Ownership self-declared" if ctx.get("owner_submitted")
+                            else "ENGLISH REPORT · Summary by rep0rter")
+            draw.text((68, 190), report_label, font=_font(self.cfg, 18), fill="#637069")
             headline_lines = _wrap(ctx["headline"], _font(self.cfg, 38), 1060, 2)
             for i, line in enumerate(headline_lines):
                 draw.text((68, 226 + i * 49), line, font=_font(self.cfg, 38), fill="#233229")

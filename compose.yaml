@@ -1,4 +1,4 @@
-# rep0rter stack: one worker that runs the hourly cycle, one static file
+# rep0rter stack: hourly worker, maintenance, owner accounts and a static file
 # server for rep0rter.observe.tw. Bound to localhost only; the cloudflared
 # tunnel (managed in the Cloudflare dashboard) forwards the public hostname
 # to 127.0.0.1:18090.
@@ -7,11 +7,11 @@ name: rep0rter
 services:
   worker:
     build: .
-    image: rep0rter
+    image: ${REP0RTER_IMAGE:-rep0rter}
     container_name: rep0rter-worker
     restart: unless-stopped
     env_file:
-      - path: .env
+      - path: ${REP0RTER_ENV_FILE:-.env}
         required: false
     environment:
       - REP0RTER_DATA_DIR=/data
@@ -31,11 +31,11 @@ services:
         max-file: "3"
 
   maintenance:
-    image: rep0rter
+    image: ${REP0RTER_IMAGE:-rep0rter}
     container_name: rep0rter-maintenance
     restart: unless-stopped
     env_file:
-      - path: .env
+      - path: ${REP0RTER_ENV_FILE:-.env}
         required: false
     environment:
       - REP0RTER_DATA_DIR=/data
@@ -64,6 +64,30 @@ services:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost/ && wget -q -O /dev/null http://localhost/feed.xml"]
       interval: 5m
       timeout: 20s
+      retries: 3
+    logging:
+      driver: local
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  accounts:
+    build: .
+    image: ${REP0RTER_IMAGE:-rep0rter}
+    restart: unless-stopped
+    env_file:
+      - path: ${REP0RTER_ENV_FILE:-.env}
+        required: false
+    environment:
+      - REP0RTER_DATA_DIR=/data
+    volumes:
+      - ${REP0RTER_DATA_HOST_DIR:-./data}:/data
+    entrypoint: ["gunicorn"]
+    command: ["--bind", "0.0.0.0:8000", "--workers", "2", "--timeout", "300", "rep0rter.web:create_app()"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=5)"]
+      interval: 1m
+      timeout: 10s
       retries: 3
     logging:
       driver: local

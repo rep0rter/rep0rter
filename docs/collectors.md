@@ -1,10 +1,11 @@
 # 增量採集與公開來源
 
-`rep0rter.collectors.registry.collect_all` 是排程入口。Slack 維持預設來源；GitHub、Mastodon 必須明列允許來源，不會自動擴張追蹤範圍。
+`rep0rter.collectors.registry.collect_all` 是排程入口。Slack 維持預設來源；GitHub、Mastodon、RSS、Notion 必須明列允許來源，不會自動擴張追蹤範圍。
 
 ```dotenv
 REP0RTER_GITHUB_REPOS=owner/repository,another/project
 REP0RTER_MASTODON_ACCOUNTS=https://social.example/@civic
+REP0RTER_FEEDS=https://codefor.kr/boards/news.xml,https://codefor.kr/boards/civic-tech-projects.xml,https://code4japan-community.notion.site/Home-9dd9cd85f07942c1bd5f6ef73efdb122,https://civictech.kr/boards/news.xml,https://www.odf.or.kr/archive-project,https://medium.com/feed/codeforkorea,https://coop.campaigns.do/boards/news.xml,https://www.code4japan.org/news,https://note.com/codefortokushima/rss,https://ocf.tw/feed.xml,https://blog.ocf.tw/feeds/posts/default?alt=rss,https://www.mysociety.org/feed/,https://blog.okfn.org/feed/,https://decidim.org/blog/feed.xml,https://democracyclub.org.uk/blog/feed/,https://civictech.guide/
 REP0RTER_COLLECT_REQUEST_BUDGET=80
 REP0RTER_COLLECT_DAILY_BUDGET=1500
 ```
@@ -12,6 +13,57 @@ REP0RTER_COLLECT_DAILY_BUDGET=1500
 GitHub 使用公開無認證 REST API：先確認 repository `private=false`，擷取已發布 release、具有明確協作標籤（`help wanted`、`good first issue`、`collaboration` 等）的 issue，以及有 `Impact`／`Outcome`／`成果`／`影響` 段落的 merged PR。release 至少需要 80 字元實質說明；issue 除標籤外需要 40 字元以上正文及明確協作邀請；PR 至少需要 40 字元的影響說明；日文／韓文／英文 Summary 類段落則須同時具備具體公民用途與功能效益、至少 100 字元。所有原始候選仍經編輯政策，標籤不是自動推播許可。Mastodon 只接受配置 URL 完全匹配的本機 account 與 `public` 原創 status；保留 CW，boost 不建立獨立候選，回覆保存為不同 kind，不獨立當新聞。物件 ID 以完整 canonical URI 計算，不會讓不同 instance 的 numeric ID 碰撞。
 
 帳號顯示名稱、repo stars、followers 不作通用新聞分數。事件 metadata 帶 `source_instance`、`external_id`、`canonical_object_id`、`visibility`、`content_format`、`plain_text`、`updated_at`、`observed_at`、typed `engagement`、`relations`。Slack mrkdwn、GitHub Markdown、Mastodon HTML 分別正規化。未知可見性拒絕；來源排除在請求前處理，作者／引用排除在入庫前再檢查。Mastodon 每輪循環重查最多 4 個已存 status；404/410 或變成非公開會清空文字並記錄刪除狀態，供共同撤回流程移除網站與 delivery。
+
+## RSS、Atom 與 JSON Feed 新聞來源
+
+`REP0RTER_FEEDS` 是逗號分隔的公開 RSS 2.0、RSS 1.0、Atom 1.0、JSON Feed 1/1.1 與 Notion URL 允許清單（另支援下述 ODF 與 Code for Japan 入口）；舊 `REP0RTER_RSS_FEEDS` 仍可使用，兩者合併後去重。兩者皆空值時停用。
+每輪每個 feed 只抓一次，沿用共用 request budget、錯誤隔離、Retry-After 退避及退出政策。
+目前加入 Code for Korea 的兩個獨立來源：[新聞公告](https://codefor.kr/boards/news.xml)及[公民科技專案典藏](https://codefor.kr/boards/civic-tech-projects.xml)。兩者無須認證，保留各自的 feed 標題、摘要、原文連結及含時區的 `pubDate`。
+專案典藏是專案介紹清單，`pubDate` 是典藏條目的日期，不能據此推論專案剛推出。加入來源不會自動匯入整個歷史典藏，也不會把舊專案當成新發布。
+事件以 feed URL + GUID 去重；缺 GUID 時使用文章連結。優先讀取 `content:encoded` 並標記 `content_scope=feed_content`；缺少有效內容時讀取 description、標記 `feed_excerpt`。兩者皆轉純文字，不宣稱 feed 必然包含全文，也不自動抓取文章頁。Medium 的 `dc:creator` 保留為作者；更新日期不取代原始 `pubDate`。
+首次只納入採集時間窗內的文章；每輪重新讀取 feed 內已存項目以更新文字。RSS 只代表目前提供的項目，無法保證補回已離開 feed 的歷史文章；項目消失不視為刪文。
+無效 XML／JSON、文章日期或連結會使該 feed 本輪失敗並保留上次成功狀態。
+Atom 使用原始 published；只有 updated 時保存為更新紀錄但不選作新新聞。JSON Feed 同樣優先 date_published，僅有 date_modified 時不作新發布。RSS 1.0 使用 Dublin Core 日期；皆必須有明確時區，不使用抓取時間冒充發布時間。Atom 相對文章連結會依 xml:base 解析；不讀取 content src、next_url 或其他額外頁面。各格式沿用既有 rss 來源 ID、退出政策、budget 與健康狀態。
+RSS 文章仍需通過既有主題、內容及新鮮度選稿規則，不會僅因在 feed 中就發布。
+新聞來源退出 ID 為 `rss-feed:https://codefor.kr/boards/news.xml`；專案典藏為 `rss-feed:https://codefor.kr/boards/civic-tech-projects.xml`。個別文章沿用儲存的 `rss:` 事件 ID。
+
+另外啟用 [Civic Tech Network 活動典藏](https://civictech.kr/boards/news.xml)及 [Code for Korea Medium](https://medium.com/feed/codeforkorea)，各自保留 feed 標題，Civic Tech Network 不歸入 Code for Korea。Medium 目前提供歷史文章；不因新增來源就當成新消息。
+
+### Open Data Forum 專案典藏
+
+在清單加入 `https://www.odf.or.kr/archive-project`。此明確入口對應 [ODF 公開 RSS](https://www.odf.or.kr/rss)，只收錄同網域 `/archive-project/` 文章，排除全站 feed 的公告、活動及其他典藏分類。來源名稱為「오픈데이터포럼 - 프로젝트」，退出 ID 為 `rss-feed:https://www.odf.or.kr/archive-project`。
+
+2026-09-19 驗證：一般 HTTP client 回傳 403，無登入的標準 Chromium 可讀 RSS；使用既有 Playwright Chromium，每輪只允許一個 XML 文件請求，禁止 script、子資源及 redirect，並計入同一個每輪／每日 budget。未使用帳號、cookie、代理或驗證碼處理。瀏覽器失敗、403、429、無效 XML 均保留上次成功時間並記錄來源失敗。
+
+全站 50 筆 feed 中有 12 筆專案條目，提供標題、原始日期及連結但沒有內文，標記 `content_scope=feed_listing`。這是發現專案的入口，不是完整專案文章匯入；資訊不足的條目仍由共同選稿政策處理，不會只憑新增來源就發布。日期代表典藏條目時間，不代表專案推出時間；正常採集仍使用既有時間窗。
+
+### Code for Japan 官方新聞 JSON
+
+在清單加入 `https://www.code4japan.org/news`。從官方頁面 `__NEXT_DATA__` 的公開 JSON 解析標題、tags、日期與文章網址；不依賴會隨部署改變的 Next.js build ID，也不需要官方 Notion API。保留 stable ID、原始日期與站方外連；只有日期的歷史條目明確以日本時區解讀並標記日精度。這是新聞索引（`feed_listing`），不宣稱已有文章全文。JSON 的 max 與不同條目數不符或格式改變時記錄失敗，不能把部分清單當完整成功。
+
+### Civic Tech Field Guide 公開目錄
+
+在清單加入 `https://civictech.guide/`，每輪一個匿名 GET 讀取官方 `/api/v1/projects/search?status=Active&sort=newest&limit=100`。只觀察最新 100 個 active 目錄項目，不遍歷整個目錄；保留 UUID、官方 listing 連結、描述、專案網址、分類與 CC BY 4.0 attribution。新增日期的時区未明時使用明確標記的日排序值，不冒充發布時刻。資料庫建立時間與編輯時間同樣不表示專案推出。
+
+條目使用 `kind=directory_entry`、`content_scope=directory_entry`、`eligible=false`，保存為可查詢的發現紀錄，不進入自動新聞選稿。`history_complete=false` 記錄這只是 rolling snapshot。改名或 slug 更新保留 ID 與原始日期，更新連結與文字。來源時間窗、退出政策、budget、錯誤隔離與一般 feed 相同。
+
+完整的已驗證來源、歷史典藏及被排除的候選，見 [來源調查](source-research/README.md)；機器可讀版本為 `rep0rter/feed_catalog.json`。Catalog 本身不會自動擴張追蹤範圍，實際採集仍由 `REP0RTER_FEEDS` 明列。
+
+## 公開 Notion 頁面與資料庫
+
+在同一個 `REP0RTER_FEEDS` 清單加入公開 `https://…notion.site/…<page-id>` 或 `https://www.notion.so/…<page-id>` URL，即自動使用 Notion collector；不需要官方 API、帳號、token 或瀏覽器。
+自訂網域目前不自動辨識，請使用原本的 Notion URL。
+
+此 collector 使用網站本身的匿名 JSON 讀取端點 `loadCachedPageChunkV2`、`queryCollection`（HTTP POST，非內容寫入）。這是非官方協定，不保證所有 Notion 頁型皆支援；登入、非公開、格式變更與 HTTP 錯誤會記錄來源失敗。
+Code for Japan Home 的三個內嵌資料庫（活動、募集任務、專案）會自動辨識，不必逐一設定 ID。
+只追蹤指定頁面及其內嵌資料庫，不遞迴掃描任意連結、其他子頁或整個 workspace。其他獨立頁面／資料庫需另加 URL。
+
+資料庫採集可讀取的列屬性，包括標題、說明、連結、狀態及日期，標記 `content_scope=database_properties`；不宣稱已抓取每列完整內文。單一文件則擷取目前頁面內的文字區塊，標記 `notion_page`。人員／權限清單不保存，也不推測作者。Notion 日期欄位是事件內容，不能拿來當文章發布時間。
+ID 固定為 `notion:<page-uuid>`，不同 URL slug／重複 view 不新增同一篇文章。保留 `created_time` 為來源時間，`last_edited_time` 存為 metadata；編輯舊專案不會變成剛發布的新聞。
+首次只保存採集窗口內建立或編輯的項目；已存項目再次出現時更新文字。條目消失不視為刪除，仍可透過現有排除／撤回工具處理。
+
+每個頁面最多讀 5 個 chunk、每個內嵌資料庫最多 1,000 列；達上限或不支援的回應會標記 incomplete/degraded，不更新最後完整成功時間。HTTP GET／POST 都計入共用每日／每輪 budget；429 依 Retry-After 並至少退避一小時。單一來源失敗不阻塞 RSS 或其他來源。
+入口退出 ID 為 `notion-page:<page-uuid>`；Code for Japan Home 是 `notion-page:9dd9cd85-f079-42c1-bd5f-6ef73efdb122`。Notion 原文仍經同一套內容、主題及新鮮度選稿，不會自動把每次編輯發布成新聞。
 
 ## 自動化雜訊
 
@@ -27,7 +79,9 @@ GitHub 使用公開無認證 REST API：先確認 repository `private=false`，�
 
 首頁訊息數或 last-posted 改變會觸發增量，不以 last-synced 代表可見性。近期頻道每六小時回掃 48 小時；另以固定上限每輪挑兩個最久未檢查的舊頻道回掃七天。未解析的 thread parent 與近期／較舊 root 共用持久 bounded queue，每輪最多 4 次精確 timestamp 補抓；已排除或刪除的 root 不占請求名額。補抓用下一個整秒作為 before 邊界，回應仍必須完全匹配原始 timestamp；找不到 root 留 `context_incomplete`，不拿鄰近訊息替代。已觀測的 reaction 可以下降，歷史高點另存在 `engagement_high_water`。
 
-上游在 SQL limit 之後才移除 subtype，而且沒有提供 raw-page bounds：空頁無法區分真正結尾與「整頁被過濾」。這種情況會保存已看到的事件、記錄 gap、不推高水位，來源健康顯示 degraded。重複同時間戳群、無進展頁亦然。這是上游協定限制，無法靠客戶端保證穿越；需要上游提供 stable opaque cursor 或 raw bounds。有限重疊／七天抽查也不能保證找到任意晚到、從未觀測過的舊訊息。
+上游在 SQL limit 之後才移除 subtype，而且沒有提供 raw-page bounds：空頁無法區分真正結尾與「整頁被過濾」。初次 after 查詢與無界 head 都空白時，額外讀取該頻道的最新月份 HTML；其月份索引與訊息 JSON 包含未過濾的加入頻道通知。只有確認相同頻道、最新月份、有效原始訊息時間，而且整個最新月份早於採集下界，才證明該窗口沒有消息並清除 gap。這次額外 GET 仍受共用 budget 限制，不把加入通知存成新聞，也不將游標跳到現在。
+
+HTML 缺失／改版、最新月份仍與窗口重疊、續頁中途空白、重複同時間戳群或無進展時，仍保存已看到的事件、記錄 gap、不推高水位，來源健康顯示 degraded。一般的過濾頁缺口仍需要上游提供 stable opaque cursor 或 raw bounds；有限重疊／七天抽查不能保證找到任意晚到、從未觀測過的舊訊息。
 
 ## 節流、健康及延遲量測
 

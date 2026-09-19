@@ -413,6 +413,67 @@ def delay_metrics(db_path):
             'groups': {key: {metric: _distribution(values) for metric, values in group.items()} for key, group in groups.items()}}
 
 
+def _declined_repositories(cfg, repositories):
+    """Repositories an operator already excluded, so proposals stop nagging.
+
+    This reuses the exclusion ledger rather than keeping a second list. One
+    place then records every repository we do not collect — whether its
+    maintainers asked or we judged it out of scope — and the rule's reason
+    distinguishes the two. A separate ledger would have to reproduce the
+    durability this one already has, and would reproduce it less well.
+    """
+    if not repositories:
+        return set()
+    from .policy import container_allowed
+    try:
+        with readonly(cfg.db_path) as conn:
+            view = _PolicyReadView(conn)
+            return {name for name in repositories
+                    if not container_allowed(view, 'github:' + name.lower())}
+    except (sqlite3.Error, OSError):
+        # No database or no policy table yet means nothing has been excluded.
+        return set()
+
+
+def source_proposals(cfg, *, now=None, session=None):
+    """Weekly source discovery, reported to administrators and never to health.
+
+    A project added to a community portal is news for an operator, not a fault.
+    Keeping it out of ``check_health`` matters: the worker healthcheck runs
+    ``rep0rter health``, so routing proposals there would mark the container
+    unhealthy because somebody else edited their own wiki.
+    """
+    now = time.time() if now is None else now
+    portal = os.environ.get('REP0RTER_NOTION_PORTAL')
+    report = {'issues': {}, 'checked_at': now, 'portal': portal, 'candidates': [], 'declined': []}
+    if not portal:
+        return report
+    configured = {name.strip().lower() for name in os.environ.get('REP0RTER_GITHUB_REPOS', '').split(',') if name.strip()}
+    try:
+        from .notion_discovery import discover
+        from .collectors.slack_archive import make_session
+        found = discover(session or make_session(), portal, now=now)
+    except Exception as exc:
+        # A dead undocumented endpoint must not stop backups or health checks.
+        report['issues']['source_discovery_failed'] = redact(f'{type(exc).__name__}: {exc}')
+        return report
+    proposed = [item['repository'] for item in found['candidates']
+                if item['repository'].lower() not in configured]
+    declined = _declined_repositories(cfg, proposed)
+    report['declined'] = sorted(declined)
+    report['candidates'] = [name for name in proposed if name not in declined]
+    if report['candidates']:
+        report['issues']['source_candidates'] = (
+            'Public portal proposes ' + str(len(report['candidates'])) + ' repositor' +
+            ('y' if len(report['candidates']) == 1 else 'ies') +
+            ' not in the allowlist: ' + ', '.join(sorted(report['candidates'])) +
+            '. Review before adding; nothing was collected or configured.')
+    if not found['complete']:
+        report['issues']['source_discovery_incomplete'] = (
+            'Discovery could not resolve every row or link, so the proposal may be short.')
+    return report
+
+
 def maintenance(cfg, *, backup_dir=None, offsite=None, send_alerts=False, now=None):
     """Run hourly from a separate maintenance service; daily backup/monthly drill."""
     import fcntl
@@ -447,8 +508,34 @@ def maintenance(cfg, *, backup_dir=None, offsite=None, send_alerts=False, now=No
         elif not send_alerts:
             # Dry-run state cannot suppress a future actual alert.
             _atomic_json(directory / 'alerts-preview.json', alert_state)
+        # Cache weekly discovery separately from notification delivery. Preview
+        # runs and failed sends must leave actual notifications pending, without
+        # repeating the upstream lookup on each hourly delivery attempt.
+        try:
+            proposals = _read_json(directory / 'proposals-report.json')
+            if (not proposals or proposals.get('portal') != os.environ.get('REP0RTER_NOTION_PORTAL') or
+                    'discovered_at' not in state or now - state['discovered_at'] >= 7 * 86400):
+                proposals = source_proposals(cfg, now=now)
+                _atomic_json(directory / 'proposals-report.json', proposals)
+                state['discovered_at'] = now
+            previous_proposals = _read_json(directory / ('proposals.json' if send_alerts else 'proposals-preview.json'))
+            proposal_notices, proposal_state = alert_transitions(proposals, previous_proposals, now=now,
+                                                                repeat_seconds=7 * 86400)
+            if send_alerts and proposal_notices:
+                send_admin_alerts(proposal_notices, token=os.environ.get('REP0RTER_ADMIN_BOT_TOKEN'),
+                                  target=os.environ.get('REP0RTER_ADMIN_CHAT_ID'),
+                                  public_targets=(cfg.telegram_chat_id, cfg.telegram_test_chat_id))
+                _atomic_json(directory / 'proposals.json', proposal_state)
+            elif not send_alerts:
+                _atomic_json(directory / 'proposals-preview.json', proposal_state)
+            notices = notices + proposal_notices
+        except (OSError, ValueError, RuntimeError):
+            # Proposals are advisory. Losing them must not cost the backup
+            # record, the health report, or this run's alert state.
+            proposals = {'issues': {}, 'error': 'source_proposals_failed'}
         _atomic_json(directory / 'maintenance.json', state)
-        return {'health': report, 'notifications': notices, 'notifications_sent': bool(send_alerts and notices)}
+        return {'health': report, 'notifications': notices, 'proposals': proposals,
+                'notifications_sent': bool(send_alerts and notices)}
 
 
 def cmd_health(cfg, args):

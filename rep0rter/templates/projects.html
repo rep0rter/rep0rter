@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="robots" content="noindex">
+  <title>Your project news · {{ cfg.site_title }}</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body class="account-page">
+<header>
+  <div class="masthead"><a class="wordmark" href="/">{{ cfg.site_title }}</a><span class="edition">YOUR PROJECT NEWSROOM</span></div>
+  <h1>You run the project. Your news runs here.</h1>
+  <p class="tagline">Write a template once. Publish news automatically when your project has something new to share.</p>
+  <nav class="links"><a href="/">← Community feed</a><a href="{{ url_for('submit') }}">Write a one-off post</a><a href="{{ url_for('managed_project') }}">Add a project</a></nav>
+</header>
+<main>
+  <div class="account-bar"><span>Signed in as {{ owner.name }}</span><form action="{{ url_for('logout') }}" method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="quiet-button">Sign out</button></form></div>
+  {% if error %}<p class="form-notice" role="alert">{{ error }}</p>{% endif %}
+  {% if saved_notice %}<p class="form-notice" role="status">Project settings saved. {{ 'Automatic publishing is enabled for new updates.' if values.get('enabled') else 'Automatic publishing is paused.' }}</p>{% endif %}
+  {% if projects %}<section aria-label="Your projects"><h2>Your projects</h2><ul class="project-list">
+  {% for project in projects %}<li><a href="{{ url_for('managed_project', project_id=project.id) }}">{{ project.title }}</a><span>{{ 'Automatic · every ' ~ project.interval_hours ~ 'h' if project.enabled else 'Paused' }}</span>{% if project.last_error %}<p class="form-help">{{ project.last_error }}</p>{% endif %}</li>{% endfor %}
+  </ul></section>{% endif %}
+  {% if preview %}<article><h2>Template preview · example update</h2><h3>{{ preview.headline }}</h3><p class="project-preview">{{ preview.summary }}</p><p class="form-help">This is sample content. Previewing does not save settings or publish a post.</p></article>{% endif %}
+  <article class="project-form">
+    <h2>{{ 'Edit project news' if project_id else 'Set up project news' }}</h2>
+    {% if saved and saved.last_post_id %}<p><a href="/posts/{{ saved.last_post_id }}/{{ 'index.html' if saved.language == 'en' else 'index.' ~ saved.language ~ '.html' }}">Latest published update ↗</a></p>{% endif %}
+    <form method="post" action="{{ url_for('managed_project', project_id=project_id) if project_id else url_for('managed_project') }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label for="title">Project name</label><input id="title" name="title" value="{{ values.get('title', '') }}" required maxlength="160">
+      <label for="url">Project website</label><input id="url" name="url" type="url" value="{{ values.get('url', '') }}" required maxlength="2048" placeholder="https://your-project.org">
+      <label for="author">Public display name</label><input id="author" name="author" value="{{ values.get('author', owner.name) }}" required maxlength="100">
+      <label for="language">News language</label><select id="language" name="language">{% for code, label in languages.items() %}<option value="{{ code }}"{% if values.get('language', 'en') == code %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+      <label for="source_kind">Where should news come from?</label><select id="source_kind" name="source_kind"><option value="github"{% if values.get('source_kind') == 'github' %} selected{% endif %}>GitHub releases</option><option value="rss"{% if values.get('source_kind') == 'rss' %} selected{% endif %}>RSS news feed</option></select>
+      <label for="source_url">GitHub repository or RSS URL</label><input id="source_url" name="source_url" value="{{ values.get('source_url', '') }}" required maxlength="2048" placeholder="your-team/your-project or https://your-project.org/feed.xml">
+      <p class="form-help">Use a public repository or an HTTPS RSS 2.0 feed that you maintain. GitHub drafts and pre-releases are excluded.</p>
+      <label for="headline_template">News headline template</label><input id="headline_template" name="headline_template" value="{{ values.get('headline_template', '') }}" required maxlength="160">
+      <label for="summary_template">News body template</label><textarea id="summary_template" name="summary_template" required rows="7" maxlength="3000">{{ values.get('summary_template', '') }}</textarea>
+      <p class="form-help">Use $project for your project name, $title for the update title, $summary for its description, and $url for its source link. Use $$ for a dollar sign. Posts must fit within 160 headline characters and 3,000 body characters.</p>
+      <label for="interval_hours">Check for new updates</label><select id="interval_hours" name="interval_hours">{% for hours, label in [(1, 'Every hour'), (6, 'Every 6 hours'), (24, 'Every day')] %}<option value="{{ hours }}"{% if values.get('interval_hours', 6)|int == hours %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+      <label class="owner-confirmation"><input type="checkbox" name="enabled" value="yes"{% if values.get('enabled') in (1, 'yes') %} checked{% endif %}><span>Automatically publish new updates to the website and RSS feed.</span></label>
+      <p class="form-help">Only updates dated after you enable publishing are included. Uncheck this option and save to pause. Each account can publish five posts per 24 hours across all its projects.</p>
+      <label class="owner-confirmation"><input type="checkbox" name="owner_confirmed" value="yes" required{% if values.get('owner_confirmed') == 'yes' %} checked{% endif %}><span>I own or represent this project and its news source, and authorize public posts using this template and display name. Ownership is self-declared.</span></label>
+      <div class="form-actions"><button type="submit" name="action" value="preview" class="quiet-button">Preview with an example</button><button type="submit" name="action" value="save">Save project settings</button></div>
+    </form>
+  </article>
+</main>
+<footer><p>Project news is published from your template, with a link to each original update.</p></footer>
+</body>
+</html>
