@@ -1,0 +1,19 @@
+{
+  "name": "rep0rter-site",
+  "main": "worker.js",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    // The built site. Override at deploy time with --assets=<REP0RTER_DATA_DIR>/site.
+    "directory": "./site",
+    "binding": "ASSETS",
+    // Every other mode 307s /index.ja.html away to an extension-less URL, which
+    // would break shared links, RSS subscribers and every past Telegram post.
+    "html_handling": "none",
+    "not_found_handling": "404-page"
+  },
+  "vars": {
+    // Where /auth/*, /submit and /projects* still live while accounts runs on Singa.
+    "APP_ORIGIN": "https://rep0rter.observe.tw"
+  },
+  "observability": { "enabled": true }
+}

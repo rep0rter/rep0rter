@@ -161,3 +161,6 @@ cython_debug/
 
 # rep0rter runtime state (sqlite, generated site)
 data/
+
+# wrangler dev scratch output
+.wrangler/
