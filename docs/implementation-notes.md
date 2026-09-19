@@ -18,6 +18,7 @@
 | #11 | 離線合成 fixture、禁止 dotenv／socket、migration／ID 碰撞／失敗／並發／撤回回歸測試、Python 3.12 push／PR CI | 遠端 CI 狀態需以實際 workflow 為準 |
 | #12 | logo／favicon／OG、四語單篇永久頁／來源頁、301 篇後保留、修訂連結、撤回頁與快取更新、行動／鍵盤／深淺色 | 舊 feed GUID 維持數字 ID，避免訂閱讀者重收舊文 |
 | #13 | 一篇一圖、持久 outbox、target/message mapping、lease、429／unknown 恢復、測試目標 fail closed、撤回重建已確認的舊合併訊息 | 舊的只有整數 message ID 需人工確認 chat 與完整同包內容；不盲目刪除或重送 |
+| #15 | Notion 入口的來源發現、單頁限定、屬性型別白名單、schema 名稱解析、靜默空回應與部分讀取的偵測、限流記為未解析、GitHub 可選 token、maintenance 每週提案且不進 health、以既有排除台帳記錄不納入 | 未文書端點預期會壞，壞了只停提案；四列申報但未回傳的資料原因未明；與 `collectors/notion.py` 讀同一批未文書端點，配管重複待整併；該 collector 啟用後活動／募集資料庫已納入採集，早期「暫不報導」的結論不再適用 |
 
 ## 最新使用者偏好
 
@@ -33,6 +34,23 @@ unknown 發送不盲重試、來源增量有界、影子評分不自動升級，
 
 相關操作：[採集與來源](collectors.md)、[日韓來源核實](fto-sources.md)、[編輯規則](editorial-policy.md)、
 [主題與修訂](stories.md)、[維運](operations.md)、[Telegram 恢復](telegram-delivery.md)。
+
+## 2026-09-19 Notion 來源發現（#15）
+
+Code for Japan 已同意以其公開 Notion 入口作為來源發現對象。入口的專案資料庫取出 18 個
+repository，逐一以 GitHub 官方 API 核對後採用 90 天內有 push 的八個，其餘十個休眠者記錄原因。
+
+發現刻意與發布隔離：不在 `collect`／`report`／`run` 的路徑上，不寫入允許清單，端點壞掉
+只是不再有新建議。只讀取傳入的那一頁，因為巡迴子頁面只多找到一個 repository，
+代價卻是讀取 348 列的成員名錄與活動參加紀錄，而屬性型別擋不住那些欄位。
+
+預算的結論來自實測而非估計：Slack 定常每輪 9 次而非用滿 40，十個 repository 每輪約 50〜63 次，
+每輪預算 80 夠用。真正的限制是 `github.get` 未送 `Authorization`，未認證上限每小時 60 次，
+十個 repository 就要 41 次；實測一輪有六個 repository 被限流。加入可選 token 後零限流，
+日預算則從 1,500 提高到 1,800。
+
+自動化發現卻沒有自動化記錄會產生新問題：被人判斷為不納入的 repository 會每週重複提案。
+改為同時檢查既有的排除台帳（`exclusion --scope container`），不另開第二份清單。
 
 ## 2026-09-19 第二輪驗收修正
 
