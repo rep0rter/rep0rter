@@ -78,13 +78,13 @@ def cmd_translate(cfg: Config, args) -> int:
         _reconcile_exclusions(store,cfg)
         llm = LLM(cfg)
         languages = args.language or list(LANGUAGES)
-        for post, _, _ in store.recent_posts(limit=-1):
+        for post, event, _ in store.recent_posts(limit=-1):
             if not missing_languages(post, languages):
                 continue
             if attempted >= args.limit:
                 break
             attempted += 1
-            if translate_post(post, llm, languages=languages):
+            if translate_post(post, llm, languages=languages, source_ts=event.ts):
                 updated += int(store.update_post_translations(post))
             if missing_languages(post, languages):
                 incomplete += 1
@@ -143,7 +143,7 @@ def _backfill_translations(store: Store, cfg: Config, limit: int = 3) -> dict:
         # Six calls at most, each with a 45-second timeout. Persistent failures
         # require an explicit `translate` run after six scheduled attempts.
         llm = llm or LLM(replace(cfg, ai_timeout_seconds=min(cfg.ai_timeout_seconds, 45)))
-        if translate_post(post, llm):
+        if translate_post(post, llm, source_ts=event.ts):
             report['updated'] += int(store.update_post_translations(post))
         if not missing_languages(post):
             report['incomplete'] -= 1

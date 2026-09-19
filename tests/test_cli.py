@@ -62,7 +62,7 @@ def test_scheduled_translation_recovery_is_bounded_fair_and_does_not_republish(t
     monkeypatch.setattr(cli.time, 'time', lambda: 10000)
     monkeypatch.setattr(cli, 'LLM', lambda cfg: object())
     attempted = []
-    def translate(post, llm):
+    def translate(post, llm, **kwargs):
         attempted.append(post.id)
         return False  # The failing oldest item must not starve unattempted items.
     monkeypatch.setattr(cli, 'translate_post', translate)
@@ -80,7 +80,7 @@ def test_scheduled_translation_recovery_is_bounded_fair_and_does_not_republish(t
         assert attempted == [1, 2, 3, 4, 5]
         assert cli._backfill_translations(store, cfg)['attempted'] == 0
         monkeypatch.setattr(cli.time, 'time', lambda: 13600)
-        def succeed(post, llm):
+        def succeed(post, llm, **kwargs):
             post.translations = {lang: {'headline': 'Title', 'summary': 'Summary'} for lang in LANGUAGES}
             return True
         monkeypatch.setattr(cli, 'translate_post', succeed)
@@ -122,7 +122,7 @@ def test_translation_retries_stop_until_manual_retry_or_copy_changes(tmp_path, m
     import json
     cfg = Config(data_dir=tmp_path, ai_base_url='https://example.test', ai_api_key='test', ai_model='test')
     monkeypatch.setattr(cli, 'LLM', lambda cfg: object())
-    monkeypatch.setattr(cli, 'translate_post', lambda *args: False)
+    monkeypatch.setattr(cli, 'translate_post', lambda *args, **kwargs: False)
     with Store(cfg.db_path) as store:
         event = Event('slack:C:1', 'slack', 'message', 'slack:C', 1, text='Synthetic source')
         store.upsert_events([event])
