@@ -99,6 +99,9 @@ def test_four_editions_escape_content_and_preserve_legacy_feed_guids(published_s
         assert doc.select_one("h3").get_text() == latest.translations[language]["headline"]
         assert doc.select_one("p.summary").get_text() == latest.translations[language]["summary"]
         assert len(doc.select("article")) == 1
+        assert not doc.select("article details.original-source, article blockquote")
+        assert latest_event.text not in doc.select_one("article").get_text()
+        assert doc.select_one(f'article .meta a[href="{latest_event.url}"]')
         assert not doc.select("article script, article img[onerror]")
         preview = doc.select_one('[data-preview-post-id]')
         assert preview['data-preview-post-id'] == str(latest.id)
@@ -134,8 +137,9 @@ def test_older_stories_keep_permanent_pages_outside_homepage_window(published_si
         permanent = cfg.site_dir / "posts" / str(oldest.id) / page
         doc = html(permanent)
         assert doc.select_one("article")["id"] == str(oldest.id)
-        assert doc.select_one("blockquote").get_text() == original.text
-        assert doc.select_one("details.original-source").has_attr("open") == (language != 'en')
+        assert not doc.select("article details.original-source, article blockquote")
+        assert original.text not in doc.select_one("article").get_text()
+        assert doc.select_one(f'article .meta a[href="{original.url}"]')
         assert doc.select_one('meta[property="og:type"]')["content"] == "article"
 
 
@@ -228,7 +232,7 @@ global.localStorage = {getItem: () => 'zh-TW'};
     subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
 
 
-def test_english_report_cards_keep_originals_collapsed_and_feed_images_localized(published_site):
+def test_english_report_cards_and_feed_images_stay_localized(published_site):
     _, cfg, _, entries, _ = published_site
     latest = entries[-1][0]
     for page in (cfg.site_dir / 'index.html', cfg.site_dir / f'posts/{latest.id}/index.html'):
@@ -238,9 +242,7 @@ def test_english_report_cards_keep_originals_collapsed_and_feed_images_localized
         assert report['src'].endswith(f'cards/report-{latest.id}-en.png')
         assert report['alt'].startswith('English report card.')
         assert 'Summary by rep0rter' in article.select_one('figcaption').get_text()
-        original = article.select_one('details.original-source')
-        assert not original.has_attr('open')
-        assert original.select_one('img')['src'] != report['src']
+        assert len(article.select('figure img')) == 1
         if 'posts' in str(page):
             assert doc.select_one('meta[property="og:image"]')['content'].endswith(report['src'].removeprefix('../../'))
     english_image = ElementTree.parse(cfg.site_dir / 'feed.xml').find('channel/item/enclosure').get('url')

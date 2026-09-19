@@ -38,8 +38,8 @@ The homepage, story pages, source pages and default RSS feed open in English.
 Use the language links for Chinese, Japanese or Korean; old browser language
 preferences do not redirect the homepage. Chinese uses `index.zh-TW.html` and
 `feed.zh-TW.xml`. Existing `index.en.html` and `feed.en.xml` links remain available.
-English pages show English report images and keep original text and excerpt cards
-collapsed until opened. Missing translations display an explicit English pending
+English pages show English report images. Follow each story's external source
+link to read the original text. Missing translations display an explicit English pending
 notice; they never substitute untranslated copy into the default edition.
 
 ## Run it
