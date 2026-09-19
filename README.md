@@ -8,7 +8,7 @@ story in four languages, and publishes it to a website, RSS, Telegram and option
 
 - Site: https://rep0rter.observe.tw (English by default; 繁體中文 · 日本語 · 한국어 on request)
 - Telegram: https://t.me/g0v_rep0rter
-- Threads: optional, enabled only when `REP0RTER_THREADS_ENABLED=1` and a valid Threads user id + access token are configured
+- Threads: https://www.threads.com/@rep0rter.tw
 - License: CC0 1.0
 
 ## How it works
