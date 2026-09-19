@@ -22,6 +22,11 @@ API = 'https://{space}.notion.site/api/v3/{path}'
 # Only these property types are ever read. Person, email, phone and file fields
 # are never requested: appearing in a community directory is not consent to be
 # reported on, so the safest exclusion is to never load the value at all.
+#
+# Type is a weak guard on its own. A portal's member directory stores handles,
+# social accounts and wallet addresses as ordinary title/text/url properties,
+# which these types would happily read. What actually keeps the tool away from
+# such a database is the single-page scope below, not this set.
 READABLE_TYPES = {'title', 'text', 'url', 'select', 'multi_select', 'status', 'date'}
 
 # github.com paths that are not owner/repository pairs.
@@ -93,7 +98,14 @@ def public_page_data(session, space, page_id):
 
 
 def page_collections(session, space, page_id):
-    """Locate every database embedded on the page, newest block shape included."""
+    """Databases embedded on this one page; sub-pages are deliberately not followed.
+
+    Crawling the rest of a portal is a bad trade. Measured against the Code for
+    Japan portal it reached five further databases and found one additional
+    repository, while pulling in a 348-row member profile directory and a
+    participation log. The operator names the page that holds project links;
+    discovery never wanders from it.
+    """
     body = _post(session, space, 'loadCachedPageChunkV2',
                  {'page': {'id': page_id}, 'limit': 200, 'cursor': {'stack': []},
                   'chunkNumber': 0, 'verticalColumns': False})

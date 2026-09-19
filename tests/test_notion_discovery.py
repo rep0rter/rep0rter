@@ -190,6 +190,24 @@ def test_a_partial_read_is_reported_rather_than_claimed_complete():
                                      now=1789785600.0)['incomplete_collections'] == []
 
 
+def test_discovery_never_follows_sub_pages_into_the_wider_portal():
+    """Sub-pages hold member directories; only the named page is ever read."""
+    page = {
+        'root': wrap({'type': 'page', 'content': ['view', 'child']}),
+        'view': wrap({'type': 'collection_view', 'view_ids': [VIEW],
+                      'format': {'collection_pointer': {'id': COLLECTION}}}),
+        'child': wrap({'type': 'page', 'properties': {'title': [['プロフィール/Profile']]}}),
+    }
+    session = portal_session(page_blocks=page)
+    report = notion_discovery.discover(session, PORTAL, now=1789785600.0)
+    assert len(report['collections']) == 1
+    chunks = [call.args[0] for call in session.post.call_args_list if 'loadCachedPageChunkV2' in call.args[0]]
+    assert len(chunks) == 1
+    requested = [call.kwargs['json'].get('page', {}).get('id') for call in session.post.call_args_list
+                 if 'loadCachedPageChunkV2' in call.args[0]]
+    assert requested == [PAGE_ID]
+
+
 def test_discovery_is_not_wired_into_collection_or_the_hourly_cycle():
     """Acceptance: unreachable from collect/report/run and absent from the registry."""
     assert 'notion' not in inspect.getsource(registry)
