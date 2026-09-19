@@ -90,7 +90,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
   background: radial-gradient(240px circle at var(--glass-x, 50%) var(--glass-y, 0%), var(--highlight), transparent 70%);
   opacity: calc(var(--glass-light, 0) * .11); transition: opacity 240ms ease-out;
 }
-.masthead { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(240px, 560px) minmax(112px, 1fr); align-items: center; gap: 20px; min-height: 80px; border: 1px solid var(--line); border-radius: 28px; padding: 12px 20px;
+.masthead { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 20px; min-height: 80px; border: 1px solid var(--line); border-radius: 28px; padding: 12px 20px;
   background: light-dark(rgb(255 255 255 / calc(.5 + var(--nav-depth) * .28)), rgb(28 36 47 / calc(.62 + var(--nav-depth) * .24)));
   -webkit-backdrop-filter: blur(calc(16px + var(--nav-depth) * 12px)) saturate(1.15);
   backdrop-filter: blur(calc(16px + var(--nav-depth) * 12px)) saturate(1.15); box-shadow: var(--shadow-card);
@@ -101,7 +101,10 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .languages { position: relative; isolation: isolate; display: flex; flex-wrap: wrap; gap: 5px; padding: 5px; background: var(--recess); border-radius: 24px; }
 .languages a { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; padding: 8px 17px; border-radius: var(--radius-control); color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 600; transition: color var(--motion), transform var(--motion), background var(--motion); }
 .languages a[aria-current] { color: var(--accent); background: var(--surface); box-shadow: var(--shadow-button); }
-.masthead-actions { grid-column: 3; display: flex; align-items: center; justify-self: end; gap: 6px; }
+.masthead-actions { grid-column: 3; display: flex; align-items: center; justify-self: end; gap: 6px; min-width: 0; }
+.masthead-links, .masthead-preferences { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.masthead-links { flex-wrap: wrap; }
+.masthead-preferences { flex-shrink: 0; }
 .preference-menu { position: relative; flex: 0 0 auto; }
 .preference-trigger { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 44px; min-height: 44px; padding: 0 10px; border: 1px solid var(--line); border-radius: 20px; color: var(--muted); background: var(--glass-clear); cursor: pointer; list-style: none; font-size: 11px; font-weight: 600; transition: transform var(--spring), background var(--motion); }
 .preference-trigger::-webkit-details-marker { display: none; }
@@ -365,6 +368,10 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
   .masthead, .story-card, .button, .about-card, .subscribe-card, .image-viewer, .hero-latest { corner-shape: superellipse(1.4); }
 }
 @media (max-width: 1100px) {
+  :root { --header-clearance: 195px; }
+  .masthead { grid-template-columns: minmax(0, 1fr) auto; }
+  .masthead-search { grid-row: 2; grid-column: 1 / -1; }
+  .masthead-actions { grid-column: 2; grid-row: 1; }
   .reading-layout { grid-template-columns: minmax(0, 1fr) 236px; gap: 28px; }
   .hero { padding-inline: 0; gap: 10px; }
   .languages a { padding-inline: 12px; }
@@ -392,6 +399,13 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
   .aside-note { grid-column: 1 / -1; padding: 0 12px; }
   .story-card--featured .story-content { display: grid; }
   .story-card--featured .report-figure { margin-top: 0; }
+}
+@media (max-width: 780px) {
+  :root { --header-clearance: 255px; }
+  .masthead-actions { display: contents; }
+  .masthead-preferences { grid-column: 2; grid-row: 1; justify-self: end; }
+  .masthead-links { grid-column: 1 / -1; grid-row: 2; }
+  .masthead-search { grid-row: 3; }
 }
 @media (max-width: 640px) {
   .page-shell { width: calc(100% - 36px); }
@@ -539,8 +553,6 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
 .story-preview > p, .story-preview .original-source { margin-top: 16px; }
 @media (max-width: 600px) {
   .site-header .wordmark { white-space: nowrap; }
-  .masthead-actions { flex-wrap: wrap; max-width: 132px; justify-content: flex-end; }
-  .masthead-actions .write-story-link { order: 3; flex-basis: 100%; min-height: 36px; }
   .write-story-link { font-size: 12px; padding-inline: 12px; }
   .story-timeline { padding-left: 16px; margin-left: 4px; }
   .story-timeline .story-card::before { left: -24px; }
