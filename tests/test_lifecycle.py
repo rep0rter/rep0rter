@@ -161,6 +161,10 @@ def test_redaction_sanitizes_all_cached_generations_even_when_rebuild_fails(tmp_
                 assert doc.html['lang']==code
                 guids=[item.findtext('guid') for item in ET.parse(root/feed_name(code)).findall('./channel/item')]
                 assert guids==['1']
+            alias=BeautifulSoup((root/'posts/2/index.en.html').read_text(),'html.parser')
+            assert alias.html['lang']=='en'
+            assert alias.find('meta',attrs={'name':'robots'})['content']=='noindex'
+            assert [item.findtext('guid') for item in ET.parse(root/'feed.en.xml').findall('./channel/item')]==['1']
         survivor_after=BeautifulSoup((config.site_dir/'index.html').read_text(),'html.parser').find('article',id='1')
         assert survivor_after.get_text()==survivor_text
         assert [a['href'] for a in survivor_after.find_all('a',href=True)]==survivor_links

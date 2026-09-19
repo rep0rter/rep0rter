@@ -17,10 +17,10 @@ from rep0rter.store import Container, Event, Post, Store
 
 
 EDITIONS = {
-    "zh-TW": ("index.html", "feed.xml"),
+    "zh-TW": ("index.zh-TW.html", "feed.zh-TW.xml"),
     "ko": ("index.ko.html", "feed.ko.xml"),
     "ja": ("index.ja.html", "feed.ja.xml"),
-    "en": ("index.en.html", "feed.en.xml"),
+    "en": ("index.html", "feed.xml"),
 }
 
 
@@ -124,6 +124,52 @@ def test_older_stories_keep_permanent_pages_outside_homepage_window(published_si
         assert doc.select_one("blockquote").get_text() == original.text
         assert doc.select_one("details").has_attr("open")
         assert doc.select_one('meta[property="og:type"]')["content"] == "article"
+
+
+def test_english_default_and_existing_explicit_english_links(published_site):
+    _, cfg, _, entries, _ = published_site
+    doc = html(cfg.site_dir / "index.html")
+    assert doc.html["lang"] == "en"
+    links = doc.select("a[data-language]")
+    assert links[0]["data-language"] == "en"
+    chinese = next(link for link in links if link["data-language"] == "zh-TW")
+    assert chinese["href"] == "index.zh-TW.html"
+    assert html(cfg.site_dir / chinese["href"]).html["lang"] == "zh-TW"
+    # Existing feed subscriptions, bookmarks, and links to source/history pages
+    # stay valid; aliases advertise the canonical English URL.
+    for canonical in cfg.site_dir.rglob("index.html"):
+        alias = canonical.with_name("index.en.html")
+        assert alias.read_bytes() == canonical.read_bytes()
+        expected = cfg.site_url + "/" + canonical.relative_to(cfg.site_dir).as_posix()
+        assert html(alias).select_one('link[rel="canonical"]')["href"] == expected
+    assert (cfg.site_dir / "feed.en.xml").read_bytes() == (cfg.site_dir / "feed.xml").read_bytes()
+    for filename in ("feed.xml", "feed.en.xml", "feed.zh-TW.xml"):
+        assert ElementTree.parse(cfg.site_dir / filename).findtext("channel/item/guid") == str(entries[-1][0].id)
+
+
+def test_language_switch_does_not_redirect_using_old_browser_preference(published_site):
+    # Execute the actual served script against a minimal DOM; a stored choice
+    # from the previous release must never take over the English root URL.
+    import shutil
+    import subprocess
+    if not shutil.which("node"):
+        pytest.skip("Node.js required to execute the language navigation script")
+    _, cfg, _, _, _ = published_site
+    script = """
+const assert = require('node:assert/strict');
+const chineseLink = {
+  dataset: {language: 'zh-TW'}, href: 'index.zh-TW.html', hash: '',
+  addEventListener: () => {},
+};
+global.document = {
+  documentElement: {lang: 'en'},
+  querySelectorAll: selector => selector === '[data-language]' ? [chineseLink] : [],
+};
+global.window = {};
+global.location = {pathname: '/', hash: '', replace: () => assert.fail('unexpected redirect')};
+global.localStorage = {getItem: () => 'zh-TW'};
+""" + (cfg.site_dir / "language.js").read_text()
+    subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
 
 
 def test_source_rename_keeps_same_url_and_source_history(published_site):

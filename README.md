@@ -6,7 +6,7 @@
 collaboration spaces (Slack, GitHub, Mastodon), picks what matters, writes a short
 story in four languages, and publishes it to a website, RSS and Telegram.
 
-- Site: https://rep0rter.observe.tw (zh-TW · ko · ja · en)
+- Site: https://rep0rter.observe.tw (English by default; 繁體中文 · 日本語 · 한국어 on request)
 - Telegram: https://t.me/g0v_rep0rter
 - License: CC0 1.0
 
@@ -31,6 +31,11 @@ flowchart LR
 Every story links back to its source and ships with a source card (author, origin,
 excerpt). Bots, CI noise and anyone who opts out are excluded before writing.
 New Slack scoring rules run in shadow mode first and are promoted only after review.
+
+The homepage, story pages, source pages and default RSS feed open in English.
+Use the language links for Chinese, Japanese or Korean; old browser language
+preferences do not redirect the homepage. Chinese uses `index.zh-TW.html` and
+`feed.zh-TW.xml`. Existing `index.en.html` and `feed.en.xml` links remain available.
 
 ## Run it
 

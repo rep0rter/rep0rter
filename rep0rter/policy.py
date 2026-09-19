@@ -295,7 +295,7 @@ def _sanitize_site(store, root, withdrawn_urls=()):
     """
     from bs4 import BeautifulSoup
     import xml.etree.ElementTree as ET
-    from .i18n import LANGUAGES, page_name
+    from .i18n import DEFAULT_LANGUAGE, LANGUAGES, page_aliases, page_name
     rows = store.conn.execute('SELECT p.id,p.event_id FROM posts p JOIN retractions r ON p.id=r.post_id').fetchall()
     withdrawn = {str(row['id']) for row in rows}
     guids = withdrawn | {row['event_id'] for row in rows}
@@ -312,7 +312,11 @@ def _sanitize_site(store, root, withdrawn_urls=()):
     for path in root.rglob('*.html'):
         relative = path.relative_to(root)
         if len(relative.parts) >= 3 and relative.parts[0] == 'posts' and relative.parts[1] in withdrawn:
-            language = next((code for code in LANGUAGES if path.name == page_name(code)), 'zh-TW')
+            document = BeautifulSoup(path.read_text(encoding='utf-8'), 'html.parser')
+            language = document.html.get('lang') if document.html else None
+            if language not in LANGUAGES:
+                language = next((code for code in LANGUAGES
+                                 if path.name in (page_name(code), *page_aliases(code))), DEFAULT_LANGUAGE)
             _atomic_text(path, _withdrawn_page(language))
             continue
         document = BeautifulSoup(path.read_text(encoding='utf-8'), 'html.parser')
@@ -358,7 +362,8 @@ def _sanitize_site(store, root, withdrawn_urls=()):
             _atomic_text(path, '<?xml version="1.0" encoding="utf-8"?><rss version="2.0"><channel><title>rep0rter</title><description>Feed rebuilding</description></channel></rss>')
     for post_id in withdrawn:
         for language in LANGUAGES:
-            _atomic_text(root / 'posts' / post_id / page_name(language), _withdrawn_page(language))
+            for filename in (page_name(language), *page_aliases(language)):
+                _atomic_text(root / 'posts' / post_id / filename, _withdrawn_page(language))
 
 
 def _purge_media(store, withdrawn_urls=()):

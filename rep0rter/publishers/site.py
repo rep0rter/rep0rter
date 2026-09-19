@@ -18,7 +18,7 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from PIL import Image
 
 from ..config import TAIPEI, Config
-from ..i18n import COPY, LANGUAGES, feed_name, page_name, post_text
+from ..i18n import COPY, LANGUAGES, feed_aliases, feed_name, page_aliases, page_name, post_text
 from ..slack_text import to_plain
 from ..store import Store
 from .cards import CardRenderer
@@ -123,6 +123,8 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
                    "detail": detail, "feed": feed_name(language),
                    "stats": COPY[language]["stats"].format(events=ctx["event_count"], posts=ctx["post_count"])}
         _write(cfg.site_dir / relative_path, template.render(context))
+        for alias in page_aliases(language):
+            _write((cfg.site_dir / relative_path).with_name(alias), template.render(context))
         return context
 
     for asset in ("style.css", "language.js"):
@@ -154,9 +156,12 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
     for language, localized in root_outputs:
         root_ctx = render_page(language, localized, page_name(language), "")
         _write(cfg.site_dir / feed_name(language), env.get_template("feed.xml").render(root_ctx))
+        for alias in feed_aliases(language):
+            _write(cfg.site_dir / alias, env.get_template("feed.xml").render(root_ctx))
         for row in store.conn.execute('SELECT post_id FROM retractions'):
-            _write(cfg.site_dir / 'posts' / str(row['post_id']) / page_name(language),
-                   env.get_template('withdrawn.html').render(language=language,copy=COPY[language],languages=LANGUAGES,page_name=page_name))
+            for filename in (page_name(language), *page_aliases(language)):
+                _write(cfg.site_dir / 'posts' / str(row['post_id']) / filename,
+                       env.get_template('withdrawn.html').render(language=language,copy=COPY[language],languages=LANGUAGES,page_name=page_name))
     keep={Path(item['image']).name for item in items}
     for path in (cfg.site_dir/'cards').glob('*.png'):
         if path.name not in keep: path.unlink()

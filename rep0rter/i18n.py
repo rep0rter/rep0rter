@@ -1,14 +1,24 @@
 """Shared language identifiers, UI copy, and honest translation fallbacks."""
 
-LANGUAGES = {"zh-TW": "繁體中文", "ko": "한국어", "ja": "日本語", "en": "English"}
+DEFAULT_LANGUAGE = "en"
+LANGUAGES = {"en": "English", "zh-TW": "繁體中文", "ja": "日本語", "ko": "한국어"}
 
 
 def page_name(language: str) -> str:
-    return "index.html" if language == "zh-TW" else f"index.{language}.html"
+    return "index.html" if language == DEFAULT_LANGUAGE else f"index.{language}.html"
 
 
 def feed_name(language: str) -> str:
-    return "feed.xml" if language == "zh-TW" else f"feed.{language}.xml"
+    return "feed.xml" if language == DEFAULT_LANGUAGE else f"feed.{language}.xml"
+
+
+def page_aliases(language: str) -> tuple[str, ...]:
+    """Keep explicit English links shared before English became the default."""
+    return ("index.en.html",) if language == DEFAULT_LANGUAGE else ()
+
+
+def feed_aliases(language: str) -> tuple[str, ...]:
+    return ("feed.en.xml",) if language == DEFAULT_LANGUAGE else ()
 
 
 def post_text(post, language: str) -> tuple[str, str, bool]:

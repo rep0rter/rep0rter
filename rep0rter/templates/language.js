@@ -14,18 +14,9 @@
   };
   links.forEach(link => {
     link.addEventListener('pointerdown', preservePosition);
-    link.addEventListener('click', () => {
-      preservePosition();
-      try { localStorage.setItem('rep0rter-language', link.dataset.language); } catch (_) { /* optional storage */ }
-    });
+    link.addEventListener('click', preservePosition);
   });
   preservePosition();
-  // Explicit locale URLs always win over remembered choices.
-  if (location.pathname.endsWith('/') && !location.hash) {
-    try {
-      const saved = localStorage.getItem('rep0rter-language');
-      const target = links.find(link => link.dataset.language === saved);
-      if (target && saved !== document.documentElement.lang) location.replace(target.href);
-    } catch (_) { /* language links remain usable */ }
-  }
+  // The URL is the reading choice. Returning to the root always opens English,
+  // including browsers with a preference saved by an older version.
 })();
