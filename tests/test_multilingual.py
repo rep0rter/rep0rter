@@ -3,6 +3,8 @@ from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import pytest
+
 from rep0rter.cli import cmd_translate
 from rep0rter.config import Config
 from rep0rter.i18n import LANGUAGES, post_text
@@ -136,11 +138,84 @@ def test_backfill_dates_use_original_source_day_across_publication_midnight():
         payload=json.loads(call.args[1])
         assert payload['headline']=='2026-09-16小松討論活動成效'
         assert payload['summary']=='2026-09-16討論活動成果'
-        assert payload['metadata']=={'source_time':'2026-09-16T16:59:00+08:00','timezone':'Asia/Taipei'}
+        assert payload['metadata']=={'source_time':'2026-09-16T16:59:00+08:00','timezone':'Asia/Taipei',
+                                     'previous_week_start':'2026-09-07','previous_week_end':'2026-09-13'}
     assert post.headline=='今晚小松討論活動成效'
     assert post.summary=='今天晚上討論活動成果'
     assert post.translations['ja']==saved_ja
     assert post.delivery=={'telegram':123}
+
+
+@pytest.mark.parametrize('wrong,right', [
+    ('Meetup on 2026-09-19','Meetup on 2026-09-16'),
+    ('Meetup on 2027-09-16','Meetup on 2026-09-16'),
+    ('9月19日的小松','9月16日的小松'),
+    ('9월 19일 모임','9월 16일 모임'),
+    ('Meetup on September 19','Meetup on September 16'),
+    ('Meetup on 19 Sept','Meetup on 16 Sept'),
+    ('Meetup on Sept 16–19','Meetup on Sept 16'),
+])
+def test_backfill_rejects_invented_localized_date_then_saves_correct_date(wrong,right):
+    source_ts=datetime(2026,9,16,16,59,tzinfo=TZ).timestamp()
+    post=Post('x',source_ts+30000,9,'今晚小松討論活動成效','今天晚上討論活動成果')
+    llm=Mock()
+    llm.chat_json.side_effect=[{'en':{'headline':'Meetup','summary':wrong}},
+                               {'en':{'headline':'Meetup','summary':right}}]
+    assert translate_post(post,llm,languages=['en'],source_ts=source_ts)
+    assert post.translations['en']['summary']==right
+    retry=json.loads(llm.chat_json.call_args_list[1].args[1])
+    assert 'calendar_date_not_in_source_text' in retry['validation_feedback']['en']['errors']
+
+
+@pytest.mark.parametrize('summary', ['Community meetup in 2026','The meetup reviews activity results',
+                                    'Meetup on September 16, 2026'])
+def test_backfill_date_guard_accepts_omission_year_only_and_faithful_full_date(summary):
+    source_ts=datetime(2026,9,16,16,59,tzinfo=TZ).timestamp()
+    post=Post('x',source_ts,9,'今晚小松','今天晚上討論活動成果')
+    llm=Mock();llm.chat_json.return_value={'en':{'headline':'Meetup','summary':summary}}
+    assert translate_post(post,llm,languages=['en'],source_ts=source_ts)
+    assert llm.chat_json.call_count==1
+
+
+def test_backfill_date_guard_preserves_known_range_endpoints():
+    source_ts=datetime(2026,9,16,16,59,tzinfo=TZ).timestamp()
+    post=Post('x',source_ts,9,'9/16–18工作坊','工作坊於9/16至18日舉辦')
+    llm=Mock();llm.chat_json.return_value={'en':{'headline':'Workshop','summary':'Workshop on Sept 16–18'}}
+    assert translate_post(post,llm,languages=['en'],source_ts=source_ts)
+    assert llm.chat_json.call_count==1
+
+
+def test_backfill_invalid_date_never_saved_after_retry_budget_exhausted():
+    source_ts=datetime(2026,9,16,16,59,tzinfo=TZ).timestamp()
+    post=Post('x',source_ts,9,'今晚小松','今天晚上討論活動成果')
+    llm=Mock();llm.chat_json.return_value={'en':{'headline':'Meetup','summary':'Meetup on September 19'}}
+    assert not translate_post(post,llm,languages=['en'],source_ts=source_ts)
+    assert post.translations=={}
+    assert llm.chat_json.call_count==2
+
+
+def test_backfill_previous_week_range_is_grounded_only_when_source_mentions_it():
+    source_ts=datetime(2026,9,16,16,59,tzinfo=TZ).timestamp()
+    post=Post('x',source_ts,9,'今晚小松','今晚討論上週活動成果')
+    llm=Mock()
+    llm.chat_json.side_effect=[{'en':{'headline':'Meetup','summary':'Reviewing activities from Sept 7–25'}},
+                               {'en':{'headline':'Meetup','summary':'Reviewing activities from Sept 7–13'}}]
+    assert translate_post(post,llm,languages=['en'],source_ts=source_ts)
+    assert post.translations['en']['summary']=='Reviewing activities from Sept 7–13'
+    retry=json.loads(llm.chat_json.call_args_list[1].args[1])
+    assert 'calendar_date_not_in_source_text' in retry['validation_feedback']['en']['errors']
+    unrelated=Post('y',source_ts,9,'今晚小松','今天晚上討論活動成果')
+    llm=Mock();llm.chat_json.return_value={'en':{'headline':'Meetup','summary':'Reviewing activities from Sept 7–13'}}
+    assert not translate_post(unrelated,llm,languages=['en'],source_ts=source_ts)
+    assert unrelated.translations=={}
+
+
+def test_backfill_does_not_invent_calendar_date_for_undated_source():
+    source_ts=datetime(2026,9,16,16,59,tzinfo=TZ).timestamp()
+    post=Post('x',source_ts,9,'資料集發布','新資料集提供學區邊界資訊')
+    llm=Mock();llm.chat_json.return_value={'en':{'headline':'Dataset released','summary':'Dataset released on September 16'}}
+    assert not translate_post(post,llm,languages=['en'],source_ts=source_ts)
+    assert post.translations=={}
 
 
 def test_backfill_repairs_invalid_saved_editions_but_bounds_retries():
