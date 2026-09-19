@@ -189,7 +189,6 @@ const document = element({
   documentElement: {lang: 'en', dataset: {}},
   querySelector(selector) { assert.ok(selector in single, selector); return single[selector]; },
   querySelectorAll(selector) {
-    if (selector === '[data-author-avatar]') return [];
     if (selector === '.day') return days;
     if (selector === 'article[data-search]') return articles;
     throw new Error('Unexpected selector: ' + selector);
@@ -282,30 +281,8 @@ assert.equal(status.hidden, true);
 def test_search_is_safe_on_detail_and_withdrawal_pages_without_search_form():
     source = json.dumps((TEMPLATES / "reading.js").read_text())
     run_javascript("""
-const document = element({querySelectorAll() { return []; }, querySelector(selector) {
+const document = element({querySelector(selector) {
   assert.equal(selector, '[data-search-form]'); return null;
 }});
 vm.runInNewContext(SOURCE, {document});
-""".replace("SOURCE", source))
-
-
-def test_author_avatar_failure_falls_back_without_search_and_rebinds_on_language():
-    source = json.dumps((TEMPLATES / "reading.js").read_text())
-    run_javascript("""
-let avatars = [element({complete: true, naturalWidth: 192}), element({complete: true, naturalWidth: 0}), element({complete: false, naturalWidth: 0})];
-const document = element({querySelector() { return null; }, querySelectorAll(selector) {
-  assert.equal(selector, '[data-author-avatar]'); return avatars;
-}});
-vm.runInNewContext(SOURCE, {document});
-assert.deepEqual(avatars.map(image => image.hidden), [false, true, false]);
-avatars[2].emit('error');
-assert.equal(avatars[2].hidden, true);
-const old = avatars[0];
-document.emit('rep0rter:before-language');
-old.emit('error');
-assert.equal(old.hidden, false);
-avatars = [element({complete: false, naturalWidth: 0})];
-document.emit('rep0rter:language-applied');
-avatars[0].emit('error');
-assert.equal(avatars[0].hidden, true);
 """.replace("SOURCE", source))

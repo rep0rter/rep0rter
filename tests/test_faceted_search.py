@@ -61,7 +61,7 @@ const single={'[data-search-form]':form,'[data-search-clear]':clear,'#search-sta
  '[data-filters]':filters,'[data-filter-count]':badge,'[data-filter-error]':error,'[data-search-reset]':reset,'[data-filters-reset]':allReset,'#news':news};
 const document = element({documentElement:{lang:'en',dataset:{}}, createElement(){return element();},
  querySelector(selector){assert.ok(selector in single,selector);return single[selector];},
- querySelectorAll(selector){if(selector==='[data-author-avatar]')return [];if(selector==='.day')return days;if(selector==='article[data-search]')return articles;throw Error(selector);},
+ querySelectorAll(selector){if(selector==='.day')return days;if(selector==='article[data-search]')return articles;throw Error(selector);},
 });
 const window=element({location:{href:'https://example.test/index.html'+QUERY},history:{state:{retained:true},replaceState(state,title,url){assert.equal(state.retained,true);window.location.href=url;}}});
 class FrozenDate extends Date {constructor(...args){super(...(args.length?args:['2026-09-18T17:00:00Z']));}}
