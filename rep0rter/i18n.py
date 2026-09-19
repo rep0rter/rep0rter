@@ -74,7 +74,7 @@ COPY = {
         "footer": "摘要由程式與語言模型整理，請以連結中的原文為準。圖卡保留原文語言，長文會節錄。",
         "stats": "{events} 則事件 · {posts} 篇報導", "updated": "更新時間（台北）",
         "optout": "不希望某則消息被報導？請在 g0v Slack 的 #rep0rter 告訴我們。",
-        "card_label": "原文摘錄", "read": "閱讀消息",
+        "card_label": "原文摘錄", "read": "閱讀消息", "view_details": "查看詳情",
         "appearance": "顯示模式", "theme_light": "淺色模式", "theme_dark": "深色模式", "theme_system": "跟隨裝置設定",
         "brand_note": "串起社群的每一步", "skip_content": "跳至主要內容",
         "eyebrow": "來自 g0v、Code for Korea、Code for Japan 等公民科技社群", "hero_title": "看見社群進展。", "hero_accent": "找到協作起點。",
@@ -91,6 +91,7 @@ COPY = {
         "subscribe_title": "在習慣的地方讀消息", "subscribe_body": "將 RSS 加入你的閱讀器，接收這個語言版本的更新。",
         "aside_note": "摘要協助你掌握重點；完整內容請以原文為準。",
         "resources": "相關資源", "back_home": "回到所有消息", "replies": "回覆數", "view_image": "檢視圖卡", "close_image": "關閉圖片",
+        "image_loading": "圖片載入中…", "image_error": "圖片暫時無法載入，請關閉後重試。",
     },
     "ko": {
         "title": "시빅테크 커뮤니티 소식", "tagline": "서로의 진전을 발견하고, 다음 협업을 시작하세요.",
@@ -102,7 +103,7 @@ COPY = {
         "footer": "프로그램과 언어 모델이 요약합니다. 정확한 내용은 원문을 확인하세요. 이미지는 원문 언어를 유지하며 긴 글은 발췌합니다.",
         "stats": "이벤트 {events}개 · 소식 {posts}개", "updated": "업데이트 (타이베이 시간)",
         "optout": "소개를 원하지 않는 소식은 g0v Slack #rep0rter에 알려 주세요.",
-        "card_label": "원문 발췌", "read": "소식 읽기",
+        "card_label": "원문 발췌", "read": "소식 읽기", "view_details": "자세히 보기",
         "appearance": "화면 모드", "theme_light": "라이트 모드", "theme_dark": "다크 모드", "theme_system": "기기 설정 따르기",
         "brand_note": "커뮤니티의 발걸음을 잇다", "skip_content": "본문으로 이동",
         "eyebrow": "g0v, Code for Korea, Code for Japan 등 시빅테크 커뮤니티의 소식", "hero_title": "소식을 나누고,", "hero_accent": "다음을 함께.",
@@ -119,6 +120,7 @@ COPY = {
         "subscribe_title": "익숙한 곳에서 읽으세요", "subscribe_body": "RSS를 리더에 추가하면 이 언어로 새 소식을 받아볼 수 있습니다.",
         "aside_note": "요약은 핵심을 파악하는 데 도움을 줍니다. 전체 내용은 원문을 확인하세요.",
         "resources": "관련 자료", "back_home": "모든 소식으로", "replies": "답글 수", "view_image": "이미지 보기", "close_image": "이미지 닫기",
+        "image_loading": "이미지 불러오는 중…", "image_error": "이미지를 불러올 수 없습니다. 닫은 후 다시 시도해 주세요.",
     },
     "ja": {
         "title": "シビックテックのコミュニティニュース", "tagline": "お互いの進展を知り、次の協働へ。",
@@ -130,7 +132,7 @@ COPY = {
         "footer": "プログラムと言語モデルが要約しています。正確な内容は原文をご確認ください。画像は原文の言語を保ち、長文は抜粋します。",
         "stats": "{events} 件のイベント · {posts} 件のニュース", "updated": "更新日時（台北時間）",
         "optout": "掲載を希望しない場合は、g0v Slack の #rep0rter でお知らせください。",
-        "card_label": "原文の抜粋", "read": "ニュースを読む",
+        "card_label": "原文の抜粋", "read": "ニュースを読む", "view_details": "詳細を見る",
         "appearance": "表示モード", "theme_light": "ライトモード", "theme_dark": "ダークモード", "theme_system": "端末の設定に合わせる",
         "brand_note": "コミュニティの一歩をつなぐ", "skip_content": "本文へ移動",
         "eyebrow": "g0v・Code for Korea・Code for Japan などのシビックテックコミュニティから", "hero_title": "みんなの一歩を、", "hero_accent": "次の協働へ。",
@@ -147,6 +149,7 @@ COPY = {
         "subscribe_title": "いつもの場所で読もう", "subscribe_body": "RSS をリーダーに追加すると、この言語の新着ニュースを受け取れます。",
         "aside_note": "要約は内容をつかむためのものです。詳しい内容は原文をご確認ください。",
         "resources": "関連リンク", "back_home": "すべてのニュースへ", "replies": "返信数", "view_image": "画像を見る", "close_image": "画像を閉じる",
+        "image_loading": "画像を読み込み中…", "image_error": "画像を読み込めませんでした。閉じてからもう一度お試しください。",
     },
     "en": {
         "title": "Civic tech community news", "tagline": "See what others are building. Find your next collaboration.",
@@ -158,7 +161,7 @@ COPY = {
         "footer": "Summaries and English report images are prepared by rep0rter. Refer to the linked source for accuracy.",
         "stats": "{events} events · {posts} stories", "updated": "Updated (Taipei time)",
         "optout": "To request removal of a story, tell us in #rep0rter on g0v Slack.",
-        "card_label": "Original excerpt", "read": "Read story",
+        "card_label": "Original excerpt", "read": "Read story", "view_details": "View details",
         "report_card_label": "English report · Summary by rep0rter",
         "report_image_alt": "English report card. Source: ",
         "pending_headline": "English translation pending",
@@ -179,6 +182,7 @@ COPY = {
         "subscribe_title": "Read where you like", "subscribe_body": "Add this RSS feed to your reader for updates in your chosen language.",
         "aside_note": "Summaries help you find the essentials. Refer to the original for the full story.",
         "resources": "Resources", "back_home": "Back to all stories", "replies": "Replies", "view_image": "View image", "close_image": "Close image",
+        "image_loading": "Loading image…", "image_error": "The image could not load. Close and try again.",
     },
 }
 

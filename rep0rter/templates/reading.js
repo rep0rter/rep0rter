@@ -10,6 +10,11 @@
       removers.push(() => target.removeEventListener(type, handler));
     };
     dispose = () => { removers.splice(0).forEach(remove => remove()); };
+    document.querySelectorAll('[data-author-avatar]').forEach(image => {
+      const fallback = () => { image.hidden = true; };
+      listen(image, 'error', fallback);
+      if (image.complete && !image.naturalWidth) fallback();
+    });
     const form = document.querySelector('[data-search-form]');
     if (!form) return;
     const input = form.querySelector('input');
