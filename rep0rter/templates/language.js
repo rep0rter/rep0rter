@@ -1,22 +1,35 @@
-// Real links work without JavaScript; enhancement preserves reading position.
+// Language choices are ordinary links. Never move the reader with script.
 (() => {
   const links = [...document.querySelectorAll('[data-language]')];
-  let visibleArticle = null;
-  const observer = 'IntersectionObserver' in window ? new IntersectionObserver(entries => {
-    for (const entry of entries) {
-      if (entry.isIntersecting) visibleArticle = entry.target.id;
-    }
-  }, { rootMargin: '-10% 0px -60% 0px' }) : null;
-  document.querySelectorAll('article[id]').forEach(article => observer?.observe(article));
-  const preservePosition = () => {
-    const anchor = visibleArticle ? '#' + encodeURIComponent(visibleArticle) : location.hash;
-    links.forEach(link => { link.hash = anchor; });
-  };
-  links.forEach(link => {
-    link.addEventListener('pointerdown', preservePosition);
-    link.addEventListener('click', preservePosition);
+  let destination = null;
+  const updateLinks = () => links.forEach(link => {
+    link.search = location.search || '';
+    // A previous report/section anchor must not jump the new edition downward.
+    link.hash = '';
   });
-  preservePosition();
-  // The URL is the reading choice. Returning to the root always opens English,
-  // including browsers with a preference saved by an older version.
+  updateLinks();
+  links.forEach(link => {
+    link.addEventListener('pointerdown', updateLinks);
+    link.addEventListener('click', event => {
+      updateLinks();
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey ||
+          event.shiftKey || event.altKey || (link.target && link.target !== '_self') || link.hasAttribute('download')) return;
+      if (link.getAttribute('aria-current') === 'page') {
+        event.preventDefault();
+        const menu = link.closest('.preference-menu');
+        if (menu) {
+          menu.open = false;
+          menu.querySelector('summary').focus({ preventScroll: true });
+        }
+        return;
+      }
+      destination = link.href;
+    });
+  });
+  window.addEventListener('pageswap', event => {
+    const target = event.activation?.entry?.url;
+    // Translation changes must not make report cards fly between page layouts.
+    if (destination && (!target || target === destination)) event.viewTransition?.skipTransition();
+    destination = null;
+  });
 })();

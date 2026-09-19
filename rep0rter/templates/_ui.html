@@ -1,0 +1,48 @@
+{% macro icon(name, extra='') -%}
+<svg class="icon {{ extra }}" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+{% if name == 'arrow' %}<path d="M5 12h14m-6-6 6 6-6 6"/>
+{% elif name == 'external' %}<path d="M7 17 17 7M7 7h10v10"/>
+{% elif name == 'rss' %}<circle cx="5" cy="19" r="1"/><path d="M4 11a9 9 0 0 1 9 9M4 4a16 16 0 0 1 16 16"/>
+{% elif name == 'sun' %}<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/>
+{% elif name == 'moon' %}<path d="M20.5 13.5A8.7 8.7 0 0 1 10.5 3a9 9 0 1 0 10 10.5Z"/>
+{% elif name == 'system' %}<rect x="3" y="4" width="18" height="13" rx="3"/><path d="M9 21h6m-3-4v4"/>
+{% elif name == 'search' %}<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>
+{% elif name == 'filter' %}<path d="M4 6h16M7 12h10M10 18h4"/>
+{% elif name == 'globe' %}<circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/>
+{% elif name == 'down' %}<path d="m6 9 6 6 6-6"/>
+{% elif name == 'download' %}<path d="M12 3v12m-5-5 5 5 5-5M4 16v4h16v-4"/>
+{% elif name == 'back' %}<path d="M19 12H5m6-6-6 6 6 6"/>
+{% elif name == 'spark' %}<path d="m12 3 2.4 6.6L21 12l-6.6 2.4L12 21l-2.4-6.6L3 12l6.6-2.4L12 3Z"/>
+{% elif name == 'check' %}<path d="m5 12 4 4L19 6"/>
+{% elif name == 'chat' %}<path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H9l-5 3v-3H3V6a2 2 0 0 1 2-2Z"/><path d="M8 9h8m-8 4h5"/>
+{% elif name == 'close' %}<path d="m6 6 12 12M6 18 18 6"/>
+{% endif %}
+</svg>
+{%- endmacro %}
+
+{% macro appearance(copy) -%}
+<details class="preference-menu theme-menu" data-theme-controls hidden>
+  <summary class="preference-trigger theme-trigger" data-theme-trigger data-theme-label="{{ copy.appearance }}"{% for mode in ('light', 'dark', 'system') %} data-theme-{{ mode }}="{{ copy['theme_' ~ mode] }}"{% endfor %} aria-label="{{ copy.appearance }}">
+    {% for mode in ('light', 'dark', 'system') %}<span data-theme-icon="{{ mode }}"{% if mode != 'system' %} hidden{% endif %}>{{ icon('sun' if mode == 'light' else 'moon' if mode == 'dark' else 'system') }}</span>{% endfor %}
+  </summary>
+  <div class="preference-panel" aria-label="{{ copy.appearance }}">
+    {% for mode in ('light', 'dark', 'system') %}<button type="button" class="preference-option" data-theme-choice="{{ mode }}" aria-pressed="{{ 'true' if mode == 'system' else 'false' }}">{{ icon('sun' if mode == 'light' else 'moon' if mode == 'dark' else 'system') }}<span>{{ copy['theme_' ~ mode] }}</span>{{ icon('check', 'preference-check') }}</button>{% endfor %}
+  </div>
+</details>
+{%- endmacro %}
+
+{% macro language_links(copy, language, languages, page_name, compact=false) -%}
+{% if compact %}
+  {% set abbreviations = {'en': 'EN', 'zh-TW': '繁', 'ja': '日', 'ko': '한'} %}
+  <details class="preference-menu language-menu">
+    <summary class="preference-trigger language-trigger" aria-label="{{ copy.language }}: {{ languages[language] }}" title="{{ copy.language }}">{{ icon('globe') }}<span lang="{{ language }}" aria-hidden="true">{{ abbreviations[language] }}</span></summary>
+    <nav class="preference-panel" aria-label="{{ copy.language }}">
+      {% for lang, label in languages.items() %}<a class="preference-option" href="{{ page_name(lang) }}" lang="{{ lang }}" hreflang="{{ lang }}" data-language="{{ lang }}"{% if lang == language %} aria-current="page"{% endif %}><span>{{ label }}</span>{{ icon('check', 'preference-check') }}</a>{% endfor %}
+    </nav>
+  </details>
+{% else %}
+<nav class="languages" aria-label="{{ copy.language }}">
+  {% for lang, label in languages.items() %}<a href="{{ page_name(lang) }}" lang="{{ lang }}" hreflang="{{ lang }}" data-language="{{ lang }}"{% if lang == language %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+</nav>
+{% endif %}
+{%- endmacro %}
