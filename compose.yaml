@@ -7,11 +7,11 @@ name: rep0rter
 services:
   worker:
     build: .
-    image: rep0rter
+    image: ${REP0RTER_IMAGE:-rep0rter}
     container_name: rep0rter-worker
     restart: unless-stopped
     env_file:
-      - path: .env
+      - path: ${REP0RTER_ENV_FILE:-.env}
         required: false
     environment:
       - REP0RTER_DATA_DIR=/data
@@ -31,11 +31,11 @@ services:
         max-file: "3"
 
   maintenance:
-    image: rep0rter
+    image: ${REP0RTER_IMAGE:-rep0rter}
     container_name: rep0rter-maintenance
     restart: unless-stopped
     env_file:
-      - path: .env
+      - path: ${REP0RTER_ENV_FILE:-.env}
         required: false
     environment:
       - REP0RTER_DATA_DIR=/data
@@ -73,10 +73,10 @@ services:
 
   accounts:
     build: .
-    image: rep0rter
+    image: ${REP0RTER_IMAGE:-rep0rter}
     restart: unless-stopped
     env_file:
-      - path: .env
+      - path: ${REP0RTER_ENV_FILE:-.env}
         required: false
     environment:
       - REP0RTER_DATA_DIR=/data

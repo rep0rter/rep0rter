@@ -68,6 +68,11 @@ Production runs with `docker compose up -d --build`: a `worker` (hourly cycle),
 `maintenance` (backups, health checks), `accounts` (Google login and owner project
 news), and `web` (Caddy, static files on `127.0.0.1:18090`).
 
+On Singa, a systemd timer checks `main` every minute and deploys new commits after
+their GitHub **Offline tests** workflow passes. Contributors only need to push
+to `main`; machine access is unnecessary. See [automatic deployment](docs/deployment.md)
+for installation, status, retries and rollback.
+
 ## Docs
 
 - [Full documentation (繁體中文)](docs/README.zh-TW.md)
