@@ -1,7 +1,7 @@
 """Owner-defined news templates, fed by public releases or RSS 2.0 entries."""
 from __future__ import annotations
 
-import fcntl
+from .runtime import locks as fcntl
 import hashlib
 import json
 import re

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-import fcntl
+from .runtime import locks as fcntl
 import os
 import tempfile
 import time

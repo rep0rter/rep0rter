@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rep0rter",
+  "account_id": "08f074fca6db8519f744f2a2675a2693",
+  "main": ".build/src/entry.py",
+  "compatibility_date": "2026-09-19",
+  "compatibility_flags": ["python_workers"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "durable_objects": {"bindings": [{"name": "REPORTER", "class_name": "Reporter"}]},
+  "migrations": [{"tag": "v1", "new_sqlite_classes": ["Reporter"]}],
+  "browser": {"binding": "BROWSER"},
+  "triggers": {"crons": ["7 * * * *"]},
+  "vars": {"REP0RTER_SITE_URL": "https://rep0rter.observe.tw", "RUN_ENABLED": "false"},
+  "observability": {"enabled": true},
+  "rules": [{"type": "Data", "globs": ["**/*.html", "**/*.xml", "**/*.css", "**/*.js", "**/*.png", "**/*.woff2", "**/*.txt"], "fallthrough": true}]
+}

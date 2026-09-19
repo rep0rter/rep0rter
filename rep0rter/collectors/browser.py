@@ -2,10 +2,17 @@
 import os
 
 import requests
-from playwright.sync_api import sync_playwright
+from ..runtime import services
+
+
+def sync_playwright():
+    from playwright.sync_api import sync_playwright as factory
+    return factory()
 
 
 def get_document(url, timeout=30):
+    if services.get() is not None:
+        return services.get().browser_document(url, timeout)
     # No cookies, credentials, scripts, subresources, or cross-origin redirects.
     # One permitted document request is charged by BudgetSession.
     with sync_playwright() as playwright:

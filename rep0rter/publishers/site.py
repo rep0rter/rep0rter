@@ -8,7 +8,7 @@ import shutil
 import os
 import uuid
 import json
-import fcntl
+from ..runtime import locks as fcntl, services
 from urllib.parse import quote, urlsplit
 from datetime import datetime, timezone
 from dataclasses import replace
@@ -245,6 +245,8 @@ class _StagingConfig:
 
 def build(store: Store, cfg: Config, limit: int = 300) -> Path:
     """Publish a complete generation via relative symlink; mount data parent in Docker."""
+    if services.get() is not None:
+        services.get().hydrate_assets(cfg)
     cfg.data_dir.mkdir(parents=True,exist_ok=True)
     releases=cfg.data_dir/'.site-releases'
     releases.mkdir(exist_ok=True)
@@ -254,7 +256,7 @@ def build(store: Store, cfg: Config, limit: int = 300) -> Path:
         staged.mkdir()
         try:
             if (cfg.site_dir/'cards').exists():
-                shutil.copytree(cfg.site_dir/'cards',staged/'cards',copy_function=os.link)
+                shutil.copytree(cfg.site_dir/'cards',staged/'cards',copy_function=shutil.copy2 if services.get() else os.link)
             _build(store,_StagingConfig(cfg,staged),limit)
             pointer=cfg.data_dir/('.site-'+uuid.uuid4().hex)
             pointer.symlink_to(staged.relative_to(cfg.data_dir),target_is_directory=True)
@@ -266,6 +268,8 @@ def build(store: Store, cfg: Config, limit: int = 300) -> Path:
             raise
         # Withdrawals purge every older generation so old private assets cannot linger.
         old=sorted((p for p in releases.iterdir() if p!=staged),key=lambda p:p.stat().st_mtime,reverse=True)
-        retained=0 if store.conn.execute('SELECT 1 FROM retractions LIMIT 1').fetchone() else 1
+        retained=0 if services.get() or store.conn.execute('SELECT 1 FROM retractions LIMIT 1').fetchone() else 1
         for path in old[retained:]: shutil.rmtree(path)
+    if services.get() is not None:
+        services.get().publish_site(cfg)
     return cfg.site_dir
