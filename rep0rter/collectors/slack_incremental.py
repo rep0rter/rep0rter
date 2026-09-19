@@ -18,6 +18,13 @@ OVERLAP = 7200
 REFRESH_INTERVAL = 21600
 
 
+def _budget_debt(state):
+    # Older deployed states have only the error string. Budget debt is work for
+    # the next run, not an upstream failure needing the one-hour backoff.
+    error = state.get('error', '')
+    return bool(state.get('gap') and ('budget exhausted' in error or 'bounded scan exhausted' in error))
+
+
 def _allowed(store, event=None, container_id=None):
     from ..policy import container_allowed, event_allowed
     if event is not None and event.meta.get('content_status') == 'deleted' and store.get_event(event.id):
@@ -106,7 +113,7 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         changed = state.get('last_posted') != posted or state.get('total_messages') != channel.total_messages
         recent = posted is None or posted >= now - (days + 1) * 86400
         due = now - state.get('last_refresh', 0) >= REFRESH_INTERVAL
-        if (not state and recent) or (state and changed) or (state.get('error') and now-state.get('last_attempt', 0)>=3600) or (recent and due):
+        if (not state and recent) or (state and changed) or (_budget_debt(state) or (state.get('error') and now-state.get('last_attempt', 0)>=3600)) or (recent and due):
             selected.append((channel, state, due))
         elif now - state.get('last_reconciliation', 0) >= 86400:
             quiet.append((channel, state, True))
@@ -117,7 +124,18 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
     selected.sort(key=lambda item: item[1].get('last_attempt', 0))
     if max_channels is not None:
         selected = selected[:max_channels]
-    for channel, state, due in selected:
+    for position, (channel, state, due) in enumerate(selected):
+        if not session.remaining:
+            # No HTTP happened: preserve attempt/refresh timestamps and pending
+            # cursors. The debt stays visible and is first in line next run.
+            with store.conn:
+                for deferred_channel, deferred_state, _ in selected[position:]:
+                    cid = 'slack:' + deferred_channel.id
+                    deferred_state = dict(deferred_state)
+                    deferred_state.update(gap=True, error=deferred_state.get('error') or 'request budget exhausted')
+                    write_state(store, cid, deferred_state)
+                    reasons[cid] = deferred_state['error']
+            break
         cid = 'slack:' + channel.id
         start = time.time()
         bootstrap = not state.get('last_complete_ts')
@@ -133,7 +151,11 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         next_state = dict(state, last_attempt=start, last_posted=channel.last_posted_at.timestamp() if channel.last_posted_at else None,
                           total_messages=channel.total_messages, last_synced=channel.last_synced_at.timestamp() if channel.last_synced_at else None)
         try:
-            raws, complete, error, resume_before = scan(session, channel.id, lower, start_before=state.get('pending_before'))
+            # Share pages across the remaining channels. A busy channel can
+            # retain its cursor without consuming the entire source allowance.
+            page_allowance = min(30, max(1, session.remaining // (len(selected) - position)))
+            raws, complete, error, resume_before = scan(session, channel.id, lower,
+                max_pages=page_allowance, start_before=state.get('pending_before'))
             events, authors = [], []
             for raw in raws:
                 event, author = api.to_event(raw, channel.id, public_ids)
@@ -153,7 +175,7 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
                 failures += 1
                 reasons[cid] = error
                 next_state.update(pending_before=resume_before, pending_lower=str(lower) if resume_before else None, pending_high=str(high) if resume_before else None)
-            if due:
+            if due and complete:
                 next_state['last_refresh'] = now
                 next_state['last_reconciliation'] = now
             store.upsert_container(Container(id=cid, source='slack', name=channel.name, topic=channel.topic,

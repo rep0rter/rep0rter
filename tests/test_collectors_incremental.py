@@ -186,3 +186,84 @@ def test_slack_tombstone_root_is_not_refreshed(tmp_path,monkeypatch):
         store.conn.execute("INSERT INTO events(id,source,kind,container_id,ts,first_seen,last_seen,meta) VALUES(?,?,?,?,?,?,?,?)",('slack:C:900000','slack','message','slack:C',900000,900000,900000,'{}'));store.conn.commit()
         inc.collect(store,session=Mock(headers={}))
         assert get.call_count==1
+
+
+def _scheduled_channel(channel_id, now):
+    from datetime import datetime, timezone
+    return inc.api.ChannelRow(channel_id, channel_id, '', '', 10, 10,
+                              datetime.fromtimestamp(now, timezone.utc))
+
+
+def _budgeted_pages(monkeypatch, values, limit):
+    session = Mock(headers={})
+    session.get.side_effect = [Mock(content=b'{}', json=Mock(return_value={'messages': rows})) for rows in values]
+    wrapped = BudgetSession(session, Metrics(), limit=limit, interval=0)
+    monkeypatch.setattr(inc.api, '_get', lambda transport, url, **params: transport.get(url, params=params))
+    return session, wrapped
+
+
+def test_budget_gap_retries_next_run_without_upstream_error_backoff(tmp_path, monkeypatch):
+    from rep0rter.collectors.state import write_state
+    now = 1000000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    channel = _scheduled_channel('C', now)
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda session: [channel])
+    session, transport = _budgeted_pages(monkeypatch, [[{'ts': '800000'}]], 2)
+    with Store(tmp_path/'db') as store:
+        with store.conn:
+            write_state(store, 'slack:C', {'last_complete_ts': '900000', 'last_posted': now,
+                'total_messages': 10, 'last_refresh': now, 'last_reconciliation': now,
+                'last_attempt': now - 3580, 'gap': True, 'error': 'request budget exhausted'})
+        inc.collect(store, session=transport)
+        assert session.get.call_count == 1
+        assert read_state(store, 'slack:C')['gap'] is False
+        assert read_state(store, 'slack:health')['healthy']
+
+
+def test_unattempted_channels_keep_timestamps_and_catch_up_first(tmp_path, monkeypatch):
+    from rep0rter.collectors.state import write_state
+    now = 1000000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    channels = [_scheduled_channel('A', now), _scheduled_channel('B', now)]
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda session: channels)
+    _, transport = _budgeted_pages(monkeypatch, [[{'ts': '800000'}]], 1)
+    with Store(tmp_path/'db') as store:
+        with store.conn:
+            write_state(store, 'slack:B', {'last_complete_ts': '900000', 'last_attempt': now - 50000,
+                'last_refresh': now - 50000, 'last_reconciliation': now - 50000})
+        inc.collect(store, session=transport)
+        deferred = read_state(store, 'slack:B')
+        assert deferred['last_attempt'] == deferred['last_refresh'] == now - 50000
+        assert deferred['last_complete_ts'] == '900000'
+        assert deferred['gap']
+        assert not read_state(store, 'slack:health')['history_complete']
+        now += 60
+        session, transport = _budgeted_pages(monkeypatch, [[{'ts': '800000'}]], 1)
+        inc.collect(store, session=transport)
+        assert session.get.call_args.kwargs['params']['channel'] == 'B'
+        assert read_state(store, 'slack:B')['gap'] is False
+        assert read_state(store, 'slack:health')['healthy']
+
+
+def test_busy_channel_preserves_cursor_without_starving_quiet_channel(tmp_path, monkeypatch):
+    now = 1000000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    channels = [_scheduled_channel('A', now), _scheduled_channel('B', now)]
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda session: channels)
+    bot = lambda ts: {'ts': ts, 'text': 'automation', 'user': {'id': 'BOT', 'is_bot': True}}
+    session, transport = _budgeted_pages(monkeypatch,
+        [[bot('999900'), bot('999800')], [bot('999700'), bot('999600')], [{'ts': '800000'}]], 4)
+    with Store(tmp_path/'db') as store:
+        inc.collect(store, session=transport)
+        assert [call.kwargs['params']['channel'] for call in session.get.call_args_list] == ['A', 'A', 'B']
+        a, b = read_state(store, 'slack:A'), read_state(store, 'slack:B')
+        assert a['pending_before'] == '999600' and a['pending_high'] == '999900'
+        assert 'last_complete_ts' not in a and 'last_refresh' not in a
+        assert b['gap'] is False
+        assert read_state(store, 'slack:health')['failed_channels'] == 1
+        now += 60
+        session, transport = _budgeted_pages(monkeypatch, [[{'ts': '800000'}]], 2)
+        inc.collect(store, session=transport)
+        assert session.get.call_args.kwargs['params']['before'] == '999600'
+        assert read_state(store, 'slack:A')['last_complete_ts'] == '999900'
+        assert read_state(store, 'slack:health')['healthy']
