@@ -18,7 +18,7 @@
 <link rel="alternate" type="application/rss+xml" title="{{ cfg.site_title }} RSS · {{ languages[language] }}" href="{{ prefix }}{{ feed }}">
 {% for lang in languages %}<link rel="alternate" hreflang="{{ lang }}" href="{{ canonical.rsplit('/', 1)[0] }}/{{ page_name(lang) }}">{% endfor %}
 <script src="{{ prefix }}theme.js"></script>
-<link rel="stylesheet" href="{{ prefix }}style.css">
+<link rel="stylesheet" href="{{ prefix }}style.css{% if style_version %}?v={{ style_version }}{% endif %}">
 <script defer src="{{ prefix }}reading.js"></script>
 <script defer src="{{ prefix }}language.js"></script>
 <script defer src="{{ prefix }}glass-motion.js"></script>
