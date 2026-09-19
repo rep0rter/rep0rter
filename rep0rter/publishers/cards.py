@@ -27,7 +27,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from ..config import TAIPEI, Config
 from ..slack_text import to_plain
-from ..store import Container, Event
+from ..store import Container, Event, Post
 
 log = logging.getLogger(__name__)
 SIZE = (1200, 630)
@@ -255,7 +255,39 @@ class CardRenderer:
                "avatar": "data:image/png;base64," + base64.b64encode(avatar).decode() if avatar else ""}
         template = env.get_template("card.html")
         rendered = template.render(ctx)
-        digest = hashlib.sha256(("card-v1" + rendered + str(self.cfg.card_font)).encode()).hexdigest()[:24]
+        return self._render_image(event, ctx, avatar, rendered)
+
+    def render_report(self, event: Event, container: Container | None, post: Post, language: str = "en") -> Path:
+        """Render a translated report, visibly distinguished from source quotations.
+
+        Telegram only publishes English reports. Never fall back to the original
+        language when that translation is missing or incomplete.
+        """
+        if language != "en":
+            raise ValueError("Report cards currently require English")
+        translated = post.translations.get(language)
+        if not isinstance(translated, dict) or not all(
+            isinstance(translated.get(field), str) and translated[field].strip()
+            for field in ("headline", "summary")
+        ):
+            raise ValueError("An English headline and summary are required for a report card")
+        avatar = identity_image(event, self.cfg)
+        host = urlsplit(event.url).hostname or event.source
+        source = {"slack": "g0v Slack", "github": "GitHub", "mastodon": "Mastodon"}.get(event.source, host)
+        author = event.author_name or source
+        channel = container.name if container else event.container_id
+        ctx = {"author": author, "source": source, "channel": channel,
+               "headline": translated["headline"].strip(), "summary": translated["summary"].strip(),
+               "date": datetime.fromtimestamp(event.ts, TAIPEI).strftime("%Y.%m.%d · %H:%M UTC+8"),
+               "initial": author.strip()[:1].upper() or "r", "host": host, "url": event.url,
+               "brand": "rep0rter", "report": True,
+               "avatar": "data:image/png;base64," + base64.b64encode(avatar).decode() if avatar else ""}
+        rendered = env.get_template("report-card.html").render(ctx)
+        return self._render_image(event, ctx, avatar, rendered, version="report-card-en-v1")
+
+    def _render_image(self, event: Event, ctx: dict, avatar: bytes | None, rendered: str,
+                      version: str = "card-v1") -> Path:
+        digest = hashlib.sha256((version + rendered + str(self.cfg.card_font)).encode()).hexdigest()[:24]
         path = self.cfg.site_dir / "cards" / f"{digest}.png"
         if path.exists():
             try:
@@ -299,15 +331,26 @@ class CardRenderer:
                 image.paste(face, (60, 60), mask)
         else:
             draw.text((85, 72), ctx["initial"], font=_font(self.cfg, 40), fill="#253a2d")
-        for line in _wrap(ctx["author"], _font(self.cfg, 29), 700, 1):
+        author_label = ("Source: " if ctx.get("report") else "") + ctx["author"]
+        for line in _wrap(author_label, _font(self.cfg, 29), 700, 1):
             draw.text((164, 61), line, font=_font(self.cfg, 29), fill="#1d3227")
         label = f'{ctx["source"]} · #{ctx["channel"]}'
         draw.text((164, 109), _wrap(label, _font(self.cfg, 20), 920, 1)[0], font=_font(self.cfg, 20), fill="#637069")
         draw.line((60, 170, 1140, 170), fill="#e5eae2", width=2)
-        font = _font(self.cfg, 34)
-        for i, line in enumerate(_wrap(ctx["original"], font, 1060, 6)):
-            draw.text((68, 193 + i * 48), line, font=font, fill="#233229")
-        draw.text((64, 524), "ORIGINAL EXCERPT · " + ctx["date"], font=_font(self.cfg, 16), fill="#637069")
+        if ctx.get("report"):
+            draw.text((68, 190), "ENGLISH REPORT · Summary by rep0rter", font=_font(self.cfg, 18), fill="#637069")
+            headline_lines = _wrap(ctx["headline"], _font(self.cfg, 38), 1060, 2)
+            for i, line in enumerate(headline_lines):
+                draw.text((68, 226 + i * 49), line, font=_font(self.cfg, 38), fill="#233229")
+            for i, line in enumerate(_wrap(ctx["summary"], _font(self.cfg, 30), 1060, 3)):
+                draw.text((68, 245 + len(headline_lines) * 49 + i * 44), line, font=_font(self.cfg, 30), fill="#233229")
+            footer_label = "SOURCE POSTED"
+        else:
+            font = _font(self.cfg, 34)
+            for i, line in enumerate(_wrap(ctx["original"], font, 1060, 6)):
+                draw.text((68, 193 + i * 48), line, font=font, fill="#233229")
+            footer_label = "ORIGINAL EXCERPT"
+        draw.text((64, 524), footer_label + " · " + ctx["date"], font=_font(self.cfg, 16), fill="#637069")
         source_url = _wrap(ctx["url"], _font(self.cfg, 14), 800, 1)
         if source_url:
             draw.text((64, 552), source_url[0], font=_font(self.cfg, 14), fill="#637069")
