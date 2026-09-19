@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -7,6 +8,7 @@ from rep0rter.config import Config
 from rep0rter.i18n import LANGUAGES, post_text
 from rep0rter.reporter import Candidate, missing_languages, translate_post, write_multilingual_item
 from rep0rter.store import Event, Post, Store
+from rep0rter.writer_contract import TZ
 
 
 def translations():
@@ -117,6 +119,28 @@ def test_backfill_recovers_after_first_request_error():
     assert translate_post(post, llm)
     assert not missing_languages(post)
     assert llm.chat_json.call_count == 2
+
+
+def test_backfill_dates_use_original_source_day_across_publication_midnight():
+    source_ts=datetime(2026,9,16,16,59,tzinfo=TZ).timestamp()
+    published_at=datetime(2026,9,17,0,7,tzinfo=TZ).timestamp()
+    saved_ja={'headline':'保存済みのタイトル','summary':'保存済みの要約'}
+    post=Post('x',published_at,9,'今晚小松討論活動成效','今天晚上討論活動成果',
+              translations={'ja':saved_ja.copy()},delivery={'telegram':123})
+    llm=Mock()
+    bad=translations();bad['en']['headline']='x'*31
+    llm.chat_json.side_effect=[bad,{'en':{'headline':'2026-09-16 meetup','summary':'The meetup discusses activity results'}}]
+    assert translate_post(post,llm,source_ts=source_ts)
+    assert llm.chat_json.call_count==2
+    for call in llm.chat_json.call_args_list:
+        payload=json.loads(call.args[1])
+        assert payload['headline']=='2026-09-16小松討論活動成效'
+        assert payload['summary']=='2026-09-16討論活動成果'
+        assert payload['metadata']=={'source_time':'2026-09-16T16:59:00+08:00','timezone':'Asia/Taipei'}
+    assert post.headline=='今晚小松討論活動成效'
+    assert post.summary=='今天晚上討論活動成果'
+    assert post.translations['ja']==saved_ja
+    assert post.delivery=={'telegram':123}
 
 
 def test_backfill_repairs_invalid_saved_editions_but_bounds_retries():
