@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-import fcntl
+from .runtime import locks as fcntl, services
 import os
 import tempfile
 import time
@@ -88,6 +88,8 @@ def _save_locked(store):
     tombstones = {r['event_id']:r for r in previous['tombstones']}
     tombstones.update({r['event_id']:dict(r) for r in store.conn.execute('SELECT * FROM event_tombstones')})
     _atomic_json(path, {'schema':1,'rules':list(rules.values()),'tombstones':list(tombstones.values())})
+    if services.get() is not None:
+        services.get().persist_policy(path)
 
 
 def save(store):
@@ -395,6 +397,9 @@ def _purge_media(store, withdrawn_urls=()):
     # Serialize with whole-generation builds so a build cannot republish a stale
     # page just after this scrub. The lock is acquired only after DB commits.
     base = store.path.parent
+    runtime = services.get()
+    if runtime is not None:
+        runtime.hydrate_site()
     with (base / 'site-build.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         roots = set()
@@ -412,6 +417,8 @@ def _purge_media(store, withdrawn_urls=()):
                 path.unlink()
             elif path.is_dir():
                 shutil.rmtree(path)
+        if runtime is not None:
+            runtime.publish_site(None)
 
 
 def _scrub(store, event_id):
