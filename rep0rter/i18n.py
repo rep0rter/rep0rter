@@ -1,7 +1,42 @@
 """Shared language identifiers, UI copy, and honest translation fallbacks."""
+import re
 
 DEFAULT_LANGUAGE = "en"
 LANGUAGES = {"en": "English", "zh-TW": "繁體中文", "ja": "日本語", "ko": "한국어"}
+# Names for prompts: unambiguous to a model regardless of the prompt's own language.
+LANGUAGE_PROMPT_NAMES = {"en": "English", "zh-TW": "Taiwan Traditional Chinese", "ja": "Japanese", "ko": "Korean"}
+
+_URL = re.compile(r"https?://\S+")
+_HANGUL = re.compile("[ᄀ-ᇿ㄰-㆏가-힣]")
+_KANA = re.compile("[぀-ヿㇰ-ㇿ]")
+_HAN = re.compile("[㐀-䶿一-鿿]")
+_LATIN = re.compile("[A-Za-z]")
+
+
+def detect_language(text: str) -> str | None:
+    """Guess which of LANGUAGES a text is written in from its scripts, or None if unclear.
+
+    Script counts only: Hangul means Korean, kana means Japanese, otherwise Han means
+    Chinese (reported as zh-TW, the edition this project writes; Simplified is not
+    told apart) and Latin means English. Kana-free Japanese made only of kanji is
+    indistinguishable from Chinese. Digits, URLs and punctuation carry no signal.
+    """
+    text = _URL.sub(" ", text or "")
+    hangul, kana, han, latin = (len(p.findall(text)) for p in (_HANGUL, _KANA, _HAN, _LATIN))
+    total = hangul + kana + han + latin
+    if not total:
+        return None
+    if hangul / total >= 0.3:
+        return "ko"
+    # Quoted Japanese names must not override predominantly Latin text.
+    # Within CJK text, require enough kana to distinguish it from Chinese.
+    if kana >= 3 and (kana + han) / total >= 0.3 and kana / (kana + han) >= 0.2:
+        return "ja"
+    if han / total >= 0.3:
+        return "zh-TW"
+    if latin / total >= 0.7:
+        return "en"
+    return None
 
 
 def page_name(language: str) -> str:
@@ -231,14 +266,6 @@ for _language, _label in {
     COPY[_language]['browse_by_date'] = _label
 
 for _language, _values in {
-    'en': {'archive_import': 'Archive entry · original source date', 'source_excerpt': 'Original feed text · may be an excerpt'},
-    'ko': {'archive_import': '지난 소식 · 원문 게시일 기준', 'source_excerpt': '피드 원문 · 일부 내용일 수 있습니다'},
-    'ja': {'archive_import': '過去の記事 · 原文の投稿日', 'source_excerpt': 'フィード原文 · 抜粋の場合があります'},
-    'zh-TW': {'archive_import': '歷史文章 · 依原文日期', 'source_excerpt': 'Feed 原文 · 可能為節錄'},
-}.items():
-    COPY[_language].update(_values)
-
-for _language, _values in {
     'en': ('Write a story', 'Sign in with Google to share your own story', 'Hashtags', 'Explore hashtags',
            'Hashtag timeline', 'Source timeline', 'Follow the story, update by update.', '{count} stories',
            'Self-reported', 'No evidence link supplied', 'How to take part'),
@@ -255,3 +282,12 @@ for _language, _values in {
     COPY[_language].update(zip(('write_story', 'contribute', 'hashtags', 'explore_hashtags',
                                'hashtag_timeline', 'source_timeline', 'timeline_intro', 'story_count',
                                'self_reported', 'no_evidence', 'take_part'), _values))
+
+
+for _language, _values in {
+    'en': ('Source examples', 'Historical source example · original date shown below'),
+    'zh-TW': ('來源範例', '歷史來源範例・原始日期列於下方'),
+    'ja': ('情報源の実例', '過去の情報源の実例・原文の日付は下記に表示'),
+    'ko': ('출처별 실제 사례', '과거 출처의 실제 사례 · 원문 날짜는 아래에 표시'),
+}.items():
+    COPY[_language].update(zip(('source_examples', 'source_example_note'), _values))

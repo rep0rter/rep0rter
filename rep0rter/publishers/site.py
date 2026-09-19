@@ -8,7 +8,7 @@ import shutil
 import os
 import uuid
 import json
-import fcntl
+from ..runtime import locks as fcntl, services
 from urllib.parse import quote, urlsplit
 from datetime import datetime, timezone
 from dataclasses import replace
@@ -122,6 +122,11 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
     from ..stories import info
     with CardRenderer(cfg) as cards:
         for post, event, container in rows:
+            if 'source_example' in post.reasons:
+                # Keep public quotations short; summaries and links carry the report.
+                excerpt = ' '.join(plain_text(event).split()[:12])[:40].rstrip()
+                event = replace(event, text=excerpt, html='',
+                                meta={**event.meta, 'plain_text': excerpt, 'content_format': 'plain'})
             image = cards.render(event, container, names)
             image_dark = cards.render(event, container, names, theme="dark")
             headline, summary, _ = _display_text(post, 'en')
@@ -167,6 +172,7 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
            "generated_local": _fmt_local(now), "generated_rfc822": _fmt_rfc822(now),
            "event_count": store.event_count(), "post_count": store.post_count(),
            "branding": _branding(cfg),
+           "has_examples": any("source_example" in item["post"].reasons for item in items),
            "last_healthy": _fmt_local(last_healthy_at) if last_healthy_at else None,
            "collection_complete": collection_complete}
     template = env.get_template("index.html")
@@ -237,6 +243,9 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
             render_page(language, source_items, source_path + page_name(language), "../../", source_items[0]["source_label"])
         for tag, tag_items in tagged.items():
             render_page(language, tag_items, hashtags.path(tag) + page_name(language), '../../', '#' + tag, tag=tag)
+        examples = [item for item in localized if 'source_example' in item['post'].reasons]
+        if examples:
+            render_page(language, examples, 'examples/' + page_name(language), '../', COPY[language]['source_examples'])
         root_outputs.append((language, localized[:limit]))
     # Publish discovery pages after every linked story and asset exists.
     for language, localized in root_outputs:
@@ -268,6 +277,8 @@ class _StagingConfig:
 
 def build(store: Store, cfg: Config, limit: int = 300) -> Path:
     """Publish a complete generation via relative symlink; mount data parent in Docker."""
+    if services.get() is not None:
+        services.get().hydrate_assets(cfg)
     cfg.data_dir.mkdir(parents=True,exist_ok=True)
     releases=cfg.data_dir/'.site-releases'
     releases.mkdir(exist_ok=True)
@@ -277,7 +288,7 @@ def build(store: Store, cfg: Config, limit: int = 300) -> Path:
         staged.mkdir()
         try:
             if (cfg.site_dir/'cards').exists():
-                shutil.copytree(cfg.site_dir/'cards',staged/'cards',copy_function=os.link)
+                shutil.copytree(cfg.site_dir/'cards',staged/'cards',copy_function=shutil.copy2 if services.get() else os.link)
             _build(store,_StagingConfig(cfg,staged),limit)
             pointer=cfg.data_dir/('.site-'+uuid.uuid4().hex)
             pointer.symlink_to(staged.relative_to(cfg.data_dir),target_is_directory=True)
@@ -289,6 +300,8 @@ def build(store: Store, cfg: Config, limit: int = 300) -> Path:
             raise
         # Withdrawals purge every older generation so old private assets cannot linger.
         old=sorted((p for p in releases.iterdir() if p!=staged),key=lambda p:p.stat().st_mtime,reverse=True)
-        retained=0 if store.conn.execute('SELECT 1 FROM retractions LIMIT 1').fetchone() else 1
+        retained=0 if services.get() or store.conn.execute('SELECT 1 FROM retractions LIMIT 1').fetchone() else 1
         for path in old[retained:]: shutil.rmtree(path)
+    if services.get() is not None:
+        services.get().publish_site(cfg)
     return cfg.site_dir

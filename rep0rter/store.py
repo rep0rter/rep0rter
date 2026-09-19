@@ -171,7 +171,8 @@ class Store:
     def __init__(self, path: Path | str):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(self.path)
+        from .runtime import connect
+        self.conn = connect(self.path)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA foreign_keys=ON")
@@ -349,8 +350,8 @@ class Store:
         from .writer_contract import text_errors
         from .i18n import LANGUAGES
 
-        def valid(entry):
-            return isinstance(entry, dict) and not text_errors(entry.get('headline'), entry.get('summary'))
+        def valid(entry, language):
+            return isinstance(entry, dict) and not text_errors(entry.get('headline'), entry.get('summary'), language=language)
 
         with self.conn:
             self.conn.execute('BEGIN IMMEDIATE')
@@ -361,7 +362,7 @@ class Store:
                 return False
             current = json.loads(row['translations'] or '{}')
             additions = {language: entry for language, entry in post.translations.items()
-                         if language in LANGUAGES and valid(entry) and not valid(current.get(language))}
+                         if language in LANGUAGES and valid(entry, language) and not valid(current.get(language), language)}
             if not additions:
                 post.translations = current
                 return False
