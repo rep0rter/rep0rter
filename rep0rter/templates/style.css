@@ -487,7 +487,7 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
   .hero h1 span { background: none; color: CanvasText; }
 }
 
-/* Server-rendered account forms stay script-free and follow device appearance. */
+/* Base account form controls; account.css adds the shared reader shell. */
 .account-page > header, .account-page > main, .account-page > footer { width: min(100% - 40px, 920px); margin-inline: auto; }
 .account-page > header { padding-block: 24px 32px; }
 .account-page .masthead { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 24px; margin-bottom: 32px; }
@@ -507,7 +507,6 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
 .account-page button { min-height: 44px; padding: 12px 20px; border: 1px solid transparent; border-radius: var(--radius-control); background: #315c8f; color: #fff; font: 600 16px/1.5 var(--font-body); box-shadow: var(--shadow-button); }
 .account-page button:focus-visible, .account-page input:focus-visible, .account-page textarea:focus-visible, .account-page select:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 .account-page .quiet-button { border-color: var(--line); background: var(--surface); color: var(--ink); }
-.account-page .google-login { border-color: #747775; background: #fff; color: #1f1f1f; }
 .account-page .project-form button { margin-top: 24px; }
 .account-page .form-help { margin-top: 10px; color: var(--muted); font-size: 14px; }
 .account-page .project-form .owner-confirmation { display: flex; align-items: flex-start; gap: 12px; min-height: 44px; font-size: 14px; font-weight: 400; }
