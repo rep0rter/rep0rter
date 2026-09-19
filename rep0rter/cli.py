@@ -19,6 +19,7 @@ from .i18n import LANGUAGES
 from .llm import LLM
 from .publishers import site as site_publisher
 from .publishers import telegram
+from . import threads_delivery
 from .reporter import draft_posts, missing_languages, translate_post
 from .store import Store
 
@@ -53,10 +54,22 @@ def cmd_report(cfg: Config, args) -> int:
             _backfill_translations(store, cfg)
         site_publisher.build(store, cfg)
         deliver_pending(cfg, store)
+        _deliver_threads(cfg, store)
         from .retractions import process
         process(store,cfg)
     print(f"posted {len(drafts) + automatic_posts} item(s)")
     return 0
+
+
+def _deliver_threads(cfg: Config, store: Store) -> dict[str, str]:
+    """Run the optional Threads step without letting it abort Telegram retractions."""
+    try:
+        if cfg.threads_enabled:
+            threads_delivery.enqueue_missing(cfg, store)
+        return threads_delivery.deliver_pending(cfg, store)
+    except Exception as exc:
+        log.error('Threads delivery step failed (%s); continuing the reporting cycle', type(exc).__name__)
+        return {}
 
 
 def cmd_build_site(cfg: Config, args) -> int:
@@ -171,6 +184,76 @@ def cmd_outbox(cfg: Config, args) -> int:
     return 0
 
 
+def cmd_threads(cfg: Config, args) -> int:
+    from .policy import event_allowed
+    from .publishers import threads
+    from .store import Post
+    with Store(cfg.db_path) as store:
+        has_jobs = store.conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='threads_jobs'").fetchone()
+        outbox = None
+        if args.threads_command in ('outbox', 'reconcile'):
+            outbox = threads_delivery.ThreadsOutbox(store)
+            has_jobs = True
+        if args.threads_command == 'list':
+            for post, event, _ in store.recent_posts(limit=args.limit):
+                if not event_allowed(store, event):
+                    continue
+                job = (store.conn.execute('SELECT status,permalink FROM threads_jobs WHERE post_id=?',
+                                          (post.id,)).fetchone() if has_jobs else None)
+                print(f"{post.id}: {job['status'] if job else 'unposted'} | {post.headline}"
+                      f" | {job['permalink'] or '' if job else ''}")
+        elif args.threads_command == 'send':
+            selected = []
+            for post_id in dict.fromkeys(args.post):
+                row = store.conn.execute('SELECT * FROM posts WHERE id=?', (post_id,)).fetchone()
+                if row is None:
+                    raise ValueError(f'Post {post_id} does not exist')
+                event = store.get_event(row['event_id'])
+                if event is None or not event_allowed(store, event):
+                    raise ValueError(f'Post {post_id} is withdrawn or excluded')
+                post = Post(id=row['id'], event_id=row['event_id'], published_at=row['published_at'],
+                            score=row['score'], headline=row['headline'], summary=row['summary'])
+                job = (store.conn.execute('SELECT status FROM threads_jobs WHERE post_id=?',
+                                          (post_id,)).fetchone() if has_jobs else None)
+                if job:
+                    print(f'{post_id}: already {job["status"]}; skipped')
+                    continue
+                print(f'Post {post_id} preview:\n{threads.format_text(cfg, post)}\n')
+                selected.append(post_id)
+            if args.apply and selected:
+                if not cfg.threads_enabled:
+                    raise ValueError('Enable Threads before queuing posts')
+                print(f'Queued {threads_delivery.enqueue_missing(cfg, store, selected)} post(s)')
+        elif args.threads_command == 'deliver':
+            threads_delivery.enqueue_missing(cfg, store)
+            sent = threads_delivery.deliver_pending(cfg, store)
+            print(f'Delivered {len(sent)} post(s)')
+        elif args.threads_command == 'outbox':
+            outbox.recover()
+            for row in store.conn.execute('SELECT id,post_id,status,thread_id,permalink,error FROM threads_jobs ORDER BY id'):
+                print(dict(row))
+        elif args.threads_command == 'reconcile':
+            row = store.conn.execute('SELECT id,status,payload,target FROM threads_jobs WHERE post_id=?', (args.post,)).fetchone()
+            if row is None:
+                raise ValueError('Post has no Threads job')
+            if args.remote_id:
+                account = threads.get_account(cfg)
+                if str(account.get('id')) != row['target'] or row['target'] != cfg.threads_user_id:
+                    raise ValueError('Threads reconciliation account does not match the queued target')
+                remote = threads.get_post(cfg, args.remote_id)
+                permalink = remote.get('permalink')
+                expected = json.loads(row['payload'] or '{}').get('text')
+                if (not account.get('username') or remote.get('username') != account['username'] or
+                        str(remote.get('id')) != args.remote_id or not expected or remote.get('text') != expected or
+                        not permalink or not threads._valid_url(permalink)):
+                    raise ValueError('Remote Threads post could not be verified')
+                outbox.reconcile(row['id'], thread_id=args.remote_id, permalink=permalink)
+            else:
+                outbox.reconcile(row['id'], retry=True)
+            print(f'Reconciled post {args.post}')
+    return 0
+
+
 def _reconcile_exclusions(store,cfg):
     from .policy import affected,redact
     from .retractions import plan_remote,queue
@@ -207,6 +290,7 @@ def run_once(cfg: Config, dry_run: bool = False, no_llm: bool = False, days: int
                     _backfill_translations(store, cfg)
                 site_publisher.build(store, cfg)
                 deliver_pending(cfg, store)
+                _deliver_threads(cfg, store)
                 from .retractions import process
                 process(store,cfg)
             health=json.loads(store.get_kv('collector_health','{}'))
@@ -253,6 +337,7 @@ def cmd_status(cfg: Config, args) -> int:
         print(f"events: {store.event_count()}  posts: {store.post_count()}")
         print(f"telegram: {'configured' if cfg.telegram_bot_token and cfg.telegram_target else 'NOT configured'}"
               f"{' (test chat)' if cfg.telegram_use_test_chat else ''}")
+        print(f"threads: {'configured' if cfg.threads_enabled and cfg.threads_user_id and cfg.threads_access_token else 'NOT configured'}")
         print(f"llm: {'configured (' + str(cfg.ai_model) + ')' if cfg.llm_enabled else 'NOT configured'}")
         if last:
             print(f"last run: started {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(last['started_at']))}, "
@@ -296,6 +381,26 @@ def main(argv: list[str] | None = None) -> int:
     action.add_argument("--message-id", type=int, help="record a delivery confirmed in Telegram")
     action.add_argument("--retry", action="store_true", help="requeue only after confirming it was not delivered")
     p.set_defaults(func=cmd_outbox)
+
+    p = sub.add_parser('threads', help='preview, queue, deliver and inspect Threads posts')
+    actions = p.add_subparsers(dest='threads_command', required=True)
+    action = actions.add_parser('list', help='list saved posts and Threads status')
+    action.add_argument('--limit', type=int, default=30)
+    action.set_defaults(func=cmd_threads, readonly=True)
+    action = actions.add_parser('send', help='preview selected posts; --apply queues them')
+    action.add_argument('--post', type=int, action='append', required=True)
+    action.add_argument('--apply', action='store_true')
+    action.set_defaults(func=cmd_threads)
+    action = actions.add_parser('deliver', help='send at most the configured batch size')
+    action.set_defaults(func=cmd_threads)
+    action = actions.add_parser('outbox', help='inspect durable Threads jobs')
+    action.set_defaults(func=cmd_threads)
+    action = actions.add_parser('reconcile', help='resolve an uncertain Threads send')
+    action.add_argument('--post', type=int, required=True)
+    choice = action.add_mutually_exclusive_group(required=True)
+    choice.add_argument('--remote-id', help='verified remote post ID')
+    choice.add_argument('--confirm-absent', action='store_true', help='requeue after checking no remote post exists')
+    action.set_defaults(func=cmd_threads)
 
     p = sub.add_parser("run", help="collect + report + build site, once")
     p.add_argument("--dry-run", action="store_true")

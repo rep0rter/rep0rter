@@ -6,7 +6,10 @@ import sys
 services = ContextVar('rep0rter_services', default=None)
 
 if sys.platform != 'emscripten':
-    import fcntl as locks
+    try:
+        import fcntl as locks
+    except ModuleNotFoundError:  # Windows local development
+        from ._fcntl_compat import fcntl as locks
 else:
     class locks:
         # The Workers entrypoint serializes every application operation. There

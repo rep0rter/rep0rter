@@ -24,6 +24,11 @@ import xml.etree.ElementTree as ET
 
 import requests
 
+try:
+    import fcntl
+except ModuleNotFoundError:  # pragma: no cover - Windows development/test only
+    from ._fcntl_compat import fcntl
+
 
 @contextlib.contextmanager
 def readonly(path):
