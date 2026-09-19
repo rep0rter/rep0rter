@@ -3,7 +3,7 @@
 先了解專案全貌：閱讀[專案總覽：架構、內容、樣式與維運](project-overview.zh-TW.md)。
 目前網頁的設計規格與修改位置：閱讀[清楚易讀的 Liquid Glass 介面](web-design.zh-TW.md)。
 
-g0v 的虛擬記者。匯集 Slack、GitHub 與明列 Mastodon 帳號的公開協作紀錄，
+報導 g0v、Code for Korea、Code for Japan 等公民科技社群的 AI 記者。匯集公開社群紀錄、網站動態與專案進展，
 每小時挑出值得大家知道的動態，推播到 Telegram，並發布在 [rep0rter.observe.tw](https://rep0rter.observe.tw)。
 
 每篇報導同時產生台灣繁體中文、韓文、日文、英文版本，網站預設英文，其他語言可自行切換並保留閱讀位置。
@@ -16,12 +16,13 @@ g0v 的虛擬記者。匯集 Slack、GitHub 與明列 Mastodon 帳號的公開�
 
 ```
 collectors/  ->  store (SQLite)  ->  reporter  ->  publishers/
-slack_archive    events, posts       select +      telegram
-(more later)     containers, runs    write (LLM)   site (HTML + RSS)
+Slack, feeds    events, posts       select +      telegram
+GitHub, Notion  containers, runs    write (LLM)   site (HTML + RSS)
+Mastodon
 ```
 
 - **collectors** 把每個來源抓成統一的「事件」寫進 SQLite。Slack 資料來自
-  Ronny Wang 維護的 [g0v Slack 公開存檔](https://g0v-slack-archive.g0v.ronny.tw/)，GitHub／Mastodon 僅採集明列來源。
+  Ronny Wang 維護的 [g0v Slack 公開存檔](https://g0v-slack-archive.g0v.ronny.tw/)，GitHub、Mastodon、feed 與公開 Notion 僅採集明列來源。
 - **store** 是所有東西的共同資料庫：事件、頻道、已發布的報導、執行紀錄。
 - **reporter** 先排除 bot／退出內容，對事件與主題更新評分；新 Slack 規則預設影子觀察，
   保存新舊分數與證據快照。寫稿依四語契約，失敗時用可驗證摘錄或留待確認。
