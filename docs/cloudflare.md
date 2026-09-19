@@ -98,8 +98,8 @@ token. The old Steam deployment timer must remain disabled.
 2. Commit and push to `main`, and wait for the exact commit's successful GitHub
    **Offline tests** push run before deploying production code. Bootstrap the engine with scheduling disabled
    and its `SITE` binding omitted, then the frontend with its public route omitted,
-   then restore the engine binding. Keep those temporary configs under the ignored
-   `.wrangler` directory. Both service bindings must exist before importing.
+   then restore the engine binding. Keep those temporary configs beside the checked-in configs with an ignored
+   `.env.bootstrap-*.json` filename (Python dependencies resolve relative to the config). Both service bindings must exist before importing.
 3. Pause local writers through `cloudflare/cutover.py pause`. This acquires the
    installed deployment controller's lock and uses its existing stop method.
    Exit 75 means another deployment is active; wait and retry. The website stays
