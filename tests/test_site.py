@@ -1,6 +1,7 @@
 """Offline regressions for localized feeds, durable URLs, and generated assets."""
 
 import hashlib
+import io
 import json
 import re
 import time
@@ -30,19 +31,19 @@ def published_site(tmp_path, monkeypatch):
     cfg = Config(data_dir=tmp_path, site_url="https://example.test/reporter")
     rendered_ids = []
 
-    def render(renderer, event, container, names):
+    def render(renderer, event, container, names, *, theme="light"):
         rendered_ids.append(event.id)
-        filename = hashlib.sha256(event.id.encode()).hexdigest() + ".png"
+        filename = hashlib.sha256(event.id.encode()).hexdigest() + ("-dark" if theme == "dark" else "") + ".png"
         path = renderer.cfg.site_dir / "cards" / filename
         path.parent.mkdir(parents=True, exist_ok=True)
-        Image.new("RGB", (2, 2), "white").save(path)
+        Image.new("RGB", (2, 2), "black" if theme == "dark" else "white").save(path)
         return path
 
     monkeypatch.setattr(site.CardRenderer, "render", render)
-    def render_report(renderer, event, container, post, language):
-        path = renderer.cfg.site_dir / 'cards' / f'report-{post.id}-{language}.png'
+    def render_report(renderer, event, container, post, language, *, theme="light"):
+        path = renderer.cfg.site_dir / 'cards' / f'report-{post.id}-{language}{"-dark" if theme == "dark" else ""}.png'
         path.parent.mkdir(parents=True, exist_ok=True)
-        Image.new('RGB', (2, 2), 'blue').save(path)
+        Image.new('RGB', (2, 2), 'navy' if theme == 'dark' else 'blue').save(path)
         return path
     monkeypatch.setattr(site.CardRenderer, "render_report", render_report)
     with Store(cfg.db_path) as store:
@@ -87,6 +88,74 @@ def local_path(cfg, url):
     assert parsed.netloc == base.netloc
     assert parsed.path.startswith(base.path)
     return cfg.site_dir / unquote(parsed.path[len(base.path):])
+
+
+def test_author_avatar_publishes_one_local_asset_for_shared_photo(tmp_path, monkeypatch):
+    cfg = Config(data_dir=tmp_path)
+    buffer = io.BytesIO()
+    Image.new("RGB", (12, 12), "teal").save(buffer, format="PNG")
+    photo = buffer.getvalue()
+    monkeypatch.setattr(site, "identity_image", lambda event, config: photo)
+    event = Event("slack:C:1", "slack", "message", "slack:C", 1,
+                  meta={"avatar_url": "https://identity.example.test/person.png"})
+
+    asset = site._author_avatar(event, cfg)
+    shared_asset = site._author_avatar(replace(event, id="slack:C:2"), cfg)
+
+    assert shared_asset == asset
+    assert asset.startswith("cards/avatar-")
+    assert (cfg.site_dir / asset).read_bytes() == photo
+    assert len(list((cfg.site_dir / "cards").glob("avatar-*.png"))) == 1
+
+
+def test_author_avatar_without_identity_does_not_fetch_or_publish(tmp_path, monkeypatch):
+    cfg = Config(data_dir=tmp_path)
+    calls = []
+    monkeypatch.setattr(site, "identity_image", lambda event, config: calls.append(event.id))
+    event = Event("slack:C:1", "slack", "message", "slack:C", 1)
+
+    assert site._author_avatar(event, cfg) == ""
+    assert calls == []
+    unavailable = replace(event, meta={"avatar_url": "https://identity.example.test/gone.png"})
+    assert site._author_avatar(unavailable, cfg) == ""
+    assert calls == [event.id]
+    assert not (cfg.site_dir / "cards").exists()
+
+
+def test_author_byline_preserves_local_photo_and_initial_fallback_across_editions(published_site, monkeypatch):
+    store, cfg, _, entries, _ = published_site
+    with_photo, without_photo = entries[-1], entries[0]
+    photo_event = replace(with_photo[1], meta={"avatar_url": "https://identity.example.test/person.png"})
+    store.upsert_events([photo_event])
+    buffer = io.BytesIO()
+    Image.new("RGB", (12, 12), "teal").save(buffer, format="PNG")
+    photo = buffer.getvalue()
+    monkeypatch.setattr(site, "identity_image", lambda event, config: photo)
+
+    for _ in range(2):
+        site.build(store, cfg)
+        # Asset cleanup and subsequent atomic releases must retain byline media.
+        assets = list((cfg.site_dir / "cards").glob("avatar-*.png"))
+        assert len(assets) == 1
+        assert assets[0].read_bytes() == photo
+        for _, (page, _) in EDITIONS.items():
+            paths = [cfg.site_dir / page,
+                     cfg.site_dir / "posts" / str(with_photo[0].id) / page]
+            for path in paths:
+                article = html(path).find("article", id=str(with_photo[0].id))
+                avatar = article.select_one(".byline [data-author-avatar]")
+                assert avatar is not None
+                assert avatar["alt"] == ""
+                assert avatar.parent["aria-hidden"] == "true"
+                assert avatar["width"] == avatar["height"] == "29"
+                assert not urlsplit(avatar["src"]).netloc
+                assert (path.parent / avatar["src"]).resolve() == assets[0].resolve()
+                assert article.select_one(".byline").get_text().count(photo_event.author_name) == 1
+                assert "identity.example.test" not in str(article)
+            fallback_path = cfg.site_dir / "posts" / str(without_photo[0].id) / page
+            fallback = html(fallback_path).select_one(".byline .avatar-initial")
+            assert not fallback.select("img")
+            assert fallback.get_text() == without_photo[1].author_name[0]
 
 
 def test_four_editions_escape_content_and_preserve_legacy_feed_guids(published_site):
@@ -258,10 +327,10 @@ def test_missing_english_translation_uses_honest_pending_copy_without_saving_it(
                            ('原本的標題', '原本的摘要', json.dumps(translations), latest.id))
     captured = []
     original_render_report = site.CardRenderer.render_report
-    def capture(renderer, event, container, post, language):
+    def capture(renderer, event, container, post, language, *, theme="light"):
         if post.id == latest.id:
             captured.append(post.translations['en'])
-        return original_render_report(renderer, event, container, post, language)
+        return original_render_report(renderer, event, container, post, language, theme=theme)
     monkeypatch.setattr(site.CardRenderer, 'render_report', capture)
     site.build(store, cfg)
     doc = html(cfg.site_dir / 'index.html')
@@ -371,7 +440,8 @@ def test_images_open_with_named_in_page_controls_in_every_edition_and_page(publi
         assert images
         assert len(doc.select("[data-image-view]")) == len(images)
         for image in images:
-            trigger = image.parent
+            assert image.parent.name == "picture"
+            trigger = image.parent.parent
             assert trigger.name == "button", "Image clicks must not navigate to raw files"
             assert trigger["type"] == "button"
             assert trigger.has_attr("data-image-view") and trigger.has_attr("disabled")
@@ -380,7 +450,18 @@ def test_images_open_with_named_in_page_controls_in_every_edition_and_page(publi
             assert trigger["aria-label"].strip()
             assert not trigger.has_attr("href")
             assert trigger["data-image-src"] == image["src"]
-            assert local_path(cfg, urljoin(page_url, trigger["data-image-src"])).is_file()
+            assert trigger["data-image-light"] == image["src"]
+            assert trigger["data-image-dark"] != trigger["data-image-light"]
+            source = image.parent.select_one("source[data-theme-source]")
+            assert source["media"] == "(prefers-color-scheme: dark)"
+            assert source["srcset"] == trigger["data-image-dark"]
+            for attribute in ("data-image-light", "data-image-dark"):
+                assert local_path(cfg, urljoin(page_url, trigger[attribute])).is_file()
+        for download in doc.select('article a[download]'):
+            assert download["href"] == download["data-image-light"]
+            assert download["data-image-dark"] != download["data-image-light"]
+            for attribute in ("data-image-light", "data-image-dark"):
+                assert local_path(cfg, urljoin(page_url, download[attribute])).is_file()
     assert languages == set(EDITIONS)
     assert page_kinds == {"page-home", "page-source", "page-story"}
 
@@ -390,11 +471,14 @@ def test_emergency_withdrawal_leaves_no_popup_image_metadata_in_cached_pages(pub
 
     store, cfg, container, entries, rendered_ids = published_site
     image_names = {
-        urlsplit(trigger["data-image-src"]).path.rsplit("/", 1)[-1]
+        urlsplit(trigger[attribute]).path.rsplit("/", 1)[-1]
         for path in cfg.site_dir.rglob("*.html")
         for trigger in html(path).select("[data-image-view]")
+        for attribute in ("data-image-light", "data-image-dark")
     }
     assert image_names
+    assert any(name.endswith("-dark.png") for name in image_names)
+    assert all((cfg.site_dir / "cards" / name).is_file() for name in image_names)
     release = cfg.site_dir.resolve()
     previous_rendered = list(rendered_ids)
     add_rule(store, "container", container.id)
@@ -403,8 +487,9 @@ def test_emergency_withdrawal_leaves_no_popup_image_metadata_in_cached_pages(pub
     assert rendered_ids == previous_rendered
     for path in cfg.site_dir.rglob("*.html"):
         cached = path.read_text(encoding="utf-8")
-        assert not html(path).select("[data-image-view], [data-image-src]")
+        assert not html(path).select("[data-image-view], [data-image-src], [data-image-light], [data-image-dark], [data-theme-source]")
         assert not any(name in cached for name in image_names), path
+    assert all(not (release / "cards" / name).exists() for name in image_names)
 
 
 def test_reading_is_available_without_javascript_and_controls_are_labeled(published_site):

@@ -32,7 +32,17 @@ from ..store import Container, Event, Post
 log = logging.getLogger(__name__)
 SIZE = (1200, 630)
 MAX_IMAGE_BYTES = 3_000_000
+# Keep generated image content aligned with the website without filtering photos.
+CARD_PALETTES = {
+    "light": {"canvas": "#eef2f6", "surface": "#f9fbfd", "ink": "#202b39",
+              "muted": "#536172", "line": "#d9e1eb", "accent": "#2864a6",
+              "avatar": "#deebf8"},
+    "dark": {"canvas": "#11161e", "surface": "#232b36", "ink": "#f2f5fa",
+             "muted": "#b8c5d5", "line": "#3a4759", "accent": "#94bff2",
+             "avatar": "#304662"},
+}
 env = Environment(loader=PackageLoader("rep0rter", "templates"), autoescape=select_autoescape(["html"]))
+env.globals["card_palettes"] = CARD_PALETTES
 
 
 def _public_image_address(url: str) -> tuple[str, str] | None:
@@ -236,7 +246,10 @@ class CardRenderer:
                 return None
         return self.page
 
-    def render(self, event: Event, container: Container | None, names: dict[str, str] | None = None) -> Path:
+    def render(self, event: Event, container: Container | None, names: dict[str, str] | None = None,
+               *, theme: str = "light") -> Path:
+        if theme not in CARD_PALETTES:
+            raise ValueError("Card theme must be light or dark")
         avatar = identity_image(event, self.cfg)
         host = urlsplit(event.url).hostname or event.source
         source = str(event.meta.get("source_name") or ("g0v Slack" if event.source == "slack" else host))
@@ -246,7 +259,7 @@ class CardRenderer:
         original = to_plain(event.text, names) if event.source == "slack" else plain_text(event).strip()
         if not original:
             original = "（來源訊息沒有可顯示的文字 / No source text available）"
-        ctx = {"author": author, "source": source, "channel": channel,
+        ctx = {"theme": theme, "author": author, "source": source, "channel": channel,
                "original": original[:4000] + ("…" if len(original) > 4000 else ""),
                "date": datetime.fromtimestamp(event.ts, TAIPEI).strftime("%Y.%m.%d · %H:%M UTC+8"),
                "initial": author.strip()[:1].upper() or "r", "host": host,
@@ -257,12 +270,15 @@ class CardRenderer:
         rendered = template.render(ctx)
         return self._render_image(event, ctx, avatar, rendered)
 
-    def render_report(self, event: Event, container: Container | None, post: Post, language: str = "en") -> Path:
+    def render_report(self, event: Event, container: Container | None, post: Post, language: str = "en",
+                      *, theme: str = "light") -> Path:
         """Render a translated report, visibly distinguished from source quotations.
 
         Telegram only publishes English reports. Never fall back to the original
         language when that translation is missing or incomplete.
         """
+        if theme not in CARD_PALETTES:
+            raise ValueError("Card theme must be light or dark")
         if language != "en":
             raise ValueError("Report cards currently require English")
         translated = post.translations.get(language)
@@ -276,7 +292,7 @@ class CardRenderer:
         source = {"slack": "g0v Slack", "github": "GitHub", "mastodon": "Mastodon"}.get(event.source, host)
         author = event.author_name or source
         channel = container.name if container else event.container_id
-        ctx = {"author": author, "source": source, "channel": channel,
+        ctx = {"theme": theme, "author": author, "source": source, "channel": channel,
                "headline": translated["headline"].strip(), "summary": translated["summary"].strip(),
                "date": datetime.fromtimestamp(event.ts, TAIPEI).strftime("%Y.%m.%d · %H:%M UTC+8"),
                "initial": author.strip()[:1].upper() or "r", "host": host, "url": event.url,
@@ -320,10 +336,11 @@ class CardRenderer:
         return path
 
     def _fallback(self, path: Path, ctx: dict, avatar: bytes | None):
-        image = Image.new("RGB", SIZE, "#f1f4ee")
+        palette = CARD_PALETTES[ctx.get("theme", "light")]
+        image = Image.new("RGB", SIZE, palette["canvas"])
         draw = ImageDraw.Draw(image)
-        draw.rounded_rectangle((28, 28, 1172, 602), radius=24, fill="#ffffff")
-        draw.rounded_rectangle((60, 60, 142, 142), radius=24, fill="#dcebc7")
+        draw.rounded_rectangle((28, 28, 1172, 602), radius=24, fill=palette["surface"])
+        draw.rounded_rectangle((60, 60, 142, 142), radius=24, fill=palette["avatar"])
         if avatar:
             with Image.open(io.BytesIO(avatar)) as face:
                 face = ImageOps.fit(face.convert("RGBA"), (82, 82))
@@ -331,33 +348,33 @@ class CardRenderer:
                 ImageDraw.Draw(mask).rounded_rectangle((0, 0, 81, 81), radius=24, fill=255)
                 image.paste(face, (60, 60), mask)
         else:
-            draw.text((85, 72), ctx["initial"], font=_font(self.cfg, 40), fill="#253a2d")
+            draw.text((85, 72), ctx["initial"], font=_font(self.cfg, 40), fill=palette["accent"])
         author_label = ("Source: " if ctx.get("report") else "") + ctx["author"]
         for line in _wrap(author_label, _font(self.cfg, 29), 700, 1):
-            draw.text((164, 61), line, font=_font(self.cfg, 29), fill="#1d3227")
+            draw.text((164, 61), line, font=_font(self.cfg, 29), fill=palette["ink"])
         label = f'{ctx["source"]} · #{ctx["channel"]}'
-        draw.text((164, 109), _wrap(label, _font(self.cfg, 20), 920, 1)[0], font=_font(self.cfg, 20), fill="#637069")
-        draw.line((60, 170, 1140, 170), fill="#e5eae2", width=2)
+        draw.text((164, 109), _wrap(label, _font(self.cfg, 20), 920, 1)[0], font=_font(self.cfg, 20), fill=palette["muted"])
+        draw.line((60, 170, 1140, 170), fill=palette["line"], width=2)
         if ctx.get("report"):
             report_label = ("SELF-REPORTED · Written by the contributor" if ctx.get("self_reported") else
                             "OWNER SUBMISSION · Ownership self-declared" if ctx.get("owner_submitted")
                             else "ENGLISH REPORT · Summary by rep0rter")
-            draw.text((68, 190), report_label, font=_font(self.cfg, 18), fill="#637069")
+            draw.text((68, 190), report_label, font=_font(self.cfg, 18), fill=palette["muted"])
             headline_lines = _wrap(ctx["headline"], _font(self.cfg, 38), 1060, 2)
             for i, line in enumerate(headline_lines):
-                draw.text((68, 226 + i * 49), line, font=_font(self.cfg, 38), fill="#233229")
+                draw.text((68, 226 + i * 49), line, font=_font(self.cfg, 38), fill=palette["ink"])
             for i, line in enumerate(_wrap(ctx["summary"], _font(self.cfg, 30), 1060, 3)):
-                draw.text((68, 245 + len(headline_lines) * 49 + i * 44), line, font=_font(self.cfg, 30), fill="#233229")
+                draw.text((68, 245 + len(headline_lines) * 49 + i * 44), line, font=_font(self.cfg, 30), fill=palette["ink"])
             footer_label = "SOURCE POSTED"
         else:
             font = _font(self.cfg, 34)
             for i, line in enumerate(_wrap(ctx["original"], font, 1060, 6)):
-                draw.text((68, 193 + i * 48), line, font=font, fill="#233229")
+                draw.text((68, 193 + i * 48), line, font=font, fill=palette["ink"])
             footer_label = "ORIGINAL EXCERPT"
-        draw.text((64, 524), footer_label + " · " + ctx["date"], font=_font(self.cfg, 16), fill="#637069")
+        draw.text((64, 524), footer_label + " · " + ctx["date"], font=_font(self.cfg, 16), fill=palette["muted"])
         source_url = _wrap(ctx["url"], _font(self.cfg, 14), 800, 1)
         if source_url:
-            draw.text((64, 552), source_url[0], font=_font(self.cfg, 14), fill="#637069")
+            draw.text((64, 552), source_url[0], font=_font(self.cfg, 14), fill=palette["muted"])
         brand = _wrap(ctx["brand"], _font(self.cfg, 26), 250, 1)[0]
-        draw.text((1130, 535), brand, anchor="ra", font=_font(self.cfg, 26), fill="#253a2d")
+        draw.text((1130, 535), brand, anchor="ra", font=_font(self.cfg, 26), fill=palette["accent"])
         image.save(path, "PNG")
