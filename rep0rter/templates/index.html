@@ -137,7 +137,14 @@
 <dialog class="image-viewer" id="image-viewer" aria-labelledby="image-viewer-title">
   <div class="image-viewer-panel">
     <div class="image-viewer-toolbar"><h2 id="image-viewer-title">{{ copy.view_image }}</h2><button type="button" class="image-viewer-close" data-viewer-close aria-label="{{ copy.close_image }}" autofocus>{{ ui.icon('close') }}</button></div>
-    <img class="image-viewer-image" data-viewer-image alt="">
+    <div class="image-viewer-stage" data-viewer-stage>
+      <div class="image-viewer-card" data-viewer-card>
+        <img class="image-viewer-image" data-viewer-image alt="">
+        <span class="image-viewer-foil" aria-hidden="true"></span>
+        <span class="image-viewer-glare" aria-hidden="true"></span>
+      </div>
+      <p class="image-viewer-status" data-viewer-status role="status" data-loading="{{ copy.image_loading }}" data-error="{{ copy.image_error }}"></p>
+    </div>
     <div class="image-viewer-footer"><p data-viewer-caption></p><a class="button button-secondary" data-viewer-download download>{{ ui.icon('download') }} {{ copy.download }}</a></div>
   </div>
 </dialog>
