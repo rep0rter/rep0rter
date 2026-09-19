@@ -53,8 +53,8 @@ jobs:
         run: |
           python - <<'PY'
           import json,os
-          for value in json.loads(os.environ['REP0RTER_CONFIG']).values():
-              if value:
+          for key,value in json.loads(os.environ['REP0RTER_CONFIG']).items():
+              if value and any(part in key for part in ('TOKEN','KEY','SECRET','CHAT')):
                   print('::add-mask::'+str(value).replace('%','%25').replace('\r','%0D').replace('\n','%0A'))
           PY
           python cloudflare/github_runner.py --mode "$REPORT_MODE"

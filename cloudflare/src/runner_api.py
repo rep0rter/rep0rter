@@ -6,7 +6,6 @@ import io
 import json
 import time
 import zipfile
-from pyodide.ffi import to_js
 from workers import Response
 from revision import SOURCE_COMMIT
 
@@ -84,7 +83,7 @@ async def handle(owner, request, path):
             return Response('Missing database pages', status=400)
         def commit():
             for number, content in changes:
-                runtime.sql.exec('INSERT INTO db_pages VALUES (?,?) ON CONFLICT(number) DO UPDATE SET data=excluded.data', number, to_js(content))
+                runtime.sql.exec('INSERT INTO db_pages VALUES (?,?) ON CONFLICT(number) DO UPDATE SET data=excluded.data', number, content)
             runtime.sql.exec('DELETE FROM db_pages WHERE number>=?', count)
             runtime.set_meta('runner_sequence', sequence)
             runtime.set_meta('runner_payload_hash', digest)
@@ -116,7 +115,7 @@ async def handle(owner, request, path):
             runtime.sql.exec('DELETE FROM staged_files')
             for item in archive.infolist():
                 content = archive.read(item)
-                runtime.sql.exec('INSERT INTO staged_files VALUES (?,?,?)', item.filename, to_js(content), hashlib.sha256(content).hexdigest())
+                runtime.sql.exec('INSERT INTO staged_files VALUES (?,?,?)', item.filename, content, hashlib.sha256(content).hexdigest())
             def commit():
                 runtime.sql.exec('DELETE FROM files')
                 runtime.sql.exec('INSERT INTO files SELECT * FROM staged_files')
