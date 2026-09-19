@@ -238,6 +238,7 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
 .previous-summary .summary { margin: 10px 0; }
 .story-history { border-top: 1px solid var(--line); margin: 20px 0; padding-top: 16px; }
 .reading-aside { padding-top: 90px; }
+.reading-aside > section + section { margin-top: 26px; }
 .about-card, .subscribe-card { padding: 27px; border-radius: 32px; box-shadow: var(--shadow-card); border: 1px solid var(--highlight); background: var(--glass); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); }
 .icon-orb { display: inline-grid; place-items: center; width: 48px; height: 48px; border-radius: 20px; border: 1px solid var(--line); box-shadow: var(--shadow-button); }
 .icon-orb .icon { width: 24px; height: 24px; }
@@ -248,7 +249,7 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
 .about-card > p:not(.eyebrow), .subscribe-card p { font-size: 13px; color: var(--muted); line-height: 1.85; }
 .about-principle { display: flex; align-items: flex-start; gap: 10px; font-size: 12px; line-height: 1.6; margin-top: 20px; color: var(--muted); }
 .about-principle .icon { width: 17px; height: 17px; color: var(--accent); margin-top: 2px; }
-.subscribe-card { background: var(--glass); margin-top: 26px; }
+.subscribe-card { background: var(--glass); }
 .subscribe-card .icon-orb { margin-bottom: 20px; }
 .subscribe-card .button { margin-top: 20px; width: 100%; font-size: 13px; padding-inline: 14px; }
 .aside-note { color: var(--muted); font-size: 11px; line-height: 1.8; padding: 22px 12px; }
@@ -342,7 +343,7 @@ body > main, body > .site-footer { transform: scale(calc(1 - .015 * var(--viewer
   .hero-actions, .hero-note { display: none; }
   .reading-layout { grid-template-columns: minmax(0, 1fr); }
   .reading-aside { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding-top: 0; }
-  .subscribe-card { margin: 0; }
+  .reading-aside > section + section { margin-top: 0; }
   .aside-note { grid-column: 1 / -1; padding: 0 12px; }
   .story-card--featured .story-content { display: grid; }
   .story-card--featured .report-figure { margin-top: 0; }
