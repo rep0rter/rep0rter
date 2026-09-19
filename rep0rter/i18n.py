@@ -284,13 +284,5 @@ for _language, _values in {
                                'self_reported', 'no_evidence', 'take_part'), _values))
 
 
-for _language, _label in {
-    'en': 'Source examples',
-    'zh-TW': '來源範例',
-    'ja': '情報源の実例',
-    'ko': '출처별 실제 사례',
-}.items():
-    COPY[_language]['source_examples'] = _label
-
 for _language, _label in {'en': 'Sign in', 'zh-TW': '登入', 'ja': 'ログイン', 'ko': '로그인'}.items():
     COPY[_language]['sign_in'] = _label

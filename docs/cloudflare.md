@@ -81,7 +81,7 @@ and must precede scheduler activation.
 3. Export a fresh snapshot, import it, and compare the database checksum/counts
    and public asset hashes. Never reuse a preview snapshot while writers run.
 4. Deploy matching tested source, install runner secrets, and dispatch `build`.
-   Verify all four editions, RSS, source examples, images, and Google callback.
+   Verify all four editions, RSS, images, and Google callback.
 5. Attach `rep0rter.observe.tw/*` to the frontend. Dispatch `report` and verify
    the workflow result plus the Worker's last_started/last_finished health data.
 6. Retire local web through `cloudflare/cutover.py retire-web`; retain local data

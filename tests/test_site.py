@@ -819,20 +819,129 @@ def test_facet_metadata_stays_in_removable_articles_and_selects_start_empty(publ
             assert options[0]['value'] == ''
 
 
-def test_source_examples_keep_original_dates_links_and_survive_withdrawal(published_site):
-    from rep0rter import policy
-    store, cfg, _, entries, _ = published_site
-    post, event = entries[-1]
+def test_source_examples_are_removed_from_every_public_output_after_rebuild(published_site):
+    store, cfg, _, entries, rendered_ids = published_site
+    removed, event = entries[-1]
+    kept, _ = entries[0]
+    container = Container(id="slack:C_SAMPLE", source="slack", name="sampleonlychannel")
+    store.upsert_container(container)
+    event = replace(event, container_id=container.id, author_name="Sample-only author",
+                    text="Sample-only content #sampleonlytag")
+    store.upsert_events([event])
     with store.conn:
-        store.conn.execute('UPDATE posts SET reasons=? WHERE id=?', (json.dumps(['source_example']), post.id))
+        store.conn.execute("UPDATE events SET container_id=? WHERE id=?", (container.id, event.id))
+    # Begin with a published generation so stale pages and both image themes exist.
     site.build(store, cfg)
-    for language, (page, _) in EDITIONS.items():
-        listing = html(cfg.site_dir / 'examples' / page)
-        article = listing.find('article', id=str(post.id))
-        assert article
-        assert '2023-11-15' in article.get_text()
-        assert article.find('a', href=event.url)
-        home = html(cfg.site_dir / page)
-        assert home.find('a', href='examples/' + page)
-    policy.redact(store, [event.id])
-    assert not html(cfg.site_dir / 'examples/index.html').find('article', id=str(post.id))
+    sample_doc = html(cfg.site_dir / "posts" / str(removed.id) / "index.html")
+    source_path = sample_doc.select_one("a.channel")["href"].removeprefix("../../")
+    old_cards = {
+        hashlib.sha256(event.id.encode()).hexdigest() + suffix + ".png"
+        for suffix in ("", "-dark")
+    } | {f"report-{removed.id}-en{suffix}.png" for suffix in ("", "-dark")}
+    assert all((cfg.site_dir / "cards" / name).exists() for name in old_cards)
+    for page, _ in EDITIONS.values():
+        legacy = cfg.site_dir / "examples" / page
+        legacy.parent.mkdir(exist_ok=True)
+        legacy.write_text("Sample-only content", encoding="utf-8")
+    with store.conn:
+        store.conn.execute("UPDATE posts SET reasons=? WHERE id=?",
+                           (json.dumps(["source_example"]), removed.id))
+    rendered_ids.clear()
+
+    for _ in range(2):
+        site.build(store, cfg, limit=1)
+        assert event.id not in rendered_ids
+        assert not (cfg.site_dir / "examples").exists()
+        assert not (cfg.site_dir / "posts" / str(removed.id)).exists()
+        assert not (cfg.site_dir / source_path).parent.exists()
+        assert not (cfg.site_dir / "tags" / "sampleonlytag").exists()
+        assert not (cfg.site_dir / "tags" / "sampleonlychannel").exists()
+        assert all(not (cfg.site_dir / "cards" / name).exists() for name in old_cards)
+        for path in cfg.site_dir.rglob("*"):
+            if path.suffix not in {".html", ".xml"}:
+                continue
+            content = path.read_text(encoding="utf-8")
+            assert event.url not in content
+            assert "Sample-only" not in content
+            assert "sampleonly" not in content
+            assert "examples/" not in content
+            if path.suffix == ".html":
+                assert not html(path).find("article", id=str(removed.id))
+        for page, feed in EDITIONS.values():
+            assert html(cfg.site_dir / page).find("article", id=str(kept.id))
+            assert (cfg.site_dir / "posts" / str(kept.id) / page).exists()
+            feed_items = ElementTree.parse(cfg.site_dir / feed).findall("channel/item")
+            assert len(feed_items) == 1
+            assert str(kept.id) == feed_items[0].findtext("guid")
+    # Removing publication does not delete imported history or source records.
+    assert store.get_event(event.id) is not None
+    assert store.conn.execute("SELECT 1 FROM posts WHERE id=?", (removed.id,)).fetchone()
+
+
+def test_source_examples_do_not_leak_through_story_history(published_site):
+    from rep0rter import stories
+
+    store, cfg, container, entries, _ = published_site
+    link_revisions(store, entries)
+    kept, _ = entries[0]
+    removed, sample = entries[-1]
+    evidence = Event(id="slack:C_TEST:evidence", source="slack", kind="message",
+                     container_id=container.id, ts=1700000002, author_name="Independent evidence",
+                     text="Independent source context", url="https://source.example.test/evidence")
+    store.upsert_events([evidence])
+    with store.conn:
+        store.conn.execute("UPDATE posts SET reasons=? WHERE id=?",
+                           (json.dumps(["source_example"]), removed.id))
+        store.conn.execute("INSERT INTO story_events VALUES(?,?,?,?)",
+                           (evidence.id, "test-revisions", stories.fingerprint(evidence), 1))
+
+    site.build(store, cfg)
+
+    for page, _ in EDITIONS.values():
+        doc = html(cfg.site_dir / "posts" / str(kept.id) / page)
+        assert not doc.select_one(".revision-notice")
+        assert not doc.select_one(".story-history nav")
+        assert not doc.find("a", href=sample.url)
+        assert doc.select_one(f'.story-history a[href="{evidence.url}"]')
+        assert not doc.find("a", href=f"../{removed.id}/{page}")
+
+
+def test_source_example_url_shared_with_real_report_remains_available(published_site):
+    store, cfg, _, entries, _ = published_site
+    kept, real_event = entries[0]
+    removed, sample = entries[-1]
+    with store.conn:
+        store.conn.execute("UPDATE events SET url=? WHERE id=?", (real_event.url, sample.id))
+    link_revisions(store, [(kept, real_event), (removed, replace(sample, url=real_event.url))])
+    with store.conn:
+        store.conn.execute("UPDATE posts SET reasons=? WHERE id=?",
+                           (json.dumps(["source_example"]), removed.id))
+
+    site.build(store, cfg)
+
+    for page, _ in EDITIONS.values():
+        doc = html(cfg.site_dir / "posts" / str(kept.id) / page)
+        assert doc.find("a", href=real_event.url)
+        assert not (cfg.site_dir / "posts" / str(removed.id) / page).exists()
+
+
+def test_only_source_examples_publish_an_empty_site_without_sample_assets(published_site):
+    store, cfg, _, entries, rendered_ids = published_site
+    with store.conn:
+        store.conn.execute("UPDATE posts SET reasons=?", (json.dumps(["source_example"]),))
+    rendered_ids.clear()
+
+    site.build(store, cfg)
+
+    assert rendered_ids == []
+    assert not (cfg.site_dir / "examples").exists()
+    assert not (cfg.site_dir / "posts").exists()
+    assert not (cfg.site_dir / "sources").exists()
+    assert not (cfg.site_dir / "tags").exists()
+    assert not list((cfg.site_dir / "cards").glob("*.png"))
+    for page, feed in EDITIONS.values():
+        doc = html(cfg.site_dir / page)
+        assert doc.select_one("main")
+        assert not doc.select("article, [data-preview-post-id]")
+        assert not ElementTree.parse(cfg.site_dir / feed).findall("channel/item")
+    assert store.post_count() == len(entries)
