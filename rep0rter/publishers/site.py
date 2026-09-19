@@ -168,7 +168,8 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
     font_source = Path(__file__).resolve().parents[2] / "assets" / "fonts"
     if font_source.is_dir():
         shutil.copytree(font_source, cfg.site_dir / "assets" / "fonts", dirs_exist_ok=True)
-    for asset in ("style.css", "language.js", "theme.js", "reading.js", "glass-motion.js", "image-viewer.js"):
+    for asset in ("style.css", "theme-transition.css", "enchantment.css", "language.css", "language.js", "theme.js",
+                  "enchantment.js", "reading.js", "glass-motion.js", "image-viewer.js"):
         _write(cfg.site_dir / asset, env.get_template(asset).render())
     root_outputs = []
     visible_posts = {item['post'].id: item['post'] for item in items}

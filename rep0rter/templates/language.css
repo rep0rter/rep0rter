@@ -1,0 +1,4 @@
+/* One synchronous content swap, without browser scroll anchoring fighting it. */
+html[data-language-updating] { overflow-anchor: none; scroll-behavior: auto; }
+html[data-language-updating] * { overflow-anchor: none; }
+.language-status { position: fixed; z-index: 40; left: 50%; bottom: 24px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 40px); padding: 12px 20px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow-card); font-size: 14px; pointer-events: none; }

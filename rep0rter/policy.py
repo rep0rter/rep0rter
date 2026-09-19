@@ -329,6 +329,17 @@ def _sanitize_site(store, root, withdrawn_urls=()):
             if str(article.get('id')) in withdrawn:
                 article.decompose()
                 removed = True
+        # Homepage highlights duplicate selected article text outside the feed.
+        # Remove the whole preview, including its source, summary, and links,
+        # before any full rebuild can fail and leave an old release in service.
+        for preview in list(document.select('[data-preview-post-id]')):
+            if str(preview.get('data-preview-post-id')) in withdrawn:
+                preview.decompose()
+                removed = True
+        for highlights in list(document.select('.hero-latest')):
+            if not highlights.select('[data-preview-post-id]'):
+                highlights.decompose()
+                removed = True
         # Related-source lists in an otherwise surviving story must also stop
         # exposing an excluded author's name/link. All other links remain intact.
         for link in list(document.find_all('a', href=True)):

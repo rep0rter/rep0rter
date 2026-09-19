@@ -4,14 +4,18 @@
   const key = 'rep0rter-theme';
   const modes = ['light', 'dark', 'system'];
   const system = window.matchMedia('(prefers-color-scheme: dark)');
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
   let preference = 'system';
+  let revision = 0;
+  let activeReveal = null;
   try {
     const saved = localStorage.getItem(key);
     if (modes.includes(saved)) preference = saved;
   } catch (_) { /* Reading still works when browser storage is blocked. */ }
 
+  const palette = () => preference === 'system' ? (system.matches ? 'dark' : 'light') : preference;
   const apply = () => {
-    root.dataset.theme = preference === 'system' ? (system.matches ? 'dark' : 'light') : preference;
+    root.dataset.theme = palette();
     document.querySelectorAll('[data-theme-choice]').forEach(button => {
       button.setAttribute('aria-pressed', String(button.dataset.themeChoice === preference));
     });
@@ -26,44 +30,149 @@
       });
     });
   };
+  const announce = (name, detail) => {
+    if (typeof CustomEvent === 'function' && typeof document.dispatchEvent === 'function') {
+      document.dispatchEvent(new CustomEvent(name, { detail }));
+    }
+  };
+  const clearReveal = reveal => {
+    // A skipped transition can finish after the next one has already started.
+    if (activeReveal !== reveal) return;
+    reveal.animation?.cancel();
+    activeReveal = null;
+    delete root.dataset.themeTransition;
+    root.style.removeProperty('--theme-reveal-x');
+    root.style.removeProperty('--theme-reveal-y');
+  };
+  const cancelReveal = () => {
+    revision += 1;
+    const reveal = activeReveal;
+    if (reveal) {
+      reveal.transition?.skipTransition();
+      clearReveal(reveal);
+    }
+    announce('rep0rter:theme-cancel');
+  };
+  const applyImmediately = () => {
+    cancelReveal();
+    apply();
+  };
+  const revealFrom = trigger => {
+    cancelReveal();
+    if (root.dataset.theme === palette() || reducedMotion.matches ||
+        typeof document.startViewTransition !== 'function' ||
+        typeof root.animate !== 'function' || !trigger?.getBoundingClientRect) {
+      apply();
+      return;
+    }
+    const bounds = trigger.getBoundingClientRect();
+    const x = bounds.left + bounds.width / 2;
+    const y = bounds.top + bounds.height / 2;
+    const radius = Math.hypot(
+      Math.max(x, window.innerWidth - x),
+      Math.max(y, window.innerHeight - y)
+    );
+    const reveal = { revision, transition: null, animation: null };
+    activeReveal = reveal;
+    // Suppress separately named snapshots before BOTH captures, not just after
+    // the theme changes. Article navigation keeps its own transition rules.
+    // Seed the CSS snapshot mask with the same viewport origin before capture.
+    // Its first frame must never fall back to the viewport's center.
+    root.style.setProperty('--theme-reveal-x', `${x}px`);
+    root.style.setProperty('--theme-reveal-y', `${y}px`);
+    root.dataset.themeTransition = 'reveal';
+    try {
+      const transition = document.startViewTransition(() => {
+        if (revision === reveal.revision) apply();
+      });
+      reveal.transition = transition;
+      // Attach rejection handlers immediately: skipTransition rejects ready.
+      transition.updateCallbackDone.catch(() => {
+        if (revision === reveal.revision) apply();
+      });
+      transition.finished.then(() => clearReveal(reveal), () => clearReveal(reveal));
+      transition.ready.then(() => {
+        if (activeReveal !== reveal || revision !== reveal.revision) return;
+        try {
+          reveal.animation = root.animate([
+            { clipPath: `circle(0px at ${x}px ${y}px)` },
+            { clipPath: `circle(${radius}px at ${x}px ${y}px)` },
+          ], {
+            duration: 500,
+            easing: 'ease-in-out',
+            fill: 'both',
+            pseudoElement: '::view-transition-new(root)',
+          });
+          reveal.animation.finished.catch(() => {});
+          announce('rep0rter:theme-reveal', { x, y, radius, duration: 500 });
+        } catch (_) {
+          transition.skipTransition();
+          clearReveal(reveal);
+        }
+      }, () => {
+        if (revision === reveal.revision) apply();
+        clearReveal(reveal);
+      });
+    } catch (_) {
+      clearReveal(reveal);
+      apply();
+    }
+  };
   apply();
-  system.addEventListener('change', apply);
+  system.addEventListener('change', () => {
+    if (preference === 'system') applyImmediately();
+  });
+  reducedMotion.addEventListener('change', () => {
+    if (reducedMotion.matches) applyImmediately();
+  });
+  window.addEventListener('pagehide', applyImmediately);
   window.addEventListener('storage', event => {
     if (event.key !== key && event.key !== null) return;
     preference = modes.includes(event.newValue) ? event.newValue : 'system';
-    apply();
+    applyImmediately();
   });
-  document.addEventListener('DOMContentLoaded', () => {
+  const bound = new WeakSet();
+  const menus = () => [...document.querySelectorAll('.preference-menu')];
+  const initializeControls = () => {
     document.querySelectorAll('[data-theme-controls]').forEach(group => { group.hidden = false; });
     document.querySelectorAll('[data-theme-choice]').forEach(button => {
+      if (bound.has(button)) return;
+      bound.add(button);
       button.addEventListener('click', () => {
         preference = button.dataset.themeChoice;
         try { localStorage.setItem(key, preference); } catch (_) { /* Session-only choice. */ }
-        apply();
         const menu = button.closest('.preference-menu');
+        const trigger = menu?.querySelector('summary');
         if (menu) {
           menu.open = false;
-          menu.querySelector('summary').focus({ preventScroll: true });
+          trigger?.focus({ preventScroll: true });
         }
+        revealFrom(trigger);
       });
     });
-    const menus = [...document.querySelectorAll('.preference-menu')];
-    menus.forEach(menu => {
-      menu.querySelector('summary').addEventListener('click', () => {
-        menus.forEach(other => { if (other !== menu) other.open = false; });
+    menus().forEach(menu => {
+      const trigger = menu.querySelector('summary');
+      if (bound.has(trigger)) return;
+      bound.add(trigger);
+      trigger.addEventListener('click', () => {
+        menus().forEach(other => { if (other !== menu) other.open = false; });
       });
-    });
-    document.addEventListener('pointerdown', event => {
-      menus.forEach(menu => { if (!menu.contains(event.target)) menu.open = false; });
-    });
-    document.addEventListener('keydown', event => {
-      if (event.key !== 'Escape') return;
-      const open = menus.find(menu => menu.open);
-      if (!open) return;
-      event.preventDefault();
-      open.open = false;
-      open.querySelector('summary').focus({ preventScroll: true });
     });
     apply();
+  };
+  document.addEventListener('DOMContentLoaded', initializeControls);
+  // Language replacement retains this controller, but creates new controls.
+  document.addEventListener('rep0rter:before-language', applyImmediately);
+  document.addEventListener('rep0rter:language-applied', initializeControls);
+  document.addEventListener('pointerdown', event => {
+    menus().forEach(menu => { if (!menu.contains(event.target)) menu.open = false; });
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    const open = menus().find(menu => menu.open);
+    if (!open) return;
+    event.preventDefault();
+    open.open = false;
+    open.querySelector('summary').focus({ preventScroll: true });
   });
 })();

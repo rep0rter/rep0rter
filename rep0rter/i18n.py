@@ -220,10 +220,8 @@ for _language, _values in {
 }.items():
     COPY[_language].update(_values)
 
-for _language, _values in {
-    'zh-TW': {'scene_label': '社群消息', 'scene_title': '從消息，', 'scene_title_next': '找到下一步。', 'scene_search': '搜尋你關心的事', 'scene_organize': '時間・主題・作者', 'scene_source': '摘要與原文，一起閱讀', 'scene_note': '找到消息，掌握進展，參與其中。'},
-    'en': {'scene_label': 'Community updates', 'scene_title': 'Find your', 'scene_title_next': 'next step.', 'scene_search': 'Find what matters to you', 'scene_organize': 'Date · Topic · Author', 'scene_source': 'Summary and original, together', 'scene_note': 'Find an update. Follow the progress. Take part.'},
-    'ja': {'scene_label': 'コミュニティの近況', 'scene_title': 'ニュースから、', 'scene_title_next': '次の一歩へ。', 'scene_search': '気になる話題を探す', 'scene_organize': '日付・トピック・投稿者', 'scene_source': '要約と原文を一緒に読む', 'scene_note': '近況を知り、進展を追い、参加する。'},
-    'ko': {'scene_label': '커뮤니티 소식', 'scene_title': '소식에서', 'scene_title_next': '다음 걸음으로.', 'scene_search': '관심 있는 소식 찾기', 'scene_organize': '날짜 · 주제 · 작성자', 'scene_source': '요약과 원문을 함께 읽기', 'scene_note': '소식을 찾고, 진행 상황을 살피고, 참여하세요.'},
+for _language, _label in {
+    'zh-TW': '依日期瀏覽', 'en': 'Browse by date',
+    'ja': '日付で見る', 'ko': '날짜별로 보기',
 }.items():
-    COPY[_language].update(_values)
+    COPY[_language]['browse_by_date'] = _label

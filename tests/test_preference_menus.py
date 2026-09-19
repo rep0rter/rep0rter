@@ -48,10 +48,15 @@ const language = element({querySelector: () => languageTrigger, contains: target
 const theme = element({hidden: true, querySelector: () => trigger, contains: target => target === trigger});
 const choices = ['light','dark','system'].map(themeChoice => element({dataset: {themeChoice}, closest: () => theme}));
 const media = element({matches: true});
+const reducedMotion = element({matches: false});
 const document = element({documentElement: root, querySelectorAll(selector) {
   return {'[data-theme-choice]': choices, '[data-theme-trigger]': [trigger], '[data-theme-controls]': [theme], '.preference-menu': [language,theme]}[selector] ?? [];
 }});
-const window = element({matchMedia: () => media});
+const window = element({matchMedia(query) {
+  if (query === '(prefers-reduced-motion: reduce)') return reducedMotion;
+  assert.equal(query, '(prefers-color-scheme: dark)');
+  return media;
+}});
 const writes = [];
 const localStorage = {
   getItem() { if (BLOCKED) throw Error('blocked'); return null; },

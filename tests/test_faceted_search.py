@@ -19,6 +19,7 @@ const vm = require('node:vm');
 function element(properties = {}) {
   return Object.assign({hidden:false, dataset:{}, value:'', attrs:{}, children:[], listeners:{},
     addEventListener(type, handler) { (this.listeners[type] ??= []).push(handler); },
+    removeEventListener(type, handler) { this.listeners[type] = (this.listeners[type] ?? []).filter(item => item !== handler); },
     emit(type, event = {}) { for (const handler of this.listeners[type] ?? []) handler(event); },
     setAttribute(key, value) { this.attrs[key] = value; },
     append(child) { this.appendCount = (this.appendCount || 0) + 1; this.children = this.children.filter(item => item !== child); this.children.push(child); },
@@ -58,10 +59,10 @@ const days = [...new Set(definitions.map(row=>row[1]))].map(date => {
 const news=element({scrollIntoView(){this.scrolled=true;}});
 const single={'[data-search-form]':form,'[data-search-clear]':clear,'#search-status':status,'[data-no-results]':empty,
  '[data-filters]':filters,'[data-filter-count]':badge,'[data-filter-error]':error,'[data-search-reset]':reset,'[data-filters-reset]':allReset,'#news':news};
-const document = {documentElement:{lang:'en',dataset:{}}, createElement(){return element();},
+const document = element({documentElement:{lang:'en',dataset:{}}, createElement(){return element();},
  querySelector(selector){assert.ok(selector in single,selector);return single[selector];},
  querySelectorAll(selector){if(selector==='.day')return days;if(selector==='article[data-search]')return articles;throw Error(selector);},
-};
+});
 const window=element({location:{href:'https://example.test/index.html'+QUERY},history:{state:{retained:true},replaceState(state,title,url){assert.equal(state.retained,true);window.location.href=url;}}});
 class FrozenDate extends Date {constructor(...args){super(...(args.length?args:['2026-09-18T17:00:00Z']));}}
 vm.runInNewContext(SCRIPT,{document,window,URL,Date:FrozenDate,Intl});
@@ -145,4 +146,30 @@ search('open');choose('topic','civic');clear.emit('click');
 assert.deepEqual(counts(),initial);
 choose('sort','oldest');assert.notDeepEqual(counts(),initial);
 const afterSort=counts();search('data');assert.deepEqual(counts(),afterSort);
+""")
+
+
+def test_language_replacement_disposes_stale_search_listeners_and_rebinds():
+    run_js("""
+search('Open');
+assert.equal(window.listeners.popstate.length, 1);
+document.emit('rep0rter:before-language');
+assert.equal(window.listeners.popstate.length, 0);
+assert.equal(input.listeners.input.length, 0);
+assert.equal(form.listeners.submit.length, 0);
+// Simulate translated metadata and input replacing the previous document.
+articles[0].dataset.search = 'Translated title';
+window.location.href = 'https://example.test/?lang=JA&q=Translated';
+document.emit('rep0rter:language-applied');
+assert.equal(window.listeners.popstate.length, 1);
+assert.equal(input.listeners.input.length, 1);
+assert.deepEqual(visible(), ['19']);
+assert.equal(news.scrolled, undefined);
+search('Community');
+assert.deepEqual(visible(), ['18', '8']);
+assert.equal(params().get('lang'), 'JA');
+document.emit('rep0rter:before-language');
+document.emit('rep0rter:language-applied');
+assert.equal(window.listeners.popstate.length, 1);
+assert.equal(input.listeners.input.length, 1);
 """)

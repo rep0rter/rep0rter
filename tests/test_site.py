@@ -100,6 +100,11 @@ def test_four_editions_escape_content_and_preserve_legacy_feed_guids(published_s
         assert doc.select_one("p.summary").get_text() == latest.translations[language]["summary"]
         assert len(doc.select("article")) == 1
         assert not doc.select("article script, article img[onerror]")
+        preview = doc.select_one('[data-preview-post-id]')
+        assert preview['data-preview-post-id'] == str(latest.id)
+        assert latest.translations[language]['headline'] in preview.get_text()
+        assert latest.translations[language]['summary'] in preview.get_text()
+        assert not preview.select('script, img[onerror]')
         links = doc.select(".masthead-actions a[data-language]")
         assert {link['data-language'] for link in links} == set(EDITIONS)
         assert doc.select_one('.language-menu [aria-current=page]')['data-language'] == language
@@ -134,6 +139,45 @@ def test_older_stories_keep_permanent_pages_outside_homepage_window(published_si
         assert doc.select_one('meta[property="og:type"]')["content"] == "article"
 
 
+def test_home_highlights_show_three_latest_localized_stories_before_date_feed(published_site):
+    store, cfg, _, entries, _ = published_site
+    for index in range(3):
+        event = replace(entries[-1][1], id=f'latest-preview:{index}', ts=1700001000 + index,
+                        url=f'https://source.example.test/latest/{index}')
+        store.upsert_events([event])
+        translations = {
+            language: {'headline': f'{language}: 最新消息 {index}', 'summary': f'{language}: 重點摘要 {index}'}
+            for language in EDITIONS
+        }
+        post = Post(event_id=event.id, published_at=1700002000 + index, score=10,
+                    headline=f'Latest {index}', summary=f'Summary {index}', translations=translations)
+        post.id = store.add_post(post)
+        entries.append((post, event))
+    site.build(store, cfg)
+    expected = list(reversed(entries))[:3]
+    for language, (page, _) in EDITIONS.items():
+        doc = html(cfg.site_dir / page)
+        previews = doc.select('.hero-latest [data-preview-post-id]')
+        assert [node['data-preview-post-id'] for node in previews] == [str(post.id) for post, _ in expected]
+        assert not doc.select('.glass-scene')
+        for index, (node, (post, _)) in enumerate(zip(previews, expected)):
+            assert post.translations[language]['headline'] in node.get_text()
+            assert (post.translations[language]['summary'] in node.get_text()) == (index == 0)
+            assert node.select_one(f'a[href="posts/{post.id}/{page}"]')
+            assert node.select_one('time')
+            assert '#Original channel' in node.get_text()
+            assert not node.has_attr('id'), 'Preview must not duplicate the article DOM id'
+            assert not node.select('script, img[onerror]')
+        assert len(doc.select('.story-days article')) == len(entries)
+        assert [node['id'] for node in doc.select('.story-days article')] == [str(post.id) for post, _ in reversed(entries)]
+        assert doc.select_one('.hero-latest').find_next(class_='story-days')
+        ids = [node['id'] for node in doc.select('[id]')]
+        assert len(ids) == len(set(ids))
+        for path in (cfg.site_dir / 'posts' / str(expected[0][0].id) / page,
+                     local_path(cfg, urljoin(cfg.site_url + '/', doc.select_one('a.channel')['href']))):
+            assert not html(path).select('[data-preview-post-id]')
+
+
 def test_english_default_and_existing_explicit_english_links(published_site):
     _, cfg, _, entries, _ = published_site
     doc = html(cfg.site_dir / "index.html")
@@ -166,16 +210,19 @@ def test_language_switch_does_not_redirect_using_old_browser_preference(publishe
     _, cfg, _, _, _ = published_site
     script = """
 const assert = require('node:assert/strict');
-const chineseLink = {
-  dataset: {language: 'zh-TW'}, href: 'index.zh-TW.html', hash: '',
-  addEventListener: () => {},
-};
 global.document = {
-  documentElement: {lang: 'en'},
-  querySelectorAll: selector => selector === '[data-language]' ? [chineseLink] : [],
+  documentElement: {lang: 'en'}, readyState: 'complete',
+  addEventListener: () => {}, querySelectorAll: () => [],
 };
-global.window = {addEventListener: () => {}};
-global.location = {pathname: '/', hash: '', replace: () => assert.fail('unexpected redirect')};
+global.location = new URL('https://example.test/');
+location.replace = () => assert.fail('unexpected redirect');
+global.window = {addEventListener: () => {}, history: {state: null,
+  replaceState(state, title, url) {
+    assert.equal(new URL(url).searchParams.get('lang'), 'EN');
+    location.href = String(url);
+  }
+}};
+global.fetch = () => assert.fail('old stored preference must not fetch another edition');
 global.localStorage = {getItem: () => 'zh-TW'};
 """ + (cfg.site_dir / "language.js").read_text()
     subprocess.run(["node", "-e", script], check=True, capture_output=True, text=True)
@@ -258,7 +305,8 @@ def test_all_local_links_and_branding_assets_exist(published_site):
 
 def test_reading_assets_and_self_hosted_fonts_are_published(published_site):
     _, cfg, _, _, _ = published_site
-    for asset in ("style.css", "language.js", "theme.js", "reading.js"):
+    for asset in ("style.css", "theme-transition.css", "enchantment.css", "language.css", "language.js", "theme.js",
+                  "enchantment.js", "reading.js"):
         assert (cfg.site_dir / asset).stat().st_size > 0
     # Font URLs are resolved relative to the stylesheet, including nested pages.
     css = (cfg.site_dir / "style.css").read_text()
@@ -469,6 +517,7 @@ def test_superseded_pages_cards_and_feeds_link_latest_without_repeating_stale_og
         assert not html(cfg.site_dir / 'posts' / str(latest.id) / page).select_one('.revision-notice')
         old_card = html(cfg.site_dir / page).find('article', id=str(old.id))
         assert old_card.select_one('.revision-notice a')['href'] == f'posts/{latest.id}/{page}'
+        assert [node['data-preview-post-id'] for node in html(cfg.site_dir / page).select('[data-preview-post-id]')] == [str(latest.id)]
         items = ElementTree.parse(cfg.site_dir / feed).findall('channel/item')
         assert {item.findtext('guid') for item in items} == {str(old.id), str(latest.id)}
         description = next(item.findtext('description') for item in items if item.findtext('guid') == str(old.id))
@@ -530,6 +579,39 @@ def test_withdrawn_pages_keep_localized_navigation_and_appearance_assets(publish
         page_url = cfg.site_url + "/" + path.relative_to(cfg.site_dir).as_posix()
         for node in doc.select("a[href], link[href], script[src]"):
             assert local_path(cfg, urljoin(page_url, node.get("href") or node.get("src"))).is_file()
+
+
+@pytest.mark.parametrize('remove_all', [False, True])
+def test_emergency_withdrawal_scrubs_home_highlights_when_rebuild_fails(published_site, monkeypatch, remove_all):
+    from rep0rter.policy import add_rule, redact
+
+    store, cfg, _, entries, _ = published_site
+    site.build(store, cfg)
+    release = cfg.site_dir.resolve()
+    removed = entries if remove_all else entries[-1:]
+    for _, event in removed:
+        add_rule(store, 'event', event.id)
+    redact(store, [event.id for _, event in removed])
+
+    def unavailable(*args, **kwargs):
+        raise RuntimeError('Generator unavailable')
+
+    monkeypatch.setattr(site, '_build', unavailable)
+    with pytest.raises(RuntimeError, match='Generator unavailable'):
+        site.build(store, cfg)
+    assert cfg.site_dir.resolve() == release
+    for language, (page, _) in EDITIONS.items():
+        doc = html(cfg.site_dir / page)
+        remaining = doc.select('[data-preview-post-id]')
+        assert [node['data-preview-post-id'] for node in remaining] == ([] if remove_all else [str(entries[0][0].id)])
+        assert bool(doc.select('.hero-latest')) == (not remove_all)
+        for post, _ in removed:
+            assert post.translations[language]['headline'] not in doc.get_text()
+            assert post.translations[language]['summary'] not in doc.get_text()
+            assert not doc.select(f'a[href="posts/{post.id}/{page}"]')
+            assert not doc.find('article', id=str(post.id))
+        if not remove_all:
+            assert doc.find('article', id=str(entries[0][0].id))
 
 
 def test_source_optout_scrubs_cached_pages_and_keeps_styled_tombstones_without_rebuild(published_site):

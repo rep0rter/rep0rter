@@ -35,31 +35,48 @@ def test_compact_language_menu_has_real_links_and_current_edition(language):
 
 
 @pytest.mark.skipif(not NODE, reason='Node.js required for script regression')
-def test_language_link_updates_filters_without_inventing_an_article_anchor():
+def test_language_links_and_search_forms_share_canonical_query_editions():
     script = r'''
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
-const handlers = {};
-const link = new URL('https://example.test/index.zh-TW.html');
-link.addEventListener = (name, callback) => { handlers[name] = callback; };
-link.hasAttribute = () => false;
-link.getAttribute = () => null;
-const document = {querySelectorAll: () => [link]};
-const location = new URL('https://example.test/index.html?q=moon&author=alice&topic=space');
-const sessionStorage = new Proxy({}, {get() { assert.fail('Language selection must not store a viewport'); }});
-const window = {scrollX: 0, scrollY: 450, addEventListener() {}};
-vm.runInNewContext(SOURCE, {document, window, location, sessionStorage});
-assert.equal(link.hash, '');
-assert.equal(link.search, '?q=moon&author=alice&topic=space');
-location.search = '?q=stars&sort=oldest';
-window.scrollY = 0; // Returning to the top must not retain an earlier article.
-handlers.click({button: 0});
-assert.equal(link.hash, '');
-assert.equal(link.search, '?q=stars&sort=oldest');
-assert.equal(link.href, 'https://example.test/index.zh-TW.html?q=stars&sort=oldest');
-location.hash = '#news';
-handlers.pointerdown();
-assert.equal(link.hash, '');
+const location = new URL('https://example.test/index.zh-TW.html?q=moon&author=alice&topic=space#report');
+function link(href, dataset = {}, attributes = {}) {
+  return {href, dataset, attributes,
+    hasAttribute(name) {return name in attributes;},
+    getAttribute(name) {return name === 'href' ? this.href : attributes[name];},
+    setAttribute(name, value) {attributes[name] = value;},
+    removeAttribute(name) {delete attributes[name];}
+  };
+}
+const language = link('https://example.test/index.ja.html', {language: 'ja'});
+const home = link('https://example.test/index.zh-TW.html');
+const external = link('https://external.test/index.html');
+const anchor = link('#news');
+const download = link('https://example.test/index.html', {}, {download: ''});
+const search = {action: 'https://example.test/index.zh-TW.html', children: [],
+  querySelector() {return this.children[0] || null;}, append(child) {this.children.push(child);}
+};
+const document = {documentElement: {lang: 'zh-TW'}, readyState: 'complete',
+  addEventListener() {},
+  querySelectorAll(selector) {
+    if (selector === 'a[href]') return [language, home, external, anchor, download];
+    if (selector === 'a[data-language]') return [language];
+    if (selector === 'form[role="search"]') return [search];
+    throw Error(selector);
+  },
+  createElement() {return {};}
+};
+const window = {addEventListener() {}, history: {state: {preserved: true}, replaceState(state, title, value) {
+  assert.equal(state.preserved, true); location.href = String(value);
+}}};
+vm.runInNewContext(SOURCE, {document, window, location, URL});
+assert.equal(language.href, 'https://example.test/index.html?q=moon&author=alice&topic=space&lang=JA#report');
+assert.equal(home.href, 'https://example.test/index.html?lang=ZH');
+assert.equal(external.href, 'https://external.test/index.html');
+assert.equal(anchor.href, '#news');
+assert.equal(download.href, 'https://example.test/index.html');
+assert.equal(search.action, 'https://example.test/index.html?lang=ZH');
+assert.deepEqual(search.children, [{type: 'hidden', name: 'lang', value: 'ZH'}]);
 '''.replace('SOURCE', json.dumps((TEMPLATES / 'language.js').read_text()))
     result = subprocess.run([NODE, '-'], input=script, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr

@@ -21,6 +21,7 @@ function element(properties = {}) {
   return Object.assign({
     hidden: false, dataset: {}, attributes: {}, textContent: '',
     addEventListener(type, handler) { (listeners[type] ??= []).push(handler); },
+    removeEventListener(type, handler) { listeners[type] = (listeners[type] ?? []).filter(item => item !== handler); },
     emit(type, event = {}) { for (const handler of listeners[type] ?? []) handler(event); },
     setAttribute(name, value) { this.attributes[name] = value; },
     focus() { this.focused = true; },
@@ -43,6 +44,7 @@ const root = element();
 const choices = ['light', 'dark', 'system'].map(mode => element({dataset: {themeChoice: mode}, closest: () => null}));
 const controls = element({hidden: true});
 const media = element({matches: options.systemDark});
+const reducedMotion = element({matches: false});
 const writes = [];
 const storage = {
   getItem(key) {
@@ -62,6 +64,7 @@ const document = element({documentElement: root, querySelectorAll(selector) {
   throw new Error('Unexpected selector: ' + selector);
 }});
 const window = element({matchMedia(query) {
+  if (query === '(prefers-reduced-motion: reduce)') return reducedMotion;
   assert.equal(query, '(prefers-color-scheme: dark)');
   return media;
 }});
@@ -182,7 +185,7 @@ const single = {
   '[data-no-results]': empty, '[data-search-reset]': reset,
   '[data-filters]': null, '[data-filter-count]': null, '[data-filter-error]': null, '[data-filters-reset]': null, '#news': null,
 };
-const document = {
+const document = element({
   documentElement: {lang: 'en', dataset: {}},
   querySelector(selector) { assert.ok(selector in single, selector); return single[selector]; },
   querySelectorAll(selector) {
@@ -190,7 +193,7 @@ const document = {
     if (selector === 'article[data-search]') return articles;
     throw new Error('Unexpected selector: ' + selector);
   },
-};
+});
 const window = element({location: {href: 'https://example.test/'}, history: {state: null, replaceState(state, title, url) {window.location.href = url;}}});
 vm.runInNewContext(SOURCE, {document, window, URL, Intl});
 function search(value) { input.value = value; input.emit('input'); }
@@ -278,8 +281,8 @@ assert.equal(status.hidden, true);
 def test_search_is_safe_on_detail_and_withdrawal_pages_without_search_form():
     source = json.dumps((TEMPLATES / "reading.js").read_text())
     run_javascript("""
-const document = {querySelector(selector) {
+const document = element({querySelector(selector) {
   assert.equal(selector, '[data-search-form]'); return null;
-}};
+}});
 vm.runInNewContext(SOURCE, {document});
 """.replace("SOURCE", source))

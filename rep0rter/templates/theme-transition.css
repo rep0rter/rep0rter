@@ -1,0 +1,31 @@
+/* Only explicit appearance choices use a whole-page circular reveal. */
+html[data-theme-transition="reveal"] *,
+html[data-theme-transition="reveal"] *::before,
+html[data-theme-transition="reveal"] *::after {
+  view-transition-name: none !important;
+  /* New-theme surfaces are fully painted, rather than mid color-fade. */
+  transition: none !important;
+}
+html[data-theme-transition="reveal"]::view-transition {
+  pointer-events: none;
+}
+html[data-theme-transition="reveal"]::view-transition-group(root) {
+  animation: none !important;
+}
+html[data-theme-transition="reveal"]::view-transition-image-pair(root) {
+  isolation: isolate;
+}
+html[data-theme-transition="reveal"]::view-transition-old(root),
+html[data-theme-transition="reveal"]::view-transition-new(root) {
+  animation: none !important;
+  mix-blend-mode: normal;
+  opacity: 1;
+}
+html[data-theme-transition="reveal"]::view-transition-old(root) {
+  z-index: 1;
+}
+html[data-theme-transition="reveal"]::view-transition-new(root) {
+  z-index: 2;
+  /* No flash between snapshot readiness and the WAAPI reveal's first frame. */
+  clip-path: circle(0px at var(--theme-reveal-x) var(--theme-reveal-y));
+}

@@ -19,8 +19,12 @@
 {% for lang in languages %}<link rel="alternate" hreflang="{{ lang }}" href="{{ canonical.rsplit('/', 1)[0] }}/{{ page_name(lang) }}">{% endfor %}
 <script src="{{ prefix }}theme.js"></script>
 <link rel="stylesheet" href="{{ prefix }}style.css">
+<link rel="stylesheet" href="{{ prefix }}theme-transition.css">
+<link rel="stylesheet" href="{{ prefix }}enchantment.css">
+<link rel="stylesheet" href="{{ prefix }}language.css">
 <script defer src="{{ prefix }}reading.js"></script>
 <script defer src="{{ prefix }}language.js"></script>
+<script defer src="{{ prefix }}enchantment.js"></script>
 <script defer src="{{ prefix }}glass-motion.js"></script>
 <script defer src="{{ prefix }}image-viewer.js"></script>
 </head>
@@ -44,22 +48,28 @@
       <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{{ copy.eyebrow }}</p>
       <h1 id="hero-title">{{ copy.hero_title }}<br><span>{{ copy.hero_accent }}</span></h1>
       <p class="hero-intro">{{ copy.intro }}</p>
-      <div class="hero-actions"><a class="button button-primary" href="#news">{{ copy.explore }} {{ ui.icon('arrow') }}</a><a class="button button-secondary" href="{{ feed }}">{{ ui.icon('rss') }} {{ copy.subscribe }}</a></div>
+      <div class="hero-actions"><a class="button button-primary" href="#news">{{ copy.browse_by_date }} {{ ui.icon('arrow') }}</a><a class="button button-secondary" href="{{ feed }}">{{ ui.icon('rss') }} {{ copy.subscribe }}</a></div>
       <p class="hero-note">{{ ui.icon('check') }} {{ copy.hero_note }}</p>
     </div>
-    <div class="glass-scene" aria-hidden="true">
-      <div class="scene-halo"></div>
-      <div class="scene-pane scene-archive"></div>
-      <div class="scene-pane scene-digest">
-        <div class="scene-digest-top">{{ ui.icon('chat') }}<span>{{ copy.scene_label }}</span><span class="scene-status"></span></div>
-        <p class="scene-title">{{ copy.scene_title }}<span>{{ copy.scene_title_next }}</span></p>
-        <div class="scene-excerpt"><span></span><span></span></div>
-        <div class="scene-source">{{ ui.icon('check') }}<span>{{ copy.scene_source }}</span></div>
-      </div>
-      <div class="scene-pane scene-search">{{ ui.icon('search') }}<span>{{ copy.scene_search }}</span></div>
-      <div class="scene-pane scene-organize">{{ ui.icon('filter') }}<span>{{ copy.scene_organize }}</span></div>
-      <div class="scene-caption">{{ copy.scene_note }}</div>
-    </div>
+    <section class="hero-latest" aria-labelledby="latest-news-title">
+      <div class="latest-heading"><span class="eyebrow-dot" aria-hidden="true"></span><h2 id="latest-news-title">{{ copy.latest }}</h2></div>
+      {% set recent = (items | rejectattr('latest_path') | list)[:3] %}
+      {% if recent %}
+      <ol class="latest-news-list">
+        {% for it in recent %}
+        <li class="latest-item{% if loop.first %} latest-item--lead{% endif %}" data-preview-post-id="{{ it.post.id }}">
+          <p class="latest-meta"><span>{{ it.source_label }}</span><time datetime="{{ it.day }}">{{ it.published_local }}</time></p>
+          {% if it.content_warning %}<p class="translation-note">{{ it.content_warning }}</p>{% endif %}
+          {% if it.event.meta.get('owner_submitted') %}<p class="translation-note">{{ copy.owner_submission }}</p>{% endif %}
+          <h3 lang="{{ language if it.translated or language == 'en' else 'und' }}"><a href="{{ prefix }}{{ it.story_path }}">{{ it.headline }}</a></h3>
+          {% if loop.first %}<p class="latest-summary" lang="{{ language if it.translated or language == 'en' else 'und' }}">{{ it.summary }}</p>{% endif %}
+          {% if not it.translated and language != 'en' %}<p class="translation-note">{{ copy.missing }}</p>{% endif %}
+        </li>
+        {% endfor %}
+      </ol>
+      {% else %}<p class="latest-empty">{{ copy.empty }}</p>{% endif %}
+      <a class="latest-browse" href="#news">{{ copy.browse_by_date }} {{ ui.icon('arrow') }}</a>
+    </section>
   </section>
   {% else %}
   <section class="page-intro">
@@ -73,7 +83,7 @@
   <div class="reading-layout{% if detail %} reading-layout--detail{% endif %}">
     <div class="feed-column" id="news">
       {% if not detail %}
-      <div class="section-heading"><div><p class="eyebrow">{{ copy.feed_eyebrow }}</p><h2>{{ copy.latest }}</h2></div><span class="edition-badge">{{ languages[language] }}</span></div>
+      <div class="section-heading"><div><p class="eyebrow">{{ copy.feed_eyebrow }}</p><h2>{{ copy.browse_by_date }}</h2></div><span class="edition-badge">{{ languages[language] }}</span></div>
       <details class="search-filters" data-filters hidden>
         <summary>{{ ui.icon('search') }}<span>{{ copy.filters }}</span><span class="filter-count" data-filter-count hidden></span>{{ ui.icon('down') }}</summary>
         <div class="filter-panel">
