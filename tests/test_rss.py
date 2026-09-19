@@ -240,3 +240,54 @@ def test_future_feed_item_waits_for_its_original_publication_time(tmp_path, monk
         monkeypatch.setattr(rss.time, 'time', lambda: NOW + 86400)
         assert rss.collect(store, [FEED], session, Metrics()) == 1
         assert store.event_count() == 1
+
+
+@pytest.mark.parametrize('mode', ['shadow', 'active'])
+def test_korean_feeds_use_shared_story_writer_and_delivery(tmp_path, monkeypatch, mode):
+    from rep0rter import reporter
+    from rep0rter.delivery import prepare_posts
+    from rep0rter.writer_contract import WriteResult
+
+    cfg = Config(data_dir=tmp_path, editorial_mode=mode)
+    feeds = [FEED, 'https://codefor.kr/boards/civic-tech-projects.xml']
+    with Store(cfg.db_path) as store:
+        session = Mock()
+        session.get.return_value = response()
+        rss.collect(store, feeds, session, Metrics())
+        assert store.event_count() == 2
+        assert store.post_count() == 0
+        writer = Mock(return_value=WriteResult(
+            headline='시민 해커톤', summary='공개 데이터로 교통 지도를 만듭니다',
+            translations={'ko': {'headline': '시민 해커톤', 'summary': '공개 데이터로 교통 지도를 만듭니다'}}))
+        monkeypatch.setattr(reporter, 'write', writer)
+        drafts = reporter.draft_posts(store, cfg, use_llm=False)
+        assert len(drafts) == 1  # Shared story logic merges the crossposted article.
+        writer.assert_called_once()
+        candidate, post = drafts[0]
+        assert candidate.event.source == 'rss'
+        assert post.published_at == NOW
+        assert candidate.event.ts == NOW - 86400
+        prepare_posts(cfg, store, drafts)
+        assert store.post_count() == 1
+        assert store.conn.execute('SELECT COUNT(*) FROM story_posts').fetchone()[0] == 1
+        assert store.conn.execute('SELECT COUNT(*) FROM delivery_jobs').fetchone()[0] == 1
+        assert store.conn.execute('SELECT COUNT(*) FROM writer_audits').fetchone()[0] == 1
+        assert reporter.draft_posts(store, cfg, use_llm=False) == []
+        assert writer.call_count == 1
+
+
+def test_korean_archive_and_low_information_items_keep_shared_selection_rules(tmp_path):
+    with Store(tmp_path / 'db') as store:
+        session = Mock()
+        session.get.return_value = response(ITEM.replace('18 Sep', '01 Sep'))
+        rss.collect(store, [FEED], session, Metrics(), days=30)
+        assert store.event_count() == 1  # Collection alone does not publish archives.
+        assert select_candidates(store, Config(), now=NOW) == []
+        session.get.return_value = response(ITEM.replace(
+            '<title>시민 해커톤 참가자 모집</title>', '<title>안녕하세요</title>').replace(
+            ITEM.split('<description>')[1].split('</description>')[0], '반갑습니다').replace(
+            'codefor-news-1', 'codefor-news-low-information'))
+        rss.collect(store, [FEED], session, Metrics())
+        fresh = store.get_event(rss.object_id(FEED, 'codefor-news-low-information'))
+        assert fresh.ts == NOW - 86400
+        assert select_candidates(store, Config(), now=NOW) == []

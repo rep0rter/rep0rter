@@ -229,14 +229,6 @@ for _language, _values in {
     COPY[_language].update(_values)
 
 for _language, _values in {
-    'en': {'archive_import': 'Archive entry · original source date', 'source_excerpt': 'Original feed text · may be an excerpt'},
-    'ko': {'archive_import': '지난 소식 · 원문 게시일 기준', 'source_excerpt': '피드 원문 · 일부 내용일 수 있습니다'},
-    'ja': {'archive_import': '過去の記事 · 原文の投稿日', 'source_excerpt': 'フィード原文 · 抜粋の場合があります'},
-    'zh-TW': {'archive_import': '歷史文章 · 依原文日期', 'source_excerpt': 'Feed 原文 · 可能為節錄'},
-}.items():
-    COPY[_language].update(_values)
-
-for _language, _values in {
     'en': ('Write a story', 'Sign in with Google to share your own story', 'Hashtags', 'Explore hashtags',
            'Hashtag timeline', 'Source timeline', 'Follow the story, update by update.', '{count} stories',
            'Self-reported', 'No evidence link supplied', 'How to take part'),
