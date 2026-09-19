@@ -30,10 +30,10 @@ def web(tmp_path, monkeypatch):
         jwks={'keys': [key.as_dict(private=False)]}, _loaded_at=time.time(),
     )
     # Use actual templates, static staging, and RSS with tiny offline card images.
-    def card(renderer, event, *args, theme="light"):
-        path = renderer.cfg.site_dir / 'cards' / (hashlib.sha256(event.id.encode()).hexdigest() + ('-report' if len(args) > 2 else '') + ('-dark' if theme == 'dark' else '') + '.png')
+    def card(renderer, event, *args):
+        path = renderer.cfg.site_dir / 'cards' / (hashlib.sha256(event.id.encode()).hexdigest() + '.png')
         path.parent.mkdir(exist_ok=True, parents=True)
-        Image.new('RGB', (2, 2), 'black' if theme == 'dark' else 'white').save(path)
+        Image.new('RGB', (2, 2), 'white').save(path)
         return path
     monkeypatch.setattr(site.CardRenderer, 'render', card)
     monkeypatch.setattr(site.CardRenderer, 'render_report', card)
