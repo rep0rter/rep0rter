@@ -8,8 +8,12 @@ import shutil
 import os
 import uuid
 import json
-import fcntl
 from urllib.parse import quote, urlsplit
+
+try:
+    import fcntl
+except ModuleNotFoundError:  # pragma: no cover - Windows development/test only
+    from .._fcntl_compat import fcntl
 from datetime import datetime, timezone
 from dataclasses import replace
 from email.utils import format_datetime

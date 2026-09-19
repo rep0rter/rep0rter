@@ -19,6 +19,7 @@ from .i18n import LANGUAGES
 from .llm import LLM
 from .publishers import site as site_publisher
 from .publishers import telegram
+from . import threads_delivery
 from .reporter import draft_posts, missing_languages, translate_post
 from .store import Store
 
@@ -53,6 +54,7 @@ def cmd_report(cfg: Config, args) -> int:
             _backfill_translations(store, cfg)
         site_publisher.build(store, cfg)
         deliver_pending(cfg, store)
+        threads_delivery.deliver_pending(cfg, store)
         from .retractions import process
         process(store,cfg)
     print(f"posted {len(drafts) + automatic_posts} item(s)")
@@ -207,6 +209,7 @@ def run_once(cfg: Config, dry_run: bool = False, no_llm: bool = False, days: int
                     _backfill_translations(store, cfg)
                 site_publisher.build(store, cfg)
                 deliver_pending(cfg, store)
+                threads_delivery.deliver_pending(cfg, store)
                 from .retractions import process
                 process(store,cfg)
             health=json.loads(store.get_kv('collector_health','{}'))
@@ -253,6 +256,7 @@ def cmd_status(cfg: Config, args) -> int:
         print(f"events: {store.event_count()}  posts: {store.post_count()}")
         print(f"telegram: {'configured' if cfg.telegram_bot_token and cfg.telegram_target else 'NOT configured'}"
               f"{' (test chat)' if cfg.telegram_use_test_chat else ''}")
+        print(f"threads: {'configured' if cfg.threads_enabled and cfg.threads_user_id and cfg.threads_access_token else 'NOT configured'}")
         print(f"llm: {'configured (' + str(cfg.ai_model) + ')' if cfg.llm_enabled else 'NOT configured'}")
         if last:
             print(f"last run: started {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(last['started_at']))}, "

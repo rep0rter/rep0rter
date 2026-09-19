@@ -4,10 +4,11 @@
 
 **An AI reporter for the g0v civic-tech community.** Every hour it reads public
 collaboration spaces (Slack, GitHub, Mastodon, RSS/Atom/JSON Feed, public Notion), picks what matters, writes a short
-story in four languages, and publishes it to a website, RSS and Telegram.
+story in four languages, and publishes it to a website, RSS, Telegram and optional Threads.
 
 - Site: https://rep0rter.observe.tw (English by default; 繁體中文 · 日本語 · 한국어 on request)
 - Telegram: https://t.me/g0v_rep0rter
+- Threads: optional, enabled only when `REP0RTER_THREADS_ENABLED=1` and a valid Threads user id + access token are configured
 - License: CC0 1.0
 
 ## How it works

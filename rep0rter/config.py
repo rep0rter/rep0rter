@@ -74,6 +74,12 @@ class Config:
     telegram_use_test_chat: bool = (_env("REP0RTER_TELEGRAM_TEST", "0") or "0").lower() in ("1", "true", "yes")
     telegram_language: str = _env("REP0RTER_TELEGRAM_LANGUAGE", "en") or "en"
 
+    # threads
+    threads_enabled: bool = (_env("REP0RTER_THREADS_ENABLED", "0") or "0").lower() in ("1", "true", "yes")
+    threads_user_id: str | None = _env("REP0RTER_THREADS_USER_ID")
+    threads_access_token: str | None = _env("REP0RTER_THREADS_ACCESS_TOKEN")
+    threads_batch_size: int = _env_int("REP0RTER_THREADS_BATCH_SIZE", 20)
+
     # Original-text cards (Noto CJK is installed in the Docker image).
     card_font: str | None = _env("REP0RTER_CARD_FONT")
     chrome_path: str | None = _env("REP0RTER_CHROME_PATH")

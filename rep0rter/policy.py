@@ -2,9 +2,13 @@
 from __future__ import annotations
 
 import json
-import fcntl
 import os
 import tempfile
+
+try:
+    import fcntl
+except ModuleNotFoundError:  # pragma: no cover - Windows development/test only
+    from ._fcntl_compat import fcntl
 import time
 import shutil
 from pathlib import Path
