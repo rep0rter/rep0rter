@@ -60,7 +60,6 @@
         {% for it in recent %}
         <li class="latest-item{% if loop.first %} latest-item--lead{% endif %}" data-preview-post-id="{{ it.post.id }}">
           <p class="latest-meta"><span>{{ it.source_label }}</span><time datetime="{{ it.day }}">{{ it.published_local }}</time></p>
-          {% if 'source_example' in it.post.reasons %}<p class="translation-note">{{ copy.source_example_note }}</p>{% endif %}
           {% if it.content_warning %}<p class="translation-note">{{ it.content_warning }}</p>{% endif %}
           {% if it.event.meta.get('owner_submitted') %}<p class="translation-note">{{ copy.owner_submission }}</p>{% endif %}
           <h3 lang="{{ language if it.translated or language == 'en' else 'und' }}"><a href="{{ prefix }}{{ it.story_path }}">{{ it.headline }}</a></h3>
@@ -138,7 +137,14 @@
 <dialog class="image-viewer" id="image-viewer" aria-labelledby="image-viewer-title">
   <div class="image-viewer-panel">
     <div class="image-viewer-toolbar"><h2 id="image-viewer-title">{{ copy.view_image }}</h2><button type="button" class="image-viewer-close" data-viewer-close aria-label="{{ copy.close_image }}" autofocus>{{ ui.icon('close') }}</button></div>
-    <img class="image-viewer-image" data-viewer-image alt="">
+    <div class="image-viewer-stage" data-viewer-stage>
+      <div class="image-viewer-card" data-viewer-card>
+        <img class="image-viewer-image" data-viewer-image alt="">
+        <span class="image-viewer-foil" aria-hidden="true"></span>
+        <span class="image-viewer-glare" aria-hidden="true"></span>
+      </div>
+      <p class="image-viewer-status" data-viewer-status role="status" data-loading="{{ copy.image_loading }}" data-error="{{ copy.image_error }}"></p>
+    </div>
     <div class="image-viewer-footer"><p data-viewer-caption></p><a class="button button-secondary" data-viewer-download download>{{ ui.icon('download') }} {{ copy.download }}</a></div>
   </div>
 </dialog>

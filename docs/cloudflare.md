@@ -8,9 +8,15 @@ account features, and holds the durable SQLite database and generated assets.
 ## Reporting and storage
 
 `.github/workflows/report.yml` runs hourly at minute 7 and supports manual
-`report` and `build` dispatches. GitHub cron can be delayed. The workflow requires
+`report`, `build`, and `deliver` dispatches. GitHub cron can be delayed. The workflow requires
 passing Offline tests for its exact main commit; the Worker also rejects a
 runner whose source commit differs from the deployed engine.
+
+To publish one existing website post to the configured Telegram channel, dispatch
+`deliver` with its numeric `post_id`. It validates source policy and translation,
+creates a durable outbox job, renders the card, and confirms the Telegram message
+ID. Repeating a dispatch never resets sent or ambiguous jobs; reconcile uncertain
+deliveries explicitly. Scheduled reporting continues to deliver new selected stories.
 
 The runner takes an exclusive, expiring write lease and downloads a private
 snapshot into its temporary workspace. Public pages remain available. Account

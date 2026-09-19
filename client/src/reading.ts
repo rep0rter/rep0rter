@@ -28,6 +28,11 @@
       removers.push(() => target.removeEventListener(type, handler as EventListener));
     };
     dispose = () => { removers.splice(0).forEach(remove => remove()); };
+    document.querySelectorAll<HTMLImageElement>('[data-author-avatar]').forEach(image => {
+      const fallback = () => { image.hidden = true; };
+      listen(image, 'error', fallback);
+      if (image.complete && !image.naturalWidth) fallback();
+    });
     const form = document.querySelector<HTMLFormElement>('[data-search-form]');
     if (!form) return;
     // index.html only marks the form with data-search-form on non-detail pages,

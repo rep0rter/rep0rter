@@ -69,6 +69,8 @@
         icon.hidden = icon.dataset.themeIcon !== preference;
       });
     });
+    // Theme-aware artwork swaps inside the same view transition snapshot.
+    return window.Rep0rterImages?.sync();
   };
   const announce = (name: string, detail?: unknown) => {
     if (typeof CustomEvent === 'function' && typeof document.dispatchEvent === 'function') {
@@ -124,12 +126,12 @@
     root.dataset.themeTransition = 'reveal';
     try {
       const transition = document.startViewTransition(() => {
-        if (revision === reveal.revision) apply();
+        if (revision === reveal.revision) return apply();
       });
       reveal.transition = transition;
       // Attach rejection handlers immediately: skipTransition rejects ready.
       transition.updateCallbackDone.catch(() => {
-        if (revision === reveal.revision) apply();
+        if (revision === reveal.revision) return apply();
       });
       transition.finished.then(() => clearReveal(reveal), () => clearReveal(reveal));
       transition.ready.then(() => {

@@ -45,6 +45,44 @@ def jobs(store):
     return list(store.conn.execute('SELECT * FROM delivery_jobs ORDER BY id'))
 
 
+def test_existing_site_post_delivery_is_durable_and_never_replayed(setup_delivery, monkeypatch):
+    cfg, store, items = setup_delivery
+    delivery.prepare_posts(cfg, store, items[:1])
+    post_id = items[0][1].id
+    with store.conn:
+        store.conn.execute('DELETE FROM delivery_jobs')  # A site-only historical post.
+    sent = []
+    def send(*args):
+        # The job is committed before any external send.
+        assert not store.conn.in_transaction
+        assert jobs(store)[0]['status'] == 'sending'
+        sent.append(1)
+        return 456
+    monkeypatch.setattr(telegram, 'send_photo', send)
+    job_id = delivery.enqueue_existing(cfg, store, post_id)
+    assert delivery.deliver_pending(cfg, store) == {post_id: 456}
+    assert delivery.enqueue_existing(cfg, store, post_id) == job_id
+    assert delivery.deliver_pending(cfg, store) == {}
+    assert sent == [1]
+    with store.conn:
+        store.conn.execute("UPDATE delivery_jobs SET status='unknown', message_id=NULL")
+    delivery.enqueue_existing(cfg, store, post_id)
+    assert delivery.deliver_pending(cfg, store) == {}
+    assert jobs(store)[0]['status'] == 'unknown' and sent == [1]
+
+
+def test_existing_delivery_rejects_missing_translation_and_withdrawal(setup_delivery):
+    cfg, store, items = setup_delivery
+    delivery.prepare_posts(cfg, store, items[:1])
+    post_id = items[0][1].id
+    with pytest.raises(telegram.TranslationPending):
+        delivery.enqueue_existing(replace(cfg, telegram_language='ko'), store, post_id)
+    with store.conn:
+        store.conn.execute('INSERT INTO event_tombstones VALUES(?,?,?)', (items[0][0].event.id, 3, 'excluded'))
+    with pytest.raises(ValueError, match='excluded'):
+        delivery.enqueue_existing(cfg, store, post_id)
+
+
 def test_per_photo_persistence_and_partial_retry(setup_delivery, monkeypatch):
     cfg, store, items = setup_delivery
     delivery.prepare_posts(cfg, store, items)

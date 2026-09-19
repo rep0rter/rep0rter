@@ -375,6 +375,47 @@ def test_same_second_page_saturation_remains_a_gap(monkeypatch):
     assert 'did not advance' in error and resume is None
 
 
+def recent_month_html():
+    return '''<nav role="pagination">
+    <a class="nav-link active" href="/index/channel/C/2026-09">2026-09</a>
+    <a class="dropdown-item" href="/index/channel/C/2026-09">2026-09<span class="badge">1</span></a>
+    </nav><section role="feed"><div class="message" id="ts-1789571777.3831">
+    <span class="message-time" title='{"ts":"1789571777.383129","text":"A real update"}'></span>
+    </div></section>'''
+
+
+def test_repeated_fractional_head_is_verified_against_complete_raw_month(monkeypatch):
+    row = {'ts': '1789571777.383129'}
+    get = Mock(side_effect=[Mock(json=lambda: {'messages': [row]}),
+                           Mock(json=lambda: {'messages': [row]}), Mock(text=recent_month_html())])
+    monkeypatch.setattr(inc.api, '_get', get)
+    rows, complete, error, cursor = inc.scan(Mock(), 'C', Decimal('1789500000'))
+    assert complete and rows == [row] and not error and cursor is None
+    assert get.call_args.args[1].endswith('/index/channel/C')
+
+
+@pytest.mark.parametrize('document', [
+    recent_month_html().replace('class="badge">1', 'class="badge">2'),
+    recent_month_html().replace('1789571777.383129', '1789571777.383128'),
+    recent_month_html().replace('class="nav-link active"', 'class="nav-link"'),
+    recent_month_html().replace('/channel/C/', '/channel/OTHER/'),
+    recent_month_html().replace('id="ts-1789571777.3831"', 'id="ts-1789571777.3832"'),
+])
+def test_recent_month_proof_rejects_missing_rows_and_changed_markup(monkeypatch, document):
+    monkeypatch.setattr(inc.api, '_get', Mock(return_value=Mock(text=document)))
+    assert not inc.api.channel_window_is_complete(Mock(), 'C', Decimal('1789500000'), {Decimal('1789571777.383129')})
+
+
+def test_recent_month_proof_cannot_cover_previous_month_or_ignore_budget(monkeypatch):
+    monkeypatch.setattr(inc.api, '_get', Mock(return_value=Mock(text=recent_month_html())))
+    assert not inc.api.channel_window_is_complete(Mock(), 'C', Decimal('1788000000'), {Decimal('1789571777.383129')})
+    row = {'ts': '1789571777.383129'}
+    monkeypatch.setattr(inc.api, '_get', Mock(side_effect=[
+        Mock(json=lambda: {'messages': [row]}), Mock(json=lambda: {'messages': [row]}), BudgetExceeded('budget')]))
+    _, complete, error, cursor = inc.scan(Mock(), 'C', Decimal('1789500000'))
+    assert not complete and 'budget exhausted' in error and cursor == row['ts']
+
+
 def test_root_lookup_widens_float_boundary_but_matches_only_exact_id(monkeypatch):
     ts = '1789571777.383129'
     get = pages(monkeypatch, [[{'ts': '1789571777.900000', 'text': 'other'}, {'ts': ts, 'text': 'exact root'}]])
