@@ -17,7 +17,7 @@ from .i18n import LANGUAGES
 from .slack_text import to_plain
 from .sources import plain_text
 
-PROMPT_VERSION = "grounded-four-locale-v7"
+PROMPT_VERSION = "grounded-four-locale-v8"
 # Length limits in Python code points (headline, summary) per edition. English needs
 # about 2.5x the room of the CJK editions for the same facts, so it alone is relaxed.
 DEFAULT_LIMITS = (30, 90)
@@ -32,7 +32,7 @@ TZ = ZoneInfo("Asia/Taipei")
 EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F\u200D\u20E3]")
 RELATIVE = re.compile(r"今天|今晚|明天|後天|昨日|昨天|下週|下周|本週|這週|週末|今夜|本日|明日|来週|오늘|내일|다음\s*주|\b(?:today|tonight|tomorrow|yesterday|next week|this weekend)\b", re.I)
 SPECULATIVE = re.compile(r"可能|或許|預計|提議|打算|希望|maybe|might|propos|planning|予定|検討|예정|제안", re.I)
-ATTRIBUTION = re.compile(r"討論|來源|參與者|提到|表示|指出|推測|建議|according|discussion|suggest|source|participant|投稿|議論|提案|原文|出典|발언|논의|출처|원문", re.I)
+ATTRIBUTION = re.compile(r"討論|來源|參與者|提到|表示|指出|推測|建議|according|discussion|suggest|source|participant|投稿|議論|提案|原文|出典|발언|논의|출처|원문|자료에 따르면|참여자에 따르면", re.I)
 OPEN_INVITE = re.compile(r"開放報名|自由參加|歡迎報名|人人|open registration|open to (?:all|everyone)|register now|参加自由|誰でも|자유롭게\s*참여", re.I)
 CLOSED = re.compile(r"閉門|不開放|非公開|closed[- ]door|invitation[- ]only|非公開|초청|비공개", re.I)
 PARTICIPATION = re.compile(r"報名|登記參加|參加連結|\bregister\b|\bregistration\b|sign[ -]?up|申[し込]?込[みむ]?|申し込み|신청|참가\s*등록", re.I)
@@ -75,12 +75,12 @@ en 以單字數估算較準：headline 約 7 個單字、summary 約 20 個單�
 各語言風格：
 - zh-TW：台灣正體與台灣用語（軟體、資料、伺服器），不夾雜簡體字或中國大陸用語。
 - ja：新聞見出し調の常体（だ・である）；見出しは体言止め可。日本の字体と語彙を使い、中国語由来語を避ける（軟體→ソフトウェア、資料→データ）。外来語はカタカナ。
-- ko：신문 기사체（명사형 종결）；한자 병기 금지。
+- ko：자연스럽고 간결한 한국어로 작성한다.
 - en：現在式、主動語態，句首大寫其餘小寫；不寫 "The report says" 這類贅語。
 日期只能使用來源已有的絕對日期，並依語言書寫：zh-TW／ja 2026年9月19日、ko 2026년 9월 19일、en Sep 19, 2026。
 金額、數量與單位照來源原樣書寫（如 $100），不可補上、省略或換成來源沒有的幣別（$→元／円）；來源寫「元」（台灣）時，ja 用「台湾ドル」、ko 用「대만 달러」、en 用「NT$」，不可寫成「円」。
 固定用語（請用以下寫法，以利機械檢查）：
-- 歸屬：zh-TW 討論指出／參與者提到；ja 議論で…と指摘／出典の原文；ko 논의에서 …라는 의견／출처 원문；en participants suggest／source text says。
+- 歸屬：zh-TW 討論指出／參與者提到；ja 議論で…と指摘／出典の原文；ko 해당 자료에 따르면／참여자에 따르면／논의에서 …라는 의견；en participants suggest／source text says。
 - 推測：zh-TW 預計／提議／可能；ja 予定／検討／希望（「提案」不算推測標記）；ko 예정／제안；en proposed／might。
 - 更正標記：zh-TW 本報更正；ja 訂正；ko 정정；en Correction。
 - 取消／延期：zh-TW 取消／延期；ja 中止／延期；ko 취소／연기；en cancelled／postponed。
@@ -110,7 +110,7 @@ PROMPT_EXAMPLES = (
         "zh-TW": {"headline": "本報更正：工作坊為閉門活動",
                   "summary": "來源原文指出該工作坊為閉門活動，先前報導缺少此脈絡"},
         "ko": {"headline": "정정: 워크숍은 비공개 행사",
-               "summary": "출처 원문에 따르면 워크숍은 비공개이며 이전 보도에는 이 맥락이 빠져 있었음"},
+               "summary": "해당 자료에 따르면 워크숍은 비공개 행사이며, 이전 보도에는 이 맥락이 빠져 있었음"},
         "ja": {"headline": "訂正：ワークショップは非公開開催",
                "summary": "出典の原文によるとワークショップは非公開で、以前の報道にはこの文脈が欠けていた"},
         "en": {"headline": "Correction: invite-only event",

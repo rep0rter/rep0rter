@@ -280,7 +280,7 @@ def test_prompt_examples_pass_the_validator_in_every_language():
 
 
 def test_writer_prompt_is_versioned_and_carries_shared_style_and_examples():
-    assert PROMPT_VERSION == 'grounded-four-locale-v7'
+    assert PROMPT_VERSION == 'grounded-four-locale-v8'
     assert TRANSLATION_STYLE in SYSTEM_PROMPT
     assert 'zh-TW 不是原稿' in SYSTEM_PROMPT
     for _, editions in PROMPT_EXAMPLES:
