@@ -93,13 +93,13 @@ def test_exclusion_arriving_during_card_render_prevents_transport(tmp_path, monk
     with Store(config.db_path) as store:
         source = Event('slack:C:1','slack','message','slack:C',100,author_id='U1',text='Original')
         store.upsert_events([source], now=150)
-        post = Post(source.id,180,7,'Headline','Summary')
+        post = Post(source.id,180,7,'Headline','Summary',translations={'en':{'headline':'Headline','summary':'Summary'}})
         delivery.prepare_posts(config,store,[(Candidate(source,None,7),post)])
         class Renderer:
             def __init__(self,cfg): pass
             def __enter__(self): return self
             def __exit__(self,*args): pass
-            def render(self,*args):
+            def render_report(self,*args):
                 policy.add_rule(store,'user','slack:U1')
                 image=tmp_path/'test.png'
                 image.write_bytes(b'fake-image')
@@ -130,6 +130,7 @@ def test_redaction_sanitizes_all_cached_generations_even_when_rebuild_fails(tmp_
         Image.new('RGB',(2,2),'white').save(path)
         return path
     monkeypatch.setattr(site.CardRenderer,'render',render)
+    monkeypatch.setattr(site.CardRenderer,'render_report',lambda renderer,event,container,post,language: render(renderer,event,container,{}))
     with Store(config.db_path) as store:
         store.upsert_container(Container('slack:C','slack','source'))
         for i in (1,2):

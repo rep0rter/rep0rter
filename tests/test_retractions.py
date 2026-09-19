@@ -16,7 +16,8 @@ def group(tmp_path):
             value=Event(f'slack:C:{i}','slack','message','slack:C',100+i,author_id=f'U{i}',
                         author_name=f'Author{i}',text=f'Source{i}',url=f'https://source.invalid/{i}')
             store.upsert_events([value])
-            store.add_post(Post(value.id,200+i,7,f'Headline{i}',f'Summary{i}'))
+            store.add_post(Post(value.id,200+i,7,f'Headline{i}',f'Summary{i}',
+                translations={'en': {'headline': f'Headline{i}', 'summary': f'Summary{i}'}}))
         remote.confirm_group(store,[1,2,3],'news',99)
         yield store
 

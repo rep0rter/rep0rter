@@ -69,7 +69,7 @@ def test_backfill_only_missing_languages_is_idempotent():
     llm.chat_json.return_value = translations()
     assert translate_post(post, llm)
     sent = json.loads(llm.chat_json.call_args.args[1])
-    assert sent['languages'] == ['zh-TW', 'ko', 'en']
+    assert sent['languages'] == ['en', 'zh-TW', 'ko']
     assert post.translations['ja']['headline'] == '既存'
     assert post.headline == '既有標題'
     assert not translate_post(post, llm)
@@ -110,7 +110,7 @@ def test_backfill_keeps_partial_success_if_retry_fails():
     llm.chat_json.side_effect = [{'ko': translations()['ko']}, ValueError('invalid JSON')]
     assert translate_post(post, llm)
     assert post.translations == {'ko': translations()['ko']}
-    assert missing_languages(post) == ['zh-TW', 'ja', 'en']
+    assert missing_languages(post) == ['en', 'zh-TW', 'ja']
     assert llm.chat_json.call_count == 2
 
 

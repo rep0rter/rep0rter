@@ -3,8 +3,8 @@
 g0v 的虛擬記者。匯集 Slack、GitHub 與明列 Mastodon 帳號的公開協作紀錄，
 每小時挑出值得大家知道的動態，推播到 Telegram，並發布在 [rep0rter.observe.tw](https://rep0rter.observe.tw)。
 
-每篇報導同時產生台灣繁體中文、韓文、日文、英文版本，網站可自由切換並保留閱讀位置。
-每則消息附原文圖卡：公開頭貼／來源 logo、作者、來源與原文摘錄；Telegram 一篇一圖，
+每篇報導同時產生台灣繁體中文、韓文、日文、英文版本，網站預設英文，其他語言可自行切換並保留閱讀位置。
+英文網站與 Telegram 使用英文報導圖卡，保留公開頭貼／來源 logo，並標示摘要由 rep0rter 整理。原文圖卡與文字可自行展開；Telegram 一篇一圖，
 附四語完整報導連結。沒有可用翻譯時會明確標示，沒有頭貼時顯示名字縮寫。
 
 目標是降低資訊落差和協作門檻，讓多中心的社群彼此看見、彼此幫忙。
@@ -66,14 +66,14 @@ HTTP timeout；失敗依 1 小時到 24 小時退避，累計 6 輪後交由管�
 寫入前再次核對退出規則與原文版本，避免撤回內容被遲到的翻譯復原。
 狀態保存在 `translation_backfill` 與各篇 `translation_retry:<id>`，不含模型回覆文字。
 
-網站提供 `index.html`、`index.ko.html`、`index.ja.html`、`index.en.html`，以及相對應的
-`feed.xml`、`feed.ko.xml`、`feed.ja.xml`、`feed.en.xml`。每篇有永久網址
+網站提供 `index.html`（英文）、`index.zh-TW.html`、`index.ja.html`、`index.ko.html`，以及相對應的
+`feed.xml`（英文）、`feed.zh-TW.xml`、`feed.ja.xml`、`feed.ko.xml`；舊英文 `.en` 路徑保留相容別名。每篇有永久網址
 `posts/<post-id>/index[.語言].html`；首頁只列最近 300 篇，較早的文章仍保留永久頁與來源頁。
 RSS 保留歷史版本實際使用的數字 post ID 作 GUID，避免修正事件 ID 後舊文被重新訂閱。
 
 圖卡參考 [chumei 的來源截圖流程](https://github.com/skyhong2002/chumei/blob/main/scripts/render_source_covers.py)：
 Playwright 將經跳脫的本機 HTML 內容區塊截成 1200×630 PNG，依內容快取；瀏覽器不可用時
-改用 Pillow 排版。圖片使用原文語言，長文節錄並保留全文入口，不把 AI 摘要放在作者頭貼旁當成引言。
+改用 Pillow 排版。原文圖片保留原文語言，長文節錄並保留全文入口。英文圖卡清楚標示 ENGLISH REPORT／Summary by rep0rter，不把摘要冒充來源作者引言。
 下載的頭貼僅來自公開 HTTPS，檢查並固定公開 IP、驗證 TLS，限制大小與時間；渲染頁不能連外。
 Docker 已包含 Chromium 與 Noto CJK 字型。本機若使用其他字型，可設定 `REP0RTER_CARD_FONT`。
 
@@ -90,7 +90,7 @@ Docker 已包含 Chromium 與 Noto CJK 字型。本機若使用其他字型，�
 |---|---|
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | 推播用。bot 要是頻道管理員 |
 | `TELEGRAM_TEST_CHAT_ID` + `REP0RTER_TELEGRAM_TEST=1` | 開發時推到測試頻道 |
-| `REP0RTER_TELEGRAM_LANGUAGE` | 圖片說明語言，`zh-TW`／`ko`／`ja`／`en`；預設繁中 |
+| `REP0RTER_TELEGRAM_LANGUAGE` | 圖片說明語言，`zh-TW`／`ko`／`ja`／`en`；預設英文，缺英文時保留待送並等待補譯，不自動改發中文 |
 | `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | OpenAI 相容端點。沒設就用純文字摘錄 |
 | `REP0RTER_SCORE_THRESHOLD` | 門檻，預設 6。調低會報更多 |
 | `REP0RTER_MAX_ITEMS_PER_RUN` | 每小時最多幾則，預設 5 |

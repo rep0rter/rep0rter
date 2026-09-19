@@ -26,6 +26,7 @@ def setup_delivery(tmp_path, monkeypatch):
         def __enter__(self): return self
         def __exit__(self, *args): pass
         def render(self, *args): return photo
+        def render_report(self, *args): return photo
 
     monkeypatch.setattr(delivery, 'CardRenderer', Renderer)
     items = []
@@ -206,3 +207,22 @@ def test_explicit_rejection_needs_manual_retry(setup_delivery, monkeypatch):
     assert calls == [1]
     assert jobs(store)[0]['status'] == 'failed'
     assert jobs(store)[0]['next_attempt'] is None
+
+
+def test_missing_english_waits_and_sends_only_after_translation(setup_delivery, monkeypatch):
+    cfg, store, items = setup_delivery
+    candidate, post = items[0]
+    post.translations = {}
+    delivery.prepare_posts(cfg, store, items[:1])
+    calls = []
+    monkeypatch.setattr(telegram, 'send_photo', lambda *args: calls.append(args) or 99)
+    assert delivery.deliver_pending(cfg, store) == {}
+    job = jobs(store)[0]
+    assert job['status'] == 'failed' and job['next_attempt'] is not None
+    assert not calls
+    post.translations['en'] = {'headline': 'English title', 'summary': 'English summary'}
+    store.update_post_translations(post)
+    with store.conn:
+        store.conn.execute('UPDATE delivery_jobs SET next_attempt=0')
+    assert delivery.deliver_pending(cfg, store) == {post.id:99}
+    assert 'English title' in calls[0][-1]

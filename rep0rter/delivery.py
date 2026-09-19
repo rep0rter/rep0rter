@@ -193,8 +193,13 @@ def deliver_pending(cfg: Config, store: Store) -> dict[int, int]:
                     outbox.failed(job, 'Excluded or withdrawn before delivery')
                     continue
                 caption = telegram.format_caption(cfg, candidate, post)
-                photo = renderer.render(candidate.event, candidate.container, store.user_names(candidate.event.source))
+                photo = (renderer.render_report(candidate.event, candidate.container, post)
+                         if cfg.telegram_language == 'en' else
+                         renderer.render(candidate.event, candidate.container, store.user_names(candidate.event.source)))
                 outbox.payload(job, caption, str(photo))
+            except telegram.TranslationPending:
+                outbox.failed(job, 'Waiting for the configured translation', retry_after=3600)
+                continue
             except Exception as exc:
                 outbox.failed(job, f"Preparation failed: {type(exc).__name__}")
                 log.error("Telegram job %s preparation failed (%s)", job['id'], type(exc).__name__)
