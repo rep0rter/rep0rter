@@ -8,7 +8,12 @@ is not evidence of healthy collection: the collector must explicitly persist
 
 ## Deployment
 
-Singa automatically deploys tested pushes to `main` using a host-side systemd
+Production uses [native Cloudflare Workers](cloudflare.md), with durable SQLite
+storage and Cloudflare recovery rather than host filesystem backups. The
+following Compose operations describe the retained Singa recovery deployment.
+Its timer and publishers must remain stopped after cutover.
+
+Singa previously automatically deployed tested pushes to `main` using a host-side systemd
 timer. See [automatic deployment](deployment.md) for setup, health checks,
 rollback behavior and operator commands.
 

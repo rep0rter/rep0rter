@@ -26,6 +26,7 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from ..config import TAIPEI, Config
+from ..runtime import services
 from ..slack_text import to_plain
 from ..store import Container, Event, Post
 
@@ -57,6 +58,8 @@ def _public_image_url(url: str) -> bool:
 
 def _fetch_image(url: str) -> bytes | None:
     """Pin each public DNS result, verify original TLS identity, and bound reads."""
+    if services.get() is not None:
+        return services.get().fetch_image(url)
     deadline = time.monotonic() + 20
     for _ in range(4):
         address = _public_image_address(url)
@@ -301,8 +304,11 @@ class CardRenderer:
         with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".png", delete=False) as output:
             temporary = Path(output.name)
         try:
-            page = self._page()
-            if page:
+            runtime = services.get()
+            page = None if runtime else self._page()
+            if runtime:
+                temporary.write_bytes(runtime.render_card(rendered))
+            elif page:
                 try:
                     page.set_content(rendered, wait_until="load")
                     page.evaluate("document.fonts.ready")

@@ -1,13 +1,10 @@
 """Owner-defined news templates, fed by public releases or RSS 2.0 entries."""
 from __future__ import annotations
 
+from .runtime import locks as fcntl
 import hashlib
 import json
 
-try:
-    import fcntl
-except ModuleNotFoundError:  # pragma: no cover - Windows development/test only
-    from ._fcntl_compat import fcntl
 import re
 from string import Template
 import time

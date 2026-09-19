@@ -70,12 +70,15 @@ The Compose stack runs a `worker` (hourly cycle),
 `maintenance` (backups, health checks), `accounts` (Google login and owner project
 news), and `web` (Caddy, static files on `127.0.0.1:18090`).
 
-On Singa, a systemd timer checks `main` every minute and deploys new commits after
-their GitHub **Offline tests** workflow passes. Contributors only need to push
-to `main`; machine access is unnecessary. See [automatic deployment](docs/deployment.md)
-for installation, status, retries and rollback. Apply production `.env` changes
-through the controller's `--redeploy` option, which shares the timer's lock.
-Use `docker compose up -d --build` only for initial setup on an unmanaged host.
+Production uses native Cloudflare Workers: Python runs the reporting pipeline
+and account features, a JavaScript Worker serves the generated site, Durable
+Objects persist data, and Browser Run renders cards. No Containers or Steam host
+are needed. See [Cloudflare deployment](docs/cloudflare.md) for migration,
+CI-gated deployment of `main`, configuration, and recovery.
+
+The former Singa deployment is retained for recovery with its services and timer
+stopped. Its [controller instructions](docs/deployment.md) apply only to that
+host; do not restart its publisher after Cloudflare starts writing.
 
 ## Docs
 

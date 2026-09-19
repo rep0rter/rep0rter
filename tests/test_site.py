@@ -730,3 +730,23 @@ def test_facet_metadata_stays_in_removable_articles_and_selects_start_empty(publ
             options = filters.select(f'[data-filter="{facet}"] option')
             assert len(options) == 1
             assert options[0]['value'] == ''
+
+
+def test_source_examples_keep_original_dates_links_and_survive_withdrawal(published_site):
+    from rep0rter import policy
+    store, cfg, _, entries, _ = published_site
+    post, event = entries[-1]
+    with store.conn:
+        store.conn.execute('UPDATE posts SET reasons=? WHERE id=?', (json.dumps(['source_example']), post.id))
+    site.build(store, cfg)
+    for language, (page, _) in EDITIONS.items():
+        listing = html(cfg.site_dir / 'examples' / page)
+        article = listing.find('article', id=str(post.id))
+        assert article
+        assert '2023-11-15' in article.get_text()
+        assert article.find('a', href=event.url)
+        assert site.COPY[language]['source_example_note'] in article.get_text()
+        home = html(cfg.site_dir / page)
+        assert home.find('a', href='examples/' + page)
+    policy.redact(store, [event.id])
+    assert not html(cfg.site_dir / 'examples/index.html').find('article', id=str(post.id))

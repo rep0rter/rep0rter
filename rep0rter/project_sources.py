@@ -30,6 +30,9 @@ def public_address(url):
 
 
 def fetch(url):
+    from .runtime import services
+    if services.get() is not None:
+        return services.get().public_fetch(url, MAX_SOURCE_BYTES)
     deadline = time.monotonic() + 25
     for _ in range(4):
         hostname, address = public_address(url)
