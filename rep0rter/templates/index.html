@@ -38,7 +38,10 @@
       <label class="search-field" for="story-search">{{ ui.icon('search') }}<span class="visually-hidden">{{ copy.search_label }}</span><input id="story-search" name="q" type="search" autocomplete="off" placeholder="{{ copy.search_placeholder }}"{% if not detail %} aria-describedby="search-status"{% endif %}></label>
       {% if not detail %}<button class="search-clear" type="button" data-search-clear aria-label="{{ copy.clear_search }}" title="{{ copy.clear_search }}" hidden>{{ ui.icon('close') }}</button>{% endif %}
     </form>
-    <div class="masthead-actions">{% if has_examples %}<a class="write-story-link" href="{{ prefix }}examples/{{ page_name(language) }}">{{ copy.source_examples }}</a>{% endif %}<a class="write-story-link" href="{{ prefix }}write">{{ copy.write_story }}</a>{{ ui.language_links(copy, language, languages, page_name, compact=True) }}{{ ui.appearance(copy) }}</div>
+    <div class="masthead-actions">
+      <nav class="masthead-links" aria-label="{{ copy.resources }}">{% if has_examples %}<a class="write-story-link" href="{{ prefix }}examples/{{ page_name(language) }}">{{ copy.source_examples }}</a>{% endif %}<a class="write-story-link" href="{{ prefix }}write">{{ copy.write_story }}</a>{% if cfg.google_login_enabled %}<a class="write-story-link sign-in-link" href="{{ prefix }}projects">{{ copy.sign_in }}</a>{% endif %}</nav>
+      <div class="masthead-preferences">{{ ui.language_links(copy, language, languages, page_name, compact=True) }}{{ ui.appearance(copy) }}</div>
+    </div>
   </div>
 </header>
 <main id="main" class="page-shell" tabindex="-1">
