@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="robots" content="noindex">
+  <title>Post your project · {{ cfg.site_title }}</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <div class="masthead"><a class="wordmark" href="/">{{ cfg.site_title }}</a><span class="edition">COMMUNITY PROJECTS</span></div>
+  <h1>Share what you’re building.</h1>
+  <p class="tagline">Post your civic-tech project to the rep0rter community feed.</p>
+  <nav class="links"><a href="/">← Back to the feed</a><a href="{{ url_for('managed_project') }}">Manage automatic project news</a></nav>
+</header>
+<main>
+{% if error %}<p class="form-notice" role="alert">{{ error }}</p>{% endif %}
+{% if not cfg.google_login_enabled %}
+  <article><h2>Project posting is not available yet</h2><p>Google sign-in is being set up. Please check back soon.</p></article>
+{% elif not owner %}
+  <article class="project-form">
+    <h2>Sign in to post your project</h2>
+    <p>Use your Google account to publish a project you own or represent.</p>
+    <form action="{{ url_for('login') }}" method="post">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="google-login" type="submit">Sign in with Google</button>
+    </form>
+    <p class="form-help">We use Google to verify your account. Your email stays private. You choose the name shown on your post.</p>
+  </article>
+{% else %}
+  <div class="account-bar"><span>Signed in as {{ owner.name }}</span>
+    <form action="{{ url_for('logout') }}" method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="quiet-button">Sign out</button></form>
+  </div>
+  <article class="project-form">
+    <h2>Post your project</h2>
+    <p>Your description will be published as written to the website and RSS feed, labeled as an owner submission.</p>
+    <form action="{{ url_for('publish') }}" method="post">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="submission_token" value="{{ submission_token }}">
+      <label for="title">Project name</label>
+      <input id="title" name="title" value="{{ values.get('title', '') }}" required maxlength="160" autocomplete="off">
+      <label for="url">Project website or repository</label>
+      <input id="url" name="url" type="url" value="{{ values.get('url', '') }}" required maxlength="2048" placeholder="https://github.com/your-team/your-project">
+      <label for="description">Project description</label>
+      <p id="description-help" class="form-help">What does it do, who is it for, and how can people help? Up to 3,000 characters.</p>
+      <textarea id="description" name="description" rows="8" required maxlength="3000" aria-describedby="description-help">{{ values.get('description', '') }}</textarea>
+      <label for="language">Description language</label>
+      <select id="language" name="language">{% for code, label in languages.items() %}<option value="{{ code }}"{% if values.get('language', 'en') == code %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+      <label for="author">Public display name</label>
+      <input id="author" name="author" value="{{ values.get('author', owner.name) }}" required maxlength="100" autocomplete="nickname">
+      <label class="owner-confirmation"><input type="checkbox" name="owner_confirmed" value="yes" required{% if values.get('owner_confirmed') == 'yes' %} checked{% endif %}> <span>I own this project or am authorized to represent it, and I agree to publish this description, link, and display name publicly.</span></label>
+      <p class="form-help">Google sign-in verifies your account. Project ownership is self-declared. You can publish up to five projects every 24 hours.</p>
+      <button type="submit">{{ 'Retry publishing saved project' if saved_post else 'Publish project to the feed' }}</button>
+    </form>
+  </article>
+{% endif %}
+</main>
+<footer><p>Community projects, shared by the people building them.</p></footer>
+</body>
+</html>

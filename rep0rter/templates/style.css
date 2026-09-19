@@ -42,3 +42,22 @@ blockquote { font-size:.9rem; margin:1rem 0 0; padding-left:1rem; border-left:2p
 .empty { padding:3rem 0; color:var(--muted); }
 footer { color:var(--muted); font-size:.8rem; border-top:1px solid var(--line); margin-top:2rem; padding-bottom:3rem; }
 @media (max-width:480px) { header,main,footer { padding-left:1rem; padding-right:1rem; } article { padding:1rem; } .edition { max-width:9rem; } }
+.project-form h2 { font:600 1.25rem/1.5 system-ui,sans-serif; color:var(--fg); }
+.project-form label { display:block; font-weight:600; margin-top:1rem; }
+.project-form input:not([type=hidden]):not([type=checkbox]),.project-form textarea,.project-form select { width:100%; padding:.7rem; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--fg); font:inherit; }
+.project-form textarea { resize:vertical; }
+button { cursor:pointer; font:600 1rem/1.5 system-ui,sans-serif; color:var(--bg); background:var(--fg); border:1px solid var(--fg); border-radius:8px; padding:.7rem 1rem; }
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible { outline:3px solid var(--accent); outline-offset:3px; }
+.google-login { color:#1f1f1f; background:#fff; border:1px solid #747775; border-radius:20px; }
+.form-help { color:var(--muted); font-size:.85rem; margin:.5rem 0; }
+.project-form .owner-confirmation { display:flex; align-items:flex-start; gap:.6rem; font-size:.9rem; font-weight:400; }
+.owner-confirmation input { margin-top:.45rem; flex-shrink:0; }
+.project-form button { margin-top:1rem; }
+.form-notice { border-left:3px solid var(--accent); padding:1rem; background:var(--soft); }
+.account-bar { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:1rem; flex-wrap:wrap; }
+.quiet-button { font-size:.85rem; background:transparent; color:var(--fg); border-color:var(--line); }
+.project-list { padding:0; list-style:none; }
+.project-list li { padding:.75rem 0; border-bottom:1px solid var(--line); }
+.project-list li>span { margin-left:1rem; font-size:.85rem; color:var(--muted); }
+.project-preview { white-space:pre-wrap; overflow-wrap:anywhere; }
+.form-actions { display:flex; gap:1rem; flex-wrap:wrap; }

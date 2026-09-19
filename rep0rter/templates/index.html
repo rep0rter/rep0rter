@@ -27,7 +27,7 @@
   <nav class="languages" aria-label="{{ copy.language }}">
     {% for lang, label in languages.items() %}<a href="{{ page_name(lang) }}" lang="{{ lang }}" hreflang="{{ lang }}" data-language="{{ lang }}"{% if lang == language %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
   </nav>
-  <nav class="links"><a href="{{ prefix }}{{ feed }}">RSS</a><a href="https://github.com/rep0rter/rep0rter">{{ copy.code }}</a><a href="https://g0v-slack-archive.g0v.ronny.tw/">{{ copy.archive }}</a></nav>
+  <nav class="links"><a href="{{ prefix }}{{ feed }}">RSS</a>{% if cfg.google_login_enabled %}<a href="{{ prefix }}submit">{{ copy.submit_project }}</a>{% endif %}<a href="https://github.com/rep0rter/rep0rter">{{ copy.code }}</a><a href="https://g0v-slack-archive.g0v.ronny.tw/">{{ copy.archive }}</a></nav>
 </header>
 <main>
 {% if not items %}<p class="empty">{{ copy.empty }}</p>{% endif %}
@@ -38,6 +38,7 @@
     <article id="{{ it.post.id }}">
       <div class="story-top"><a class="channel" href="{{ prefix }}{{ it.source_path }}{{ page_name(language) }}">{{ it.source_label }}</a><a class="permalink" href="{{ prefix }}{{ it.story_path }}" aria-label="{{ copy.read }} {{ it.post.id }}">↗</a></div>
       {% if it.content_warning %}<p class="translation-note">{{ it.content_warning }}</p>{% endif %}
+      {% if it.event.meta.get('owner_submitted') %}<p class="translation-note">{{ copy.owner_submission }}</p>{% endif %}
       {% if it.latest_path %}<p class="revision-notice"><strong>{{ copy.superseded }}</strong> <a href="{{ prefix }}{{ it.latest_path }}">{{ copy.latest_report }} ↗</a></p>{% endif %}
       <h3 lang="{{ language if it.translated or language == 'en' else 'und' }}"><a href="{{ prefix }}{{ it.story_path }}">{{ it.headline }}</a></h3>
       {% if it.latest_path %}<details class="previous-summary"><summary>{{ copy.previous_report }}</summary>{% endif %}
@@ -46,7 +47,7 @@
       {% if not it.translated and language != 'en' %}<p class="translation-note">{{ copy.missing }}</p>{% endif %}
       <figure>
         <a href="{{ prefix }}{{ it.image }}" aria-label="{{ copy.download }}"><img class="source-card" src="{{ prefix }}{{ it.image }}" width="1200" height="630" loading="lazy" alt="{{ copy.report_image_alt if language == 'en' else copy.image_alt }}{{ it.event.author_name or it.channel }}"></a>
-        <figcaption><span>{{ copy.report_card_label if language == 'en' else copy.card_label }}</span><a href="{{ prefix }}{{ it.image }}" download>{{ copy.download }} ↓</a></figcaption>
+        <figcaption><span>{{ copy.owner_submission if it.event.meta.get('owner_submitted') else (copy.report_card_label if language == 'en' else copy.card_label) }}</span><a href="{{ prefix }}{{ it.image }}" download>{{ copy.download }} ↓</a></figcaption>
       </figure>
       <p class="meta"><span>{{ it.event.author_name }}</span><span>{{ copy.published }} {{ it.event_local }}</span>
         {% if it.event.reply_count %}<span>💬 {{ it.event.reply_count }}</span>{% endif %}

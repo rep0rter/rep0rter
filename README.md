@@ -63,11 +63,13 @@ these unofficial endpoints may change. The Code for Korea news feed and Code for
 Japan community portal are included in `.env.example`. See [collector limits](docs/collectors.md).
 
 Production runs with `docker compose up -d --build`: a `worker` (hourly cycle),
-`maintenance` (backups, health checks) and `web` (Caddy, static files on `127.0.0.1:18090`).
+`maintenance` (backups, health checks), `accounts` (Google login and owner project
+news), and `web` (Caddy, static files on `127.0.0.1:18090`).
 
 ## Docs
 
 - [Full documentation (繁體中文)](docs/README.zh-TW.md)
+- [Google login and automatic project news](docs/project-news.md)
 - [Collectors](docs/collectors.md) · [Editorial policy](docs/editorial-policy.md) ·
   [Stories & dedupe](docs/stories.md) · [Operations](docs/operations.md) ·
   [Telegram delivery](docs/telegram-delivery.md) · [FtO sources](docs/fto-sources.md)
