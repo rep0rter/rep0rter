@@ -170,14 +170,14 @@ class Deployer:
             raise
         log(f'Deployed {sha}; all services passed startup checks')
 
-    def tick(self, retry=False, check=False):
+    def tick(self, retry=False, check=False, redeploy=False):
         if self.state.get('pending'):
             if check:
                 log('Interrupted deployment needs recovery')
                 return
             self.recover()
         sha = self.fetch()
-        if sha == self.state.get('deployed_sha'):
+        if sha == self.state.get('deployed_sha') and not redeploy:
             log(f'Already deployed {sha}')
             return
         if sha == self.state.get('failed_sha') and not retry:
@@ -204,6 +204,8 @@ def main():
     parser.add_argument('--config', type=Path, required=True)
     parser.add_argument('--check', action='store_true', help='fetch and check CI without deployment')
     parser.add_argument('--retry', action='store_true', help='retry the failed main commit')
+    parser.add_argument('--redeploy', action='store_true',
+                        help='deploy tested main even if already deployed, reloading the host environment')
     args = parser.parse_args()
     os.umask(0o077)
     config = json.loads(args.config.read_text())
@@ -213,10 +215,10 @@ def main():
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            log('Another deployment is active')
-            return 0
+            log('Another deployment is active; no changes applied. Try again after it finishes.')
+            return 75 if args.redeploy or args.retry else 0
         try:
-            Deployer(config).tick(retry=args.retry, check=args.check)
+            Deployer(config).tick(retry=args.retry, check=args.check, redeploy=args.redeploy)
         except Exception as error:
             log(f'Deployment check failed: {error}')
             return 1

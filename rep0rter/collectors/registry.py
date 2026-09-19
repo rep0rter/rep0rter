@@ -53,7 +53,7 @@ def collect_all(store, days=2, max_channels=None, config=None, *, session=None):
     total, failures, containers = 0, 0, 0
     sources = {}
     store.set_kv('collector_errors', '{}')
-    jobs = [('slack', lambda: slack_incremental.collect(store, days, max_channels, transport, metrics=metrics))]
+    jobs = []
     repos = _allowlist(os.getenv('REP0RTER_GITHUB_REPOS', ''))
     accounts = _allowlist(os.getenv('REP0RTER_MASTODON_ACCOUNTS', ''))
     feeds = list(dict.fromkeys(_allowlist(os.getenv('REP0RTER_FEEDS', '')) +
@@ -68,6 +68,9 @@ def collect_all(store, days=2, max_channels=None, config=None, *, session=None):
         jobs.append(('rss', lambda: rss.collect(store, rss_feeds, transport, metrics, days)))
     if notion_feeds:
         jobs.append(('notion', lambda: notion.collect(store, notion_feeds, transport, metrics, days)))
+    # Complete bounded independent snapshots first. Slack's incremental backlog
+    # can use their unspent allowance while retaining the same global budget.
+    jobs.append(('slack', lambda: slack_incremental.collect(store, days, max_channels, transport, metrics=metrics)))
     total_budget = transport.limit
     for index, (name, collect) in enumerate(jobs):
         # Reserve a fair remaining share for each independent source.

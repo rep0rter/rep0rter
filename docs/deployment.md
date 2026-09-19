@@ -93,6 +93,33 @@ python3 ~/.local/share/rep0rter-deploy/deploy.py \
 systemctl --user enable --now rep0rter-deploy.timer
 ```
 
+## Apply host environment changes
+
+After editing the production `.env`, apply it through the installed controller:
+
+```sh
+python3 ~/.local/share/rep0rter-deploy/deploy.py \
+  --config ~/.local/share/rep0rter-deploy/config.json --redeploy
+```
+
+This redeploys current remote `main` even when that commit is already running.
+It still requires passing push tests, checks for newer commits during the build,
+backs up the database, rebuilds the site, and waits for service health. Environment
+values are resolved again from the host `.env`; rollback keeps the previous
+running configuration. A held failed commit also requires `--retry`.
+Use `--redeploy --check` to preview eligibility without changing production.
+
+Manual `--redeploy` and `--retry` use the same lock as the timer and exit 75
+without making changes when another deployment is active. Wait for it to finish
+and rerun the command. Reinstall the host controller after pulling changes that
+introduce this option, following the installation instructions above.
+
+Do not apply environment changes using `docker compose up` from the development
+checkout. On 2026-09-19, a concurrent `up --build --no-deps worker` replaced a
+container while the controller was waiting for health, causing `No such container`
+and an automatic rollback. Raw Docker commands bypass the controller's advisory
+lock; all production updates must use this deployment entry point.
+
 For an intentional rollback after a successful deployment, revert the offending
 commit on `main` and push; the revert follows the same tests and deployment path.
 Do not run ad-hoc `docker compose up` from the developer checkout while the

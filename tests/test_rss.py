@@ -208,3 +208,35 @@ def test_registry_wires_allowlisted_feed_and_shared_budget(tmp_path, monkeypatch
         session.reset_mock()
         registry.collect_all(store, session=session)
         session.get.assert_not_called()
+
+
+def test_bounded_feeds_leave_unused_budget_for_slack_backlog(tmp_path, monkeypatch):
+    feeds = [f'https://example.test/feed-{n}.xml' for n in range(15)]
+    monkeypatch.setenv('REP0RTER_FEEDS', ','.join(feeds))
+    monkeypatch.setenv('REP0RTER_COLLECT_REQUEST_BUDGET', '80')
+    def slack_collect(store, days, max_channels, session, *, metrics):
+        assert metrics.requests == 15
+        assert session.remaining == 65
+        for _ in range(40):
+            session.get('https://archive.example.test/channel')
+        return 0
+    monkeypatch.setattr(registry.slack_incremental, 'collect', slack_collect)
+    monkeypatch.setattr('rep0rter.collectors.state.time.sleep', lambda _: None)
+    with Store(tmp_path / 'db') as store:
+        session = Mock(headers={})
+        session.get.return_value = response()
+        assert registry.collect_all(store, session=session) == 15
+        assert session.get.call_count == 55
+        assert json.loads(store.get_kv('collector_daily_budget'))['requests'] == 55
+        assert json.loads(store.get_kv('collector_health'))['healthy']
+
+
+def test_future_feed_item_waits_for_its_original_publication_time(tmp_path, monkeypatch):
+    session = Mock()
+    session.get.return_value = response(ITEM.replace('18 Sep', '20 Sep'))
+    with Store(tmp_path / 'db') as store:
+        assert rss.collect(store, [FEED], session, Metrics()) == 0
+        assert store.event_count() == 0
+        monkeypatch.setattr(rss.time, 'time', lambda: NOW + 86400)
+        assert rss.collect(store, [FEED], session, Metrics()) == 1
+        assert store.event_count() == 1
