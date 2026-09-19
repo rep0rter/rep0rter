@@ -254,6 +254,21 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         state = read_state(store, cid)
         if _allowed(store, container_id=cid) and state.get('gap') and state.get('error'):
             reasons.setdefault(cid, state['error'])
+    # Root transport failures are unresolved debt too; skipping a six-hour
+    # refresh must not turn the very next hourly health check green.
+    for root_id in due_ids:
+        root_state = queue.get(root_id, {})
+        if not root_state.get('error'):
+            continue
+        _, channel_id, _ = root_id.split(':', 2)
+        if channel_id not in public_ids or not _allowed(store, container_id='slack:' + channel_id):
+            continue
+        if store.conn.execute('SELECT 1 FROM event_tombstones WHERE event_id=?', (root_id,)).fetchone():
+            continue
+        root = store.get_event(root_id)
+        if root and (root.meta.get('deleted_at') or root.meta.get('content_status') == 'deleted' or not _allowed(store, event=root)):
+            continue
+        reasons.setdefault(root_id, root_state['error'])
     failures = max(failures, len(reasons))
     queue = {k:v for k,v in queue.items() if k in due_ids or now-v.get('attempted_at',0)<7*86400}
     with store.conn:

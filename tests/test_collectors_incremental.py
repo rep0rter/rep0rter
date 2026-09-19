@@ -329,3 +329,27 @@ def test_ineligible_missing_roots_do_not_consume_refresh_slots(tmp_path, monkeyp
         assert get.call_count == 1
         assert store.get_event('slack:C:500000').text == 'Recovered parent'
         assert store.get_event('slack:C:990004').meta['context_incomplete'] is False
+
+
+def test_root_transport_error_stays_degraded_between_refresh_attempts(tmp_path, monkeypatch):
+    from rep0rter.collectors.state import write_state
+    now = 1000000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    channel = _scheduled_channel('C', now)
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda session: [channel])
+    get = Mock(return_value=Mock(json=lambda: 0))
+    monkeypatch.setattr(inc.api, '_get', get)
+    with Store(tmp_path/'db') as store:
+        with store.conn:
+            write_state(store, 'slack:C', {'last_complete_ts': '900000', 'last_posted': now,
+                'total_messages': 10, 'last_refresh': now, 'last_reconciliation': now})
+        root = Event('slack:C:500000', 'slack', 'message', 'slack:C', 500000, text='Original root')
+        persist(store, 'fixture', {}, [root], Metrics(), now)
+        inc.collect(store, session=Mock(headers={}))
+        assert not read_state(store, 'slack:health')['healthy']
+        now += 60
+        inc.collect(store, session=Mock(headers={}))
+        assert get.call_count == 1
+        health = read_state(store, 'slack:health')
+        assert not health['healthy'] and not health['history_complete']
+        assert 'invalid root refresh' in health['reasons'][root.id]
