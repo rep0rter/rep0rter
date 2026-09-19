@@ -169,7 +169,8 @@ class Runtime:
     def health(self):
         return {'ready': self.meta('imported') == 'true' and self.meta('site_built_at') is not None,
                 'runtime': 'cloudflare-workers', 'source_commit': SOURCE_COMMIT,
-                'scheduled': getattr(self.env, 'RUN_ENABLED', 'false') == 'true',
+                'scheduled': getattr(self.env, 'RUN_ENABLED', 'false') == 'true' or getattr(self.env, 'RUNNER_ENABLED', 'false') == 'true',
+                'scheduler': 'github-actions' if getattr(self.env, 'RUNNER_ENABLED', 'false') == 'true' else 'cloudflare',
                 'last_started': self.meta('last_started'), 'last_finished': self.meta('last_finished'),
                 'last_error': self.meta('last_error', ''),
                 'collection_healthy': self.meta('collection_healthy')}
@@ -351,7 +352,7 @@ class Reporter(DurableObject):
 
     async def fetch(self, request):
         path = urlsplit(request.url).path
-        if path == '/healthz' or (not path.startswith(('/__admin/', '/auth/', '/projects')) and path not in ('/submit', '/write')):
+        if path == '/healthz' or (not path.startswith(('/__admin/', '/__runner/', '/auth/', '/projects')) and path not in ('/submit', '/write')):
             # Durable site transactions are atomic. Reading their published
             # files does not wait for a slow collector or model request.
             return await self.respond(request, path)
@@ -362,6 +363,9 @@ class Reporter(DurableObject):
         runtime = self.load()
         token = services.set(runtime)
         try:
+            if path.startswith('/__runner/'):
+                from runner_api import handle
+                return await handle(self, request, path)
             if path.startswith('/__admin/'):
                 return await self.admin(request, path)
             if path == '/healthz':
@@ -370,6 +374,8 @@ class Reporter(DurableObject):
             if runtime.meta('imported') != 'true':
                 return Response('Migration is not yet complete.', status=503)
             if path.startswith(('/auth/', '/projects')) or path in ('/submit', '/write'):
+                if float(runtime.meta('runner_until', '0')) > time.time():
+                    return Response('Reporting update in progress. Please retry shortly.', status=503, headers={'Retry-After': '60'})
                 if self.app is None:
                     from rep0rter.web import create_app
                     self.app = create_app()
