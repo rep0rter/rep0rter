@@ -1,0 +1,40 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "rep0rter",
+  "account_id": "08f074fca6db8519f744f2a2675a2693",
+  "main": "web/index.js",
+  "compatibility_date": "2026-09-19",
+  "workers_dev": true,
+  "preview_urls": false,
+  "services": [
+    {
+      "binding": "BACKEND",
+      "service": "rep0rter-engine"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SITE",
+        "class_name": "PublishedSite"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "PublishedSite"
+      ]
+    }
+  ],
+  "observability": {
+    "enabled": true
+  },
+  "routes": [
+    {
+      "pattern": "rep0rter.observe.tw/*",
+      "zone_name": "observe.tw"
+    }
+  ]
+}

@@ -1,3 +1,9 @@
+# Cloudflare migration
+
+The native Workers target and cutover procedure are documented in
+[cloudflare.md](cloudflare.md). The instructions below manage the existing Singa
+deployment and its recovery path.
+
 # Automatic deployment on Singa
 
 GitHub runs `.github/workflows/tests.yml` on pushes and pull requests. A user
