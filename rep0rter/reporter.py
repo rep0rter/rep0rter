@@ -19,7 +19,8 @@ from .llm import LLM
 from .i18n import LANGUAGES, LANGUAGE_PROMPT_NAMES, detect_language
 from .slack_text import excerpt, to_plain
 from .editorial import Decision, ensure_audit, evaluate, legacy_score, record_decision
-from .writer_contract import SYSTEM_PROMPT, TRANSLATION_STYLE, TZ, absolute_text, text_errors, write, record_write
+from .writer_contract import (SYSTEM_PROMPT, TRANSLATION_STYLE, TZ, absolute_text, text_errors, text_limits,
+                              write, record_write)
 from .store import Container, Event, Post, Store
 
 log = logging.getLogger(__name__)
@@ -105,7 +106,7 @@ def _valid_translations(data: dict, languages=LANGUAGES) -> dict[str, dict[str, 
         return {}
     return {language: {"headline": entry["headline"].strip(), "summary": entry["summary"].strip()}
             for language in languages if isinstance(entry := data.get(language), dict)
-            and not text_errors(entry.get("headline"), entry.get("summary"))}
+            and not text_errors(entry.get("headline"), entry.get("summary"), language=language)}
 
 
 def missing_languages(post: Post, languages=LANGUAGES) -> list[str]:
@@ -186,6 +187,8 @@ def translate_post(post: Post, llm: LLM, languages=LANGUAGES, *, source_ts: floa
                             "shortening it only if the length limits require. ")
     else:
         source_note = "The language of the supplied text is uncertain; identify it from the text and translate from that language. "
+    limits_note = "; ".join(f"{language}: headline {text_limits(language)[0]}, summary {text_limits(language)[1]}"
+                            for language in missing)
     prompt = ("Translate the supplied headline and summary faithfully into the requested languages. "
             + source_note +
             "zh-TW means Taiwan Traditional Chinese, ko Korean, ja Japanese, en English. "
@@ -195,7 +198,8 @@ def translate_post(post: Post, llm: LLM, languages=LANGUAGES, *, source_ts: floa
             "Keep explicit calendar dates unchanged. previous_week_start/end describe the source's prior calendar week, not a newly inferred event date. "
             "Preserve attribution, uncertainty, corrections, closed-event status and software lifecycle: "
             "merged does not mean deployed or tested. Shorten wording without changing these facts. "
-            "Use at most 30 Unicode code points per headline and 90 per summary. No emoji, hashtags, relative dates, URLs in text, or terminal headline punctuation. "
+            "Length limits in Unicode code points, spaces included: " + limits_note + ". "
+            "No emoji, hashtags, relative dates, URLs in text, or terminal headline punctuation. "
             "Spaces count toward the limits, including English spaces. Use complete short sentences, never cut off words or clauses. "
             "If validation_feedback is supplied, correct the rejected text for only the requested languages. "
             "Return JSON keyed by each requested language, with headline and summary string fields.\n"
@@ -243,13 +247,13 @@ def translate_post(post: Post, llm: LLM, languages=LANGUAGES, *, source_ts: floa
             entry = entry if isinstance(entry, dict) else {}
             rejected_headline, rejected_summary = entry.get("headline"), entry.get("summary")
             feedback[language] = {
-                "errors": text_errors(rejected_headline, rejected_summary) + date_errors.get(language, []),
+                "errors": text_errors(rejected_headline, rejected_summary, language=language) + date_errors.get(language, []),
                 # Keep diagnostics bounded even for a malformed model response.
                 "rejected_text": {key: value[:1000] if isinstance(value, str) else None
                                   for key, value in (("headline", rejected_headline), ("summary", rejected_summary))},
                 "lengths": {key: len(value) if isinstance(value, str) else None
                             for key, value in (("headline", rejected_headline), ("summary", rejected_summary))},
-                "limits": {"headline": 30, "summary": 90},
+                "limits": dict(zip(("headline", "summary"), text_limits(language))),
             }
     return changed
 
