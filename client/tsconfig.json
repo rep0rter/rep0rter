@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": ["es2022", "dom", "dom.iterable"],
+    // TypeScript 7 removed "none". Files with no top-level import or export are
+    // still emitted as classic scripts, which is what index.html loads with a
+    // plain <script src>; theme.js has to run before first paint without a
+    // module loader. tests/test_client_scripts.py fails the build if an import
+    // ever turns one of these into an ES module.
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noEmitOnError": true,
+    "removeComments": false,
+    "newLine": "lf",
+    "rootDir": "src",
+    "outDir": "../rep0rter/templates"
+  },
+  "include": ["src/**/*.ts"]
+}

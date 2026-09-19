@@ -1,0 +1,12 @@
+{
+  "name": "rep0rter-client",
+  "private": true,
+  "description": "Reader-facing scripts. Compiled into rep0rter/templates/ and committed.",
+  "scripts": {
+    "build": "tsc",
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "7.0.2"
+  }
+}
