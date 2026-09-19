@@ -2,6 +2,7 @@
 from __future__ import annotations
 import json
 import time
+from ..runtime import sleep
 from dataclasses import asdict, dataclass
 
 
@@ -111,7 +112,7 @@ class BudgetSession:
             raise BudgetExceeded('collector request budget exhausted')
         wait = self.interval - (time.monotonic() - self.last)
         if wait > 0:
-            time.sleep(wait)
+            sleep(wait)
         if self.reserve:
             self.reserve()
         self.metrics.requests += 1

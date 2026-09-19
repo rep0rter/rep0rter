@@ -27,6 +27,7 @@ import json
 import logging
 import re
 import time
+from ..runtime import sleep
 from decimal import Decimal, InvalidOperation
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -72,12 +73,12 @@ def _get(session: requests.Session, url: str, **params) -> requests.Response:
         try:
             resp = session.get(url, params=params, timeout=60)
             resp.raise_for_status()
-            time.sleep(REQUEST_DELAY)
+            sleep(REQUEST_DELAY)
             return resp
         except requests.RequestException as exc:
             wait = 2 ** attempt
             log.warning("%s failed (%s); retrying in %ss", url, exc, wait)
-            time.sleep(wait)
+            sleep(wait)
     raise RuntimeError(f"giving up on {url}")
 
 
