@@ -57,13 +57,17 @@ def test_preview_publish_rss_timelines_and_duplicate_retry(web, monkeypatch):
     story = BeautifulSoup(client.get(response.location).data, 'html.parser')
     assert 'Self-reported' in story.get_text()
     assert data['take_part'] in story.get_text()
-    assert data['original'] in story.select_one('blockquote').get_text()
+    assert not story.select('article details.original-source, article blockquote')
+    assert data['original'] not in story.select_one('article').get_text()
+    assert story.select_one('article .meta a[href="https://example.test/map"]')
     assert {a.get_text() for a in story.select('a[rel=tag]')} == {'#civictech', '#開放資料'}
     assert story.select_one('a[href="https://example.test/notes"]')
     for language in LANGUAGES:
         path = cfg.site_dir / 'tags' / '開放資料' / page_name(language)
         doc = BeautifulSoup(path.read_text(), 'html.parser')
         assert doc.h1.get_text() == '#開放資料'
+        assert not doc.select('article details.original-source, article blockquote')
+        assert doc.select_one('article .meta a[href="https://example.test/map"]')
         assert doc.select_one('.story-timeline') and doc.select_one('a[href*="write?tag="]')
         assert doc.select_one('.day-heading time')['datetime'] == '2026-01-15'
         assert client.get('/tags/%E9%96%8B%E6%94%BE%E8%B3%87%E6%96%99/' + page_name(language)).status_code == 200

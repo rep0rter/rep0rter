@@ -44,6 +44,7 @@
         let frame = 0;
         let stopped = false;
         let observer;
+        let releaseScroll = () => { };
         const stop = () => {
             if (stopped)
                 return;
@@ -53,6 +54,7 @@
             animations.forEach(animation => animation.cancel());
             CSS.highlights.delete('rep0rter-enchantment');
             layer.remove();
+            releaseScroll();
             if (stopActive === stop)
                 stopActive = () => { };
         };
@@ -153,6 +155,7 @@
                 stop();
                 return stop;
             }
+            releaseScroll = window.Rep0rterScrollLock?.acquire() || (() => { });
             document.body.append(layer);
             const corrections = cells.map(({ text, rect }) => {
                 const range = document.createRange();
@@ -228,8 +231,20 @@
         cancel(); });
     // A newly opened menu must cover ordinary text, never the decorative layer.
     // Pointer/keyboard activity restores native text before controls change state.
-    document.addEventListener('pointerdown', cancel, { passive: true, capture: true });
-    document.addEventListener('keydown', cancel, { capture: true });
+    document.addEventListener('pointerdown', event => {
+        // A swipe or scrollbar press must not cancel the effect and bypass its lock.
+        if (window.Rep0rterScrollLock?.isLocked()
+            && (event.pointerType === 'touch'
+                || !event.target?.closest?.('a,button,summary,input,textarea,select,[contenteditable]')))
+            return;
+        cancel();
+    }, { passive: true, capture: true });
+    document.addEventListener('click', cancel, { capture: true });
+    document.addEventListener('keydown', event => {
+        if (window.Rep0rterScrollLock?.isLocked() && window.Rep0rterScrollLock.isScrollKey(event))
+            return;
+        cancel();
+    }, { capture: true });
     document.addEventListener('selectionchange', () => { if (selected())
         cancel(); });
     motion.addEventListener('change', cancel);

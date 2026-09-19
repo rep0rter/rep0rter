@@ -35,6 +35,12 @@ interface DocumentEventMap {
 }
 
 interface Window {
+  /** Shared by the theme reveal and the glyph layer; either may finish first. */
+  Rep0rterScrollLock?: Readonly<{
+    acquire: () => () => void;
+    isLocked: () => boolean;
+    isScrollKey: (event: KeyboardEvent) => boolean;
+  }>;
   Rep0rterMotion?: { spring: (options: SpringOptions) => SpringHandle };
   Rep0rterLanguage?: Readonly<{
     change: (locale: string | undefined,

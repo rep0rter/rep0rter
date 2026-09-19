@@ -1,4 +1,11 @@
 /* Only explicit appearance choices use a whole-page circular reveal. */
+html { scrollbar-gutter: stable; }
+html[data-animation-scroll-lock] {
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  padding-right: var(--animation-scrollbar-gap, 0px);
+}
 html[data-theme-transition="reveal"] *,
 html[data-theme-transition="reveal"] *::before,
 html[data-theme-transition="reveal"] *::after {
