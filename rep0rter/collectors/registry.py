@@ -7,7 +7,7 @@ import time
 from dataclasses import asdict
 from datetime import datetime, timezone
 
-from . import github, mastodon, slack_archive, slack_incremental
+from . import github, mastodon, rss, slack_archive, slack_incremental
 from .state import BudgetExceeded, BudgetSession, Metrics, read_state
 
 log = logging.getLogger(__name__)
@@ -56,10 +56,13 @@ def collect_all(store, days=2, max_channels=None, config=None, *, session=None):
     jobs = [('slack', lambda: slack_incremental.collect(store, days, max_channels, transport, metrics=metrics))]
     repos = _allowlist(os.getenv('REP0RTER_GITHUB_REPOS', ''))
     accounts = _allowlist(os.getenv('REP0RTER_MASTODON_ACCOUNTS', ''))
+    feeds = _allowlist(os.getenv('REP0RTER_RSS_FEEDS', ''))
     if repos:
         jobs.append(('github', lambda: github.collect(store, repos, transport, metrics, days)))
     if accounts:
         jobs.append(('mastodon', lambda: mastodon.collect(store, accounts, transport, metrics, days)))
+    if feeds:
+        jobs.append(('rss', lambda: rss.collect(store, feeds, transport, metrics, days)))
     total_budget = transport.limit
     for index, (name, collect) in enumerate(jobs):
         # Reserve a fair remaining share for each independent source.

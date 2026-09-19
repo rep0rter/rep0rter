@@ -52,6 +52,9 @@ def evaluate(event, container, cfg, now: float, replies_seen: int = 0) -> Decisi
     without_urls = URL.sub("", plain)
     hits = list(dict.fromkeys(INTENT.findall(without_urls)))
     links = URL.findall(plain)
+    # Feed excerpts often omit links; the item's permalink is source evidence.
+    if event.source == 'rss' and event.url.startswith(('https://', 'http://')):
+        links = list(dict.fromkeys([*links, event.url]))
     # GitHub adapters admit only public human-authored substantial releases,
     # collaboration calls, and civic outcome PRs. They have no Slack baseline.
     if event.source == "github" and event.meta.get("eligible") is True and event.kind in {"release", "issue", "pull_request"}:

@@ -1,10 +1,11 @@
 # 增量採集與公開來源
 
-`rep0rter.collectors.registry.collect_all` 是排程入口。Slack 維持預設來源；GitHub、Mastodon 必須明列允許來源，不會自動擴張追蹤範圍。
+`rep0rter.collectors.registry.collect_all` 是排程入口。Slack 維持預設來源；GitHub、Mastodon、RSS 必須明列允許來源，不會自動擴張追蹤範圍。
 
 ```dotenv
 REP0RTER_GITHUB_REPOS=owner/repository,another/project
 REP0RTER_MASTODON_ACCOUNTS=https://social.example/@civic
+REP0RTER_RSS_FEEDS=https://codefor.kr/boards/news.xml
 REP0RTER_COLLECT_REQUEST_BUDGET=80
 REP0RTER_COLLECT_DAILY_BUDGET=1500
 ```
@@ -12,6 +13,17 @@ REP0RTER_COLLECT_DAILY_BUDGET=1500
 GitHub 使用公開無認證 REST API：先確認 repository `private=false`，擷取已發布 release、具有明確協作標籤（`help wanted`、`good first issue`、`collaboration` 等）的 issue，以及有 `Impact`／`Outcome`／`成果`／`影響` 段落的 merged PR。release 至少需要 80 字元實質說明；issue 除標籤外需要 40 字元以上正文及明確協作邀請；PR 至少需要 40 字元的影響說明；日文／韓文／英文 Summary 類段落則須同時具備具體公民用途與功能效益、至少 100 字元。所有原始候選仍經編輯政策，標籤不是自動推播許可。Mastodon 只接受配置 URL 完全匹配的本機 account 與 `public` 原創 status；保留 CW，boost 不建立獨立候選，回覆保存為不同 kind，不獨立當新聞。物件 ID 以完整 canonical URI 計算，不會讓不同 instance 的 numeric ID 碰撞。
 
 帳號顯示名稱、repo stars、followers 不作通用新聞分數。事件 metadata 帶 `source_instance`、`external_id`、`canonical_object_id`、`visibility`、`content_format`、`plain_text`、`updated_at`、`observed_at`、typed `engagement`、`relations`。Slack mrkdwn、GitHub Markdown、Mastodon HTML 分別正規化。未知可見性拒絕；來源排除在請求前處理，作者／引用排除在入庫前再檢查。Mastodon 每輪循環重查最多 4 個已存 status；404/410 或變成非公開會清空文字並記錄刪除狀態，供共同撤回流程移除網站與 delivery。
+
+## RSS 新聞來源
+
+`REP0RTER_RSS_FEEDS` 是逗號分隔的公開 RSS 2.0 URL 允許清單，空值停用。
+每輪每個 feed 只抓一次，沿用共用 request budget、錯誤隔離、Retry-After 退避及退出政策。
+目前加入 [Code for Korea 新聞](https://codefor.kr/boards/news.xml)：無須認證，保留標題、摘要、原文連結及含時區的 `pubDate`。
+事件以 feed URL + GUID 去重；缺 GUID 時使用文章連結。摘要轉純文字並標記 `content_scope=feed_excerpt`，不視為完整文章，也不自動抓取全文。
+首次只納入採集時間窗內的文章；每輪重新讀取 feed 內已存項目以更新文字。RSS 只代表目前提供的項目，無法保證補回已離開 feed 的歷史文章；項目消失不視為刪文。
+無效 XML、文章日期或連結會使該 feed 本輪失敗並保留上次成功狀態。
+RSS 文章仍需通過既有主題、內容及新鮮度選稿規則，不會僅因在 feed 中就發布。
+來源退出 ID 為 `rss-feed:https://codefor.kr/boards/news.xml`；個別文章沿用儲存的 `rss:` 事件 ID。
 
 ## 自動化雜訊
 

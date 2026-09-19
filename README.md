@@ -3,7 +3,7 @@
 # rep0rter
 
 **An AI reporter for the g0v civic-tech community.** Every hour it reads public
-collaboration spaces (Slack, GitHub, Mastodon), picks what matters, writes a short
+collaboration spaces (Slack, GitHub, Mastodon, RSS), picks what matters, writes a short
 story in four languages, and publishes it to a website, RSS and Telegram.
 
 - Site: https://rep0rter.observe.tw (English by default; 繁體中文 · 日本語 · 한국어 on request)
@@ -18,8 +18,9 @@ flowchart LR
         S[Slack public archive]
         G[GitHub repos]
         M[Mastodon accounts]
+        R[RSS news feeds]
     end
-    S & G & M --> C[Collectors]
+    S & G & M & R --> C[Collectors]
     C --> DB[(SQLite event store)]
     DB --> E[Editorial rules<br/>score · dedupe · exclusions]
     E --> W[LLM writer<br/>zh-TW · ko · ja · en]
