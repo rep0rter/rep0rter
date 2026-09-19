@@ -301,12 +301,35 @@ class Store:
         with self.conn:
             self.conn.execute("UPDATE posts SET delivery = ? WHERE id = ?", (json.dumps(delivery), post_id))
 
-    def update_post_translations(self, post: Post) -> None:
+    def update_post_translations(self, post: Post) -> bool:
+        """Merge valid missing editions against current copy and withdrawal policy."""
+        from .policy import event_allowed
+        from .writer_contract import text_errors
+        from .i18n import LANGUAGES
+
+        def valid(entry):
+            return isinstance(entry, dict) and not text_errors(entry.get('headline'), entry.get('summary'))
+
         with self.conn:
+            self.conn.execute('BEGIN IMMEDIATE')
+            row = self.conn.execute('SELECT * FROM posts WHERE id=?', (post.id,)).fetchone()
+            event = self.get_event(post.event_id)
+            if (not row or row['event_id'] != post.event_id or not event or not event_allowed(self, event)
+                    or (row['headline'], row['summary']) != (post.headline, post.summary)):
+                return False
+            current = json.loads(row['translations'] or '{}')
+            additions = {language: entry for language, entry in post.translations.items()
+                         if language in LANGUAGES and valid(entry) and not valid(current.get(language))}
+            if not additions:
+                post.translations = current
+                return False
+            current.update(additions)
             self.conn.execute(
                 "UPDATE posts SET translations = ? WHERE id = ?",
-                (json.dumps(post.translations, ensure_ascii=False), post.id),
+                (json.dumps(current, ensure_ascii=False), post.id),
             )
+            post.translations = current
+        return True
 
     def recent_posts(self, limit: int = 200) -> list[tuple[Post, Event, Container | None]]:
         from .policy import event_allowed

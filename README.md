@@ -58,6 +58,14 @@ python -m rep0rter translate --limit 10 --language ko --language ja
 python -m rep0rter build-site
 ```
 
+正常排程會在建站前補齊最多 3 篇缺漏翻譯；每篇最多 2 次模型請求，
+保留已通過驗證的語言，重試提供實際字數及違規原因。排程使用至多 45 秒的
+HTTP timeout；失敗依 1 小時到 24 小時退避，累計 6 輪後交由管理者使用
+`translate` 重試。修改原報導文字會重設此計數。`--no-llm`、dry-run 不補譯。
+補譯只更新既有文章，不更動發布時間、RSS GUID 或 Telegram 送達記錄；
+寫入前再次核對退出規則與原文版本，避免撤回內容被遲到的翻譯復原。
+狀態保存在 `translation_backfill` 與各篇 `translation_retry:<id>`，不含模型回覆文字。
+
 網站提供 `index.html`、`index.ko.html`、`index.ja.html`、`index.en.html`，以及相對應的
 `feed.xml`、`feed.ko.xml`、`feed.ja.xml`、`feed.en.xml`。每篇有永久網址
 `posts/<post-id>/index[.語言].html`；首頁只列最近 300 篇，較早的文章仍保留永久頁與來源頁。
