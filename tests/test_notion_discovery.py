@@ -209,11 +209,16 @@ def test_discovery_never_follows_sub_pages_into_the_wider_portal():
 
 
 def test_discovery_is_not_wired_into_collection_or_the_hourly_cycle():
-    """Acceptance: unreachable from collect/report/run and absent from the registry."""
-    assert 'notion' not in inspect.getsource(registry)
-    for name in ('cmd_collect', 'cmd_report', 'run_once', 'cmd_run', 'cmd_loop'):
-        assert 'notion' not in inspect.getsource(getattr(cli, name))
+    """Acceptance: unreachable from collect/report/run and absent from the registry.
+
+    The registry legitimately runs `collectors.notion`, which reads the same
+    portal as a news source. This module is the other thing — proposals, never
+    collection — so assert on its own name rather than on "notion".
+    """
+    assert 'notion_discovery' not in inspect.getsource(registry)
     assert 'notion_discovery' not in inspect.getsource(registry.collect_all)
+    for name in ('cmd_collect', 'cmd_report', 'run_once', 'cmd_run', 'cmd_loop'):
+        assert 'notion_discovery' not in inspect.getsource(getattr(cli, name))
 
 
 def test_command_is_readonly_and_never_writes_the_allowlist():

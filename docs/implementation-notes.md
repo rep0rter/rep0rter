@@ -18,7 +18,7 @@
 | #11 | 離線合成 fixture、禁止 dotenv／socket、migration／ID 碰撞／失敗／並發／撤回回歸測試、Python 3.12 push／PR CI | 遠端 CI 狀態需以實際 workflow 為準 |
 | #12 | logo／favicon／OG、四語單篇永久頁／來源頁、301 篇後保留、修訂連結、撤回頁與快取更新、行動／鍵盤／深淺色 | 舊 feed GUID 維持數字 ID，避免訂閱讀者重收舊文 |
 | #13 | 一篇一圖、持久 outbox、target/message mapping、lease、429／unknown 恢復、測試目標 fail closed、撤回重建已確認的舊合併訊息 | 舊的只有整數 message ID 需人工確認 chat 與完整同包內容；不盲目刪除或重送 |
-| #15 | Notion 入口的來源發現、單頁限定、屬性型別白名單、schema 名稱解析、靜默空回應與部分讀取的偵測、限流記為未解析、GitHub 可選 token、maintenance 每週提案且不進 health、以既有排除台帳記錄不納入 | 未文書端點預期會壞，壞了只停提案；四列申報但未回傳的資料原因未明；活動／募集資料庫已調查暫不報導，待觀察是否真有 GitHub 取不到的公告 |
+| #15 | Notion 入口的來源發現、單頁限定、屬性型別白名單、schema 名稱解析、靜默空回應與部分讀取的偵測、限流記為未解析、GitHub 可選 token、maintenance 每週提案且不進 health、以既有排除台帳記錄不納入 | 未文書端點預期會壞，壞了只停提案；四列申報但未回傳的資料原因未明；與 `collectors/notion.py` 讀同一批未文書端點，配管重複待整併；該 collector 啟用後活動／募集資料庫已納入採集，早期「暫不報導」的結論不再適用 |
 
 ## 最新使用者偏好
 

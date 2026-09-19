@@ -80,6 +80,48 @@ CREATE TABLE IF NOT EXISTS kv (
     key   TEXT PRIMARY KEY,
     value TEXT
 );
+
+-- Private login identities are separate from public source authors.
+CREATE TABLE IF NOT EXISTS project_accounts (
+    id TEXT PRIMARY KEY,
+    google_subject TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    created_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS project_sessions (
+    token_hash TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL REFERENCES project_accounts(id),
+    expires_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS project_sessions_expiry ON project_sessions(expires_at);
+CREATE TABLE IF NOT EXISTS project_submissions (
+    event_id TEXT PRIMARY KEY REFERENCES events(id),
+    account_id TEXT NOT NULL REFERENCES project_accounts(id),
+    post_id INTEGER NOT NULL UNIQUE REFERENCES posts(id),
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS project_submissions_account ON project_submissions(account_id, created_at);
+CREATE TABLE IF NOT EXISTS managed_projects (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL REFERENCES project_accounts(id),
+    title TEXT NOT NULL,
+    url TEXT NOT NULL,
+    author TEXT NOT NULL,
+    language TEXT NOT NULL,
+    source_kind TEXT NOT NULL,
+    source_url TEXT NOT NULL,
+    headline_template TEXT NOT NULL,
+    summary_template TEXT NOT NULL,
+    interval_hours INTEGER NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 0,
+    enabled_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    next_run REAL NOT NULL,
+    last_checked REAL,
+    last_error TEXT NOT NULL DEFAULT '',
+    last_post_id INTEGER REFERENCES posts(id)
+);
+CREATE INDEX IF NOT EXISTS managed_projects_owner ON managed_projects(account_id);
 """
 
 

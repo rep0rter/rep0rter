@@ -8,6 +8,7 @@
 ```dotenv
 REP0RTER_GITHUB_REPOS=codeforjapan/mapprint,Code-for-Korea/where-is-my-bus,codeforjapan/decidim-cfj,nawashiro/chiyoda_city_main_facilities,codeforjapan/BirdXplorer,codeforjapan/JibungotoPlanet,nawashiro/kazaguruma-transit,nishio/plurality-japanese,ocftw/open-star-ter-village,codeforjapan/Gussuri
 REP0RTER_GITHUB_TOKEN=
+REP0RTER_FEEDS=https://codefor.kr/boards/news.xml,https://codefor.kr/boards/civic-tech-projects.xml,https://code4japan-community.notion.site/Home-9dd9cd85f07942c1bd5f6ef73efdb122,https://civictech.kr/boards/news.xml,https://www.odf.or.kr/archive-project,https://medium.com/feed/codeforkorea
 REP0RTER_COLLECT_DAILY_BUDGET=1800
 ```
 
@@ -21,6 +22,17 @@ REP0RTER_COLLECT_DAILY_BUDGET=1800
   [PR #18](https://github.com/Code-for-Korea/where-is-my-bus/pull/18)（同日）補齊車輛建立與司機 onboarding；
   [PR #19](https://github.com/Code-for-Korea/where-is-my-bus/pull/19)（2026-09-18）改善註冊 PIN 與失敗重試。
   適合討論鄉村／離島交通資訊。
+
+## 其他已啟用來源（RSS／Notion）
+
+以下來源由 `REP0RTER_FEEDS` 設定，與 GitHub 允許清單共用同一套採集、選稿與退出流程。
+
+- **Code for Korea 官方新聞**：[新聞頁](https://codefor.kr/boards/news)、[RSS 2.0](https://codefor.kr/boards/news.xml)。新聞頁 HTML 明列此 feed；2026-09-19 實測無須認證即可取得 XML，含 12 筆文章。description 是截短摘要；採集保留原文連結，不把摘要當全文。透過 `REP0RTER_RSS_FEEDS` 啟用後，與其他來源共用每小時採集及編輯流程。
+- **Code for Korea 公民科技專案典藏**：[典藏頁](https://codefor.kr/boards/civic-tech-projects)、[RSS 2.0](https://codefor.kr/boards/civic-tech-projects.xml)。與新聞頁不同，這裡整理韓國公民科技專案的介紹。頁面明列 RSS，2026-09-19 實測回傳 8 筆，最新條目日期為 2026-08-01；不能將典藏日期解讀為專案發布日。兩個 feed 各自保留來源名稱，皆透過 `REP0RTER_FEEDS` 設定。這是追蹤典藏條目的入口，不是整個專案資料庫的完整匯入。
+- **Code for Japan 社群入口**：[Home](https://code4japan-community.notion.site/Home-9dd9cd85f07942c1bd5f6ef73efdb122)。`REP0RTER_FEEDS` 自動辨識公開 Notion URL，讀取入口內嵌的活動、募集任務與專案資料庫。2026-09-19 已驗證匿名 JSON POST 可回傳資料；連續驗證後上游回覆 429，因此必須保留退避與 degraded 狀態，不能把 rate limit 當成空清單。無須官方 Notion API token。
+- **Civic Tech Network／시민기술네트워크 活動典藏**：[頁面](https://civictech.kr/boards/news)、[RSS](https://civictech.kr/boards/news.xml)。獨立於 Code for Korea；2026-09-19 驗證 8 筆，最新 2026-05-26，保留摘要及原文連結。
+- **Open Data Forum／오픈데이터포럼 專案典藏**：[頁面](https://www.odf.or.kr/archive-project)、[全站 RSS](https://www.odf.or.kr/rss)。以典藏頁 URL 設定，只納入 RSS 中同網域的專案分類。2026-09-19 透過標準無登入 Chromium 驗證 50 筆中有 12 筆專案，最新 2026-09-15；只有標題、日期及連結，並無內文。一般 HTTP client 回傳 403，因此採用有共用 budget 的單一 XML 瀏覽器請求。
+- **Code for Korea Medium**：[出版頁](https://medium.com/codeforkorea)、[RSS](https://medium.com/feed/codeforkorea)。2026-09-19 驗證 10 筆，最新 2022-10-15；擷取 `content:encoded` 所提供的正文及 `dc:creator`，保留原始發布日期，不把歷史文章當新消息。
 
 ## 第二批（2026-09-19 透過 Notion 入口發現）
 
@@ -121,22 +133,30 @@ Notion 沒有提供公開頁面的讀取 API：官方 API 需要 bearer token �
 - GitHub 核對遇到限流或伺服器錯誤時記為未解析，**不能當成連結已死**；
   否則會安靜地漏掉真實候選。實測曾因此一次漏掉三個候選。
 
-### 活動／募集任務資料庫：已調查，暫不報導
+### 與 Notion collector 的關係
 
-入口另有「イベント/Events」（111／113 列）與「募集タスク」（57 列）兩個資料庫，
-內容確實是活動公告與協作募集，而且 `開催日` 是結構化日期欄位，比從散文推斷更可靠。
-即使如此，這一輪不納入報導，理由記錄如下，避免日後從零重新調查：
+同一個入口現在有兩條各自獨立的路徑，用途不同，不要混淆：
 
-- 供給量薄。活動大約每月更新一次（Social Hack Day #75 → #76 → #77），
-  募集任務資料庫已停滯四個月，量級是每月一到三則。
-- 多數可從別處取得。入口本文明寫報名在 Peatix，專案列指向 GitHub，後者已在採集範圍內。
-- Notion 是狀態不是事件。`last_edited_time` 連錯字修正都會變動，只有新增列與
-  有意義的狀態轉移才可能算事件，等同把 `stories.py` 的修訂判斷套到 wiki 上。
-- 兩個資料庫都有個人欄位（`わたしやるよ！`、`メンバー`、`連絡先`）。
+| | `collectors/notion.py` | `notion_discovery.py` |
+|---|---|---|
+| 輸出 | Event，可能成為報導 | GitHub 允許清單的候選提案 |
+| 設定 | `REP0RTER_FEEDS` | `REP0RTER_NOTION_PORTAL` |
+| 執行 | 每輪採集 | 手動指令＋maintenance 每週 |
+| 寫入 | 事件資料庫 | 不寫入任何地方 |
+
+兩者都讀同一批未文書端點。發現這一側刻意不進入採集路徑，所以端點壞掉時只是不再有
+新的 repository 建議，已發布內容與正常採集不受影響。
+
+早期調查曾記錄活動與募集任務資料庫「暫不報導」，理由是供給量薄、與 Peatix／GitHub 重疊、
+Notion 是狀態而非事件、含個人欄位，以及缺少日文退出管道。其後 collector 已啟用這些資料庫，
+該結論不再適用，但底下的注意事項仍然有效，應由 collector 端持續守住：
+
+- 個人欄位（`わたしやるよ！`、`メンバー`、`連絡先`）不得進入事件或稽核紀錄。
   出現在社群內部名單，不等於同意被公開的多語新聞網站與 Telegram 報導。
-- 沒有日文的退出管道。README 目前只指向 g0v Slack `#rep0rter`。
-
-等允許清單運作之後，若確實觀察到 GitHub 取不到的日本側公告，再重新評估。
+- `last_edited_time` 連錯字修正都會變動，編輯舊項目不能變成新報導。
+- 入口本文明寫報名在 Peatix，專案列指向 GitHub，同一則消息可能由多個來源進來，
+  需依賴既有的主題去重。
+- 退出管道目前只有 g0v Slack `#rep0rter`，仍缺日文入口。
 
 ## 實際採集驗證
 
@@ -144,6 +164,11 @@ Notion 沒有提供公開頁面的讀取 API：官方 API 需要 bearer token �
 41 次 request、13,510,078 bytes、10 筆來源合格事件、0 個 source error。
 事件分別來自 `chiyoda_city_main_facilities` 5 筆、`where-is-my-bus` 3 筆、`decidim-cfj` 2 筆。
 沒有 LLM 呼叫、Telegram 推播或 production DB 寫入。來源合格不代表已自動發布。
+先前以兩個 repository 的驗證為 8 次 request、2,200,452 bytes、3 筆人工 PR。
+
+Notion 匿名端點初次直連回傳 HTTP 200（入口及資料庫 JSON）；後續遇到上游 429，未繞過限制。使用這些真實公開回應離線驗證 adapter，辨識出 3 個內嵌資料庫，成功正規化 95 筆不同專案／任務列；這不代表已完成全部歷史資料抓取，也沒有寫入 production DB。
+
+RSS adapter 另以獨立暫存 SQLite、擴大時間窗驗證新聞 feed：兩次 HTTP request 均成功，共保存 12 筆文章；第二次確認 12 筆重複、沒有新增重複事件。此測試沒有寫入 production DB。正常採集維持既有兩天窗口，不自動把歷史公告當作新消息。
 
 日文 `概要／内容／変更内容`、韓文 `요약／주요 변경／변경 사항`、英文 `Summary` 段落需要同時有
 具體公民用途與功能影響，才通過 PR 來源資格；單純標題或泛泛 Summary 不足。

@@ -22,6 +22,7 @@ from ..config import TAIPEI, Config
 from ..i18n import COPY, LANGUAGES, feed_aliases, feed_name, page_aliases, page_name, post_text
 from ..slack_text import to_plain
 from ..store import Store
+from ..topics import classify_topics, localized_topics
 from .cards import CardRenderer
 
 log = logging.getLogger(__name__)
@@ -71,6 +72,18 @@ def _safe_url(url):
         return ''
 
 
+def _filter_metadata(event, container):
+    """Opaque facet identifiers scoped to the source, never raw account IDs."""
+    channel = container.name if container else event.container_id
+    identity = ([event.source, "account", event.author_id] if event.author_id else
+                [event.source, "display", event.author_name, event.container_id])
+    author_key = hashlib.sha256(json.dumps(identity, ensure_ascii=False).encode()).hexdigest()[:20]
+    source_key = hashlib.sha256((event.source + ":" + event.container_id).encode()).hexdigest()[:20]
+    return {"filter_author": author_key,
+            "filter_author_label": event.author_name or channel,
+            "filter_source": source_key}
+
+
 def _display_text(post, language):
     if language == 'en':
         translated = post.translations.get('en')
@@ -99,10 +112,11 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
             report_post = replace(post, translations={**post.translations,
                                   'en': {'headline': headline, 'summary': summary}})
             report_image = cards.render_report(event, container, report_post, 'en')
-            source_key = hashlib.sha256((event.source + ":" + event.container_id).encode()).hexdigest()[:20]
-            source_path = f"sources/{source_key}/"
+            filters = _filter_metadata(event, container)
+            original = to_plain(event.text, names) if event.source == "slack" else plain_text(event)
+            source_path = f"sources/{filters['filter_source']}/"
             items.append({
-                "post": post, "event": event, "container": container,
+                "post": post, "event": event, "container": container, **filters,
                 "channel": container.name if container else event.container_id,
                 "source_label": ('#' if event.source == 'slack' else '') + (container.name if container else event.container_id),
                 "source_url": _safe_url(event.url),
@@ -116,7 +130,8 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
                 "original_image": image.relative_to(cfg.site_dir).as_posix(),
                 "report_image": report_image.relative_to(cfg.site_dir).as_posix(),
                 "report_image_size": report_image.stat().st_size,
-                "original": to_plain(event.text, names) if event.source == "slack" else plain_text(event),
+                "original": original,
+                "topic_ids": classify_topics(post.headline, post.summary, original),
                 "source_path": source_path,
             })
     now = datetime.now(timezone.utc).timestamp()
@@ -141,14 +156,19 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
                    "prefix": prefix, "canonical": canonical, "page_title": title or COPY[language]["title"],
                    "description": page_items[0]["page_description"] if detail else COPY[language]["intro"],
                    "og_image": page_items[0]["image"] if detail else ctx["branding"].get("social", ""),
-                   "detail": detail, "feed": feed_name(language),
+                   "detail": detail, "page_kind": "story" if detail else "source" if prefix else "home",
+                   "feed": feed_name(language),
                    "stats": COPY[language]["stats"].format(events=ctx["event_count"], posts=ctx["post_count"])}
         _write(cfg.site_dir / relative_path, template.render(context))
         for alias in page_aliases(language):
             _write((cfg.site_dir / relative_path).with_name(alias), template.render(context))
         return context
 
-    for asset in ("style.css", "language.js"):
+    # Keep typography local: generation and reading never depend on a font CDN.
+    font_source = Path(__file__).resolve().parents[2] / "assets" / "fonts"
+    if font_source.is_dir():
+        shutil.copytree(font_source, cfg.site_dir / "assets" / "fonts", dirs_exist_ok=True)
+    for asset in ("style.css", "language.js", "theme.js", "reading.js", "glass-motion.js", "image-viewer.js"):
         _write(cfg.site_dir / asset, env.get_template(asset).render())
     root_outputs = []
     visible_posts = {item['post'].id: item['post'] for item in items}
@@ -165,6 +185,7 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
                               "image": item['report_image'] if language == 'en' else item['original_image'],
                               "image_size": item['report_image_size'] if language == 'en' else item['image_size'],
                               "latest_path": latest_path,
+                              "filter_topics": localized_topics(item["topic_ids"], language),
                               "page_description": COPY[language]['superseded'] + ' ' + latest_summary if latest else summary,
                               "story_path": f"posts/{item['post'].id}/{page_name(language)}"})
         sources = {}

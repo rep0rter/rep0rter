@@ -59,6 +59,12 @@ def scan(session, channel_id, lower, *, max_pages=30, start_before=None):
             if not isinstance(payload, dict) or not isinstance(payload.get('messages'), list):
                 raise RuntimeError('unavailable channel or invalid empty-page verification response')
         if not payload['messages']:
+            if before is None and not collected:
+                try:
+                    if api.channel_is_older_than(session, channel_id, lower):
+                        return [], True, '', None
+                except BudgetExceeded:
+                    return [], False, 'request budget exhausted while verifying quiet channel HTML', None
             return list(collected.values()), False, 'ambiguous empty page: upstream exposes no raw cursor', None
         page = {}
         for raw in payload['messages']:

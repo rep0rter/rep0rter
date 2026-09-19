@@ -1,3 +1,4 @@
+{% import '_ui.html' as ui %}
 <!DOCTYPE html>
 <html lang="{{ language }}">
 <head>
@@ -16,52 +17,116 @@
 {% if branding %}<link rel="icon" type="image/png" href="{{ prefix }}{{ branding.favicon }}">{% endif %}
 <link rel="alternate" type="application/rss+xml" title="{{ cfg.site_title }} RSS · {{ languages[language] }}" href="{{ prefix }}{{ feed }}">
 {% for lang in languages %}<link rel="alternate" hreflang="{{ lang }}" href="{{ canonical.rsplit('/', 1)[0] }}/{{ page_name(lang) }}">{% endfor %}
+<script src="{{ prefix }}theme.js"></script>
 <link rel="stylesheet" href="{{ prefix }}style.css">
+<script defer src="{{ prefix }}reading.js"></script>
 <script defer src="{{ prefix }}language.js"></script>
+<script defer src="{{ prefix }}glass-motion.js"></script>
+<script defer src="{{ prefix }}image-viewer.js"></script>
 </head>
-<body>
-<header>
-  <div class="masthead"><a class="wordmark" href="{{ prefix }}{{ page_name(language) }}">{% if branding %}<img src="{{ prefix }}{{ branding.logo }}" alt="" width="44" height="44">{% endif %}{{ cfg.site_title }}</a><span class="edition">CIVIC TECH · COMMUNITY DISPATCH</span></div>
-  <h1>{{ copy.tagline }}</h1>
-  <p class="tagline">{{ copy.intro }}</p>
-  <nav class="languages" aria-label="{{ copy.language }}">
-    {% for lang, label in languages.items() %}<a href="{{ page_name(lang) }}" lang="{{ lang }}" hreflang="{{ lang }}" data-language="{{ lang }}"{% if lang == language %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
-  </nav>
-  <nav class="links"><a href="{{ prefix }}{{ feed }}">RSS</a><a href="https://github.com/rep0rter/rep0rter">{{ copy.code }}</a><a href="https://g0v-slack-archive.g0v.ronny.tw/">{{ copy.archive }}</a></nav>
+<body class="page-{{ page_kind }}">
+<a class="skip-link" href="#main">{{ copy.skip_content }}</a>
+<div class="ambient" aria-hidden="true"><span></span><span></span><span></span></div>
+<header class="site-header page-shell">
+  <div class="masthead">
+    <a class="wordmark" href="{{ prefix }}{{ page_name(language) }}">{% if branding %}<img src="{{ prefix }}{{ branding.logo }}" alt="" width="44" height="44">{% endif %}<span>{{ cfg.site_title }}<small>{{ copy.brand_note }}</small></span></a>
+    <form class="search-bar masthead-search" role="search" action="{{ prefix }}{{ page_name(language) }}" method="get"{% if not detail %} data-search-form hidden{% endif %}>
+      <label class="search-field" for="story-search">{{ ui.icon('search') }}<span class="visually-hidden">{{ copy.search_label }}</span><input id="story-search" name="q" type="search" autocomplete="off" placeholder="{{ copy.search_placeholder }}"{% if not detail %} aria-describedby="search-status"{% endif %}></label>
+      {% if not detail %}<button class="search-clear" type="button" data-search-clear aria-label="{{ copy.clear_search }}" title="{{ copy.clear_search }}" hidden>{{ ui.icon('close') }}</button>{% endif %}
+    </form>
+    <div class="masthead-actions">{{ ui.language_links(copy, language, languages, page_name, compact=True) }}{{ ui.appearance(copy) }}</div>
+  </div>
 </header>
-<main>
-{% if not items %}<p class="empty">{{ copy.empty }}</p>{% endif %}
-{% for day, day_items in days.items() %}
-  <section class="day" aria-labelledby="day-{{ day }}">
-    <h2 id="day-{{ day }}"><time>{{ day }}</time><span>{{ day_items | length }}</span></h2>
-    {% for it in day_items %}
-    <article id="{{ it.post.id }}">
-      <div class="story-top"><a class="channel" href="{{ prefix }}{{ it.source_path }}{{ page_name(language) }}">{{ it.source_label }}</a><a class="permalink" href="{{ prefix }}{{ it.story_path }}" aria-label="{{ copy.read }} {{ it.post.id }}">↗</a></div>
-      {% if it.content_warning %}<p class="translation-note">{{ it.content_warning }}</p>{% endif %}
-      {% if it.latest_path %}<p class="revision-notice"><strong>{{ copy.superseded }}</strong> <a href="{{ prefix }}{{ it.latest_path }}">{{ copy.latest_report }} ↗</a></p>{% endif %}
-      <h3 lang="{{ language if it.translated or language == 'en' else 'und' }}"><a href="{{ prefix }}{{ it.story_path }}">{{ it.headline }}</a></h3>
-      {% if it.latest_path %}<details class="previous-summary"><summary>{{ copy.previous_report }}</summary>{% endif %}
-      <p class="summary" lang="{{ language if it.translated or language == 'en' else 'und' }}">{{ it.summary }}</p>
-      {% if it.latest_path %}</details>{% endif %}
-      {% if not it.translated and language != 'en' %}<p class="translation-note">{{ copy.missing }}</p>{% endif %}
-      <figure>
-        <a href="{{ prefix }}{{ it.image }}" aria-label="{{ copy.download }}"><img class="source-card" src="{{ prefix }}{{ it.image }}" width="1200" height="630" loading="lazy" alt="{{ copy.report_image_alt if language == 'en' else copy.image_alt }}{{ it.event.author_name or it.channel }}"></a>
-        <figcaption><span>{{ copy.report_card_label if language == 'en' else copy.card_label }}</span><a href="{{ prefix }}{{ it.image }}" download>{{ copy.download }} ↓</a></figcaption>
-      </figure>
-      <p class="meta"><span>{{ it.event.author_name }}</span><span>{{ copy.published }} {{ it.event_local }}</span>
-        {% if it.event.reply_count %}<span>💬 {{ it.event.reply_count }}</span>{% endif %}
-        {% if it.event.reaction_count %}<span>👍 {{ it.event.reaction_count }}</span>{% endif %}
-        {% if it.source_url %}<a href="{{ it.source_url }}" rel="noopener">{{ copy.source }} ↗</a>{% endif %}
-      </p>
-      {% if detail %}<p class="meta">{{ copy.reported }} {{ it.published_local }}{% if it.story.revision > 1 %} · {{ copy.revision }} {{ it.story.revision }}{% endif %}</p>
-      {% if it.story.versions | length > 1 %}<nav class="links" aria-label="{{ copy.revision }}">{% for version in it.story.versions %}<a href="../{{ version.id }}/{{ page_name(language) }}">{{ copy.revision }} {{ version.revision }}</a>{% endfor %}</nav>{% endif %}
-      {% if it.story.sources | length > 1 %}<p class="meta">{{ copy.sources }}: {% for source in it.story.sources %}<a href="{{ source.url }}" rel="noopener">{{ source.name }}</a>{% endfor %}</p>{% endif %}{% endif %}
-      <details class="original-source"{% if detail and language != 'en' %} open{% endif %}><summary>{{ copy.original }}</summary><blockquote dir="auto">{{ it.original }}</blockquote>{% if language == 'en' %}<figure><a href="{{ prefix }}{{ it.original_image }}" aria-label="{{ copy.download }}"><img class="source-card" src="{{ prefix }}{{ it.original_image }}" width="1200" height="630" loading="lazy" alt="{{ copy.image_alt }}{{ it.event.author_name or it.channel }}"></a><figcaption>{{ copy.card_label }}</figcaption></figure>{% endif %}</details>
-    </article>
-    {% endfor %}
+<main id="main" class="page-shell" tabindex="-1">
+  {% if page_kind == 'home' %}
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="hero-copy">
+      <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{{ copy.eyebrow }}</p>
+      <h1 id="hero-title">{{ copy.hero_title }}<br><span>{{ copy.hero_accent }}</span></h1>
+      <p class="hero-intro">{{ copy.intro }}</p>
+      <div class="hero-actions"><a class="button button-primary" href="#news">{{ copy.explore }} {{ ui.icon('arrow') }}</a><a class="button button-secondary" href="{{ feed }}">{{ ui.icon('rss') }} {{ copy.subscribe }}</a></div>
+      <p class="hero-note">{{ ui.icon('check') }} {{ copy.hero_note }}</p>
+    </div>
+    <div class="glass-scene" aria-hidden="true">
+      <div class="scene-halo"></div>
+      <div class="scene-pane scene-archive"></div>
+      <div class="scene-pane scene-digest">
+        <div class="scene-digest-top">{{ ui.icon('chat') }}<span>{{ copy.scene_label }}</span><span class="scene-status"></span></div>
+        <p class="scene-title">{{ copy.scene_title }}<span>{{ copy.scene_title_next }}</span></p>
+        <div class="scene-excerpt"><span></span><span></span></div>
+        <div class="scene-source">{{ ui.icon('check') }}<span>{{ copy.scene_source }}</span></div>
+      </div>
+      <div class="scene-pane scene-search">{{ ui.icon('search') }}<span>{{ copy.scene_search }}</span></div>
+      <div class="scene-pane scene-organize">{{ ui.icon('filter') }}<span>{{ copy.scene_organize }}</span></div>
+      <div class="scene-caption">{{ copy.scene_note }}</div>
+    </div>
   </section>
-{% endfor %}
+  {% else %}
+  <section class="page-intro">
+    <a class="back-link" href="{{ prefix }}{{ page_name(language) }}">{{ ui.icon('back') }} {{ copy.back_home }}</a>
+    <p class="eyebrow">{{ copy.story_heading if detail else copy.eyebrow }}</p>
+    {# Keep source identity inside removable articles when privacy rules sanitize a cached page. #}
+    <h1>{{ copy.detail_title if detail else copy.source_heading }}</h1>
+    <p>{{ copy.detail_intro if detail else copy.source_intro }}</p>
+  </section>
+  {% endif %}
+  <div class="reading-layout{% if detail %} reading-layout--detail{% endif %}">
+    <div class="feed-column" id="news">
+      {% if not detail %}
+      <div class="section-heading"><div><p class="eyebrow">{{ copy.feed_eyebrow }}</p><h2>{{ copy.latest }}</h2></div><span class="edition-badge">{{ languages[language] }}</span></div>
+      <details class="search-filters" data-filters hidden>
+        <summary>{{ ui.icon('search') }}<span>{{ copy.filters }}</span><span class="filter-count" data-filter-count hidden></span>{{ ui.icon('down') }}</summary>
+        <div class="filter-panel">
+          <div class="filter-fields">
+            <label>{{ copy.filter_period }}<select data-filter="period"><option value="all">{{ copy.period_all }}</option><option value="7">{{ copy.period_week }}</option><option value="30">{{ copy.period_month }}</option><option value="90">{{ copy.period_quarter }}</option><option value="custom">{{ copy.period_custom }}</option></select></label>
+            <label>{{ copy.filter_topic }}<select data-filter="topic"><option value="">{{ copy.topic_all }}</option></select></label>
+            <label>{{ copy.filter_author }}<select data-filter="author"><option value="">{{ copy.author_all }}</option></select></label>
+            <label>{{ copy.filter_source }}<select data-filter="source"><option value="">{{ copy.source_all }}</option></select></label>
+            <label>{{ copy.filter_sort }}<select data-filter="sort"><option value="newest">{{ copy.sort_newest }}</option><option value="oldest">{{ copy.sort_oldest }}</option></select></label>
+          </div>
+          <div class="filter-dates" data-custom-dates hidden>
+            <label>{{ copy.date_from }}<input type="date" data-filter="from" aria-describedby="filter-error"></label>
+            <label>{{ copy.date_to }}<input type="date" data-filter="to" aria-describedby="filter-error"></label>
+          </div>
+          <p class="filter-error" id="filter-error" data-filter-error role="alert" hidden>{{ copy.invalid_range }}</p>
+          <div class="filter-bottom"><p>{{ copy.filter_scope }}<br>{{ copy.topics_auto }}</p><button class="button button-secondary" type="button" data-filters-reset>{{ copy.reset_filters }}</button></div>
+        </div>
+      </details>
+      <p class="search-status" id="search-status" role="status" aria-live="polite" data-result-template="{{ copy.search_results }}" hidden></p>
+      {% endif %}
+      {% if not items %}<div class="empty-state">{{ ui.icon('chat') }}<h2>{{ copy.empty_title }}</h2><p>{{ copy.empty }}</p></div>{% endif %}
+      <div class="empty-state" data-no-results hidden>{{ ui.icon('search') }}<h2>{{ copy.no_results }}</h2><p>{{ copy.search_help }}</p><button class="button button-secondary" type="button" data-search-reset>{{ copy.reset_filters }}</button></div>
+      <div class="story-days">
+      {% for day, day_items in days.items() %}
+      {% set first_day = loop.first %}
+      <section class="day" aria-labelledby="day-{{ day }}">
+        <h2 id="day-{{ day }}" class="day-heading"><time datetime="{{ day }}">{{ day }}</time><span class="day-count">{{ day_items | length }}</span><span class="day-rule" aria-hidden="true"></span></h2>
+        <div class="story-grid">
+          {% for it in day_items %}{% set featured = (first_day and loop.first) or detail %}{% include '_story.html' %}{% endfor %}
+        </div>
+      </section>
+      {% endfor %}
+      </div>
+    </div>
+    <aside class="reading-aside" aria-label="{{ copy.about }}">
+      <section class="about-card"><span class="icon-orb orb-violet">{{ ui.icon('spark') }}</span><p class="eyebrow">{{ copy.about_eyebrow }}</p><h2>{{ copy.about_title }}</h2><p>{{ copy.about_body }}</p><div class="about-principle">{{ ui.icon('check') }}<span>{{ copy.principle_sources }}</span></div><div class="about-principle">{{ ui.icon('globe') }}<span>{{ copy.principle_languages }}</span></div><div class="about-principle">{{ ui.icon('chat') }}<span>{{ copy.principle_people }}</span></div></section>
+      <section class="subscribe-card"><span class="icon-orb orb-peach">{{ ui.icon('rss') }}</span><h2>{{ copy.subscribe_title }}</h2><p>{{ copy.subscribe_body }}</p><a class="button button-secondary" href="{{ prefix }}{{ feed }}">{{ copy.subscribe }} {{ ui.icon('arrow') }}</a></section>
+      <p class="aside-note">{{ copy.aside_note }}</p>
+    </aside>
+  </div>
 </main>
-<footer><p>{{ copy.footer }}</p><p>{{ stats }}<br>{{ copy.updated }} {{ generated_local }}{% if last_healthy %}<br>{{ copy.healthy }} {{ last_healthy }}{% endif %}</p>{% if not collection_complete %}<p class="source-update-status">{{ copy.collection_delayed }}</p>{% endif %}<p>{{ copy.optout }} <a href="https://g0v-slack-archive.g0v.ronny.tw/index/channel/C069ARZJNE9">#rep0rter</a></p></footer>
+<dialog class="image-viewer" id="image-viewer" aria-labelledby="image-viewer-title">
+  <div class="image-viewer-panel">
+    <div class="image-viewer-toolbar"><h2 id="image-viewer-title">{{ copy.view_image }}</h2><button type="button" class="image-viewer-close" data-viewer-close aria-label="{{ copy.close_image }}" autofocus>{{ ui.icon('close') }}</button></div>
+    <img class="image-viewer-image" data-viewer-image alt="">
+    <div class="image-viewer-footer"><p data-viewer-caption></p><a class="button button-secondary" data-viewer-download download>{{ ui.icon('download') }} {{ copy.download }}</a></div>
+  </div>
+</dialog>
+<footer class="site-footer page-shell">
+  <div class="footer-top"><a class="footer-brand" href="{{ prefix }}{{ page_name(language) }}">{{ cfg.site_title }}<span>{{ copy.brand_note }}</span></a><nav class="links" aria-label="{{ copy.resources }}"><a href="{{ prefix }}{{ feed }}">RSS {{ ui.icon('external') }}</a>{% if cfg.google_login_enabled %}<a href="{{ prefix }}submit">{{ copy.submit_project }}</a>{% endif %}<a href="https://github.com/rep0rter/rep0rter">{{ copy.code }} {{ ui.icon('external') }}</a><a href="https://g0v-slack-archive.g0v.ronny.tw/">{{ copy.archive }} {{ ui.icon('external') }}</a></nav></div>
+  <p class="footer-explanation">{{ copy.footer }}</p>
+  <div class="footer-status"><p>{{ stats }}<br>{{ copy.updated }} {{ generated_local }}{% if last_healthy %}<br>{{ copy.healthy }} {{ last_healthy }}{% endif %}</p><p>{{ copy.optout }} <a href="https://g0v-slack-archive.g0v.ronny.tw/index/channel/C069ARZJNE9">#rep0rter {{ ui.icon('external') }}</a></p></div>
+  {% if not collection_complete %}<p class="source-update-status">{{ copy.collection_delayed }}</p>{% endif %}
+</footer>
 </body>
 </html>

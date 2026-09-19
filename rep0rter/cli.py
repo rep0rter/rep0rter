@@ -47,13 +47,15 @@ def cmd_report(cfg: Config, args) -> int:
             print(f"dry run: {len(drafts)} item(s) would be posted")
             return 0
         prepare_posts(cfg, store, drafts)
+        from .project_automation import run_due
+        automatic_posts = run_due(store)
         if not args.no_llm:
             _backfill_translations(store, cfg)
         site_publisher.build(store, cfg)
         deliver_pending(cfg, store)
         from .retractions import process
         process(store,cfg)
-    print(f"posted {len(drafts)} item(s)")
+    print(f"posted {len(drafts) + automatic_posts} item(s)")
     return 0
 
 
@@ -199,6 +201,8 @@ def run_once(cfg: Config, dry_run: bool = False, no_llm: bool = False, days: int
             else:
                 prepare_posts(cfg, store, drafts)
                 posted = len(drafts)
+                from .project_automation import run_due
+                posted += run_due(store)
                 if not no_llm:
                     _backfill_translations(store, cfg)
                 site_publisher.build(store, cfg)
@@ -256,6 +260,12 @@ def cmd_status(cfg: Config, args) -> int:
     return 0
 
 
+def cmd_serve(cfg: Config, args) -> int:
+    from .web import create_app
+    create_app(cfg).run(host=args.host, port=args.port, debug=False)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="rep0rter", description="g0v virtual reporter")
     parser.add_argument("--version", action="version", version=f"rep0rter {__version__}")
@@ -305,6 +315,11 @@ def main(argv: list[str] | None = None) -> int:
 
     p = sub.add_parser("status", help="show store and configuration status")
     p.set_defaults(func=cmd_status)
+
+    p = sub.add_parser("serve", help="run Google login and project submissions locally")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8000)
+    p.set_defaults(func=cmd_serve)
 
     from . import operations,policy,retractions,editorial,republish,notion_discovery
     for module in (operations,policy,retractions,editorial,republish,notion_discovery):

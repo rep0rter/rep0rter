@@ -276,14 +276,18 @@ def _withdrawn_page(language):
     import html
     from .i18n import COPY, LANGUAGES, page_name
     copy = COPY[language]
-    links = ' '.join(f'<a href="{page_name(code)}" lang="{code}">{html.escape(label)}</a>'
+    links = ' '.join(f'<a href="{page_name(code)}" lang="{code}"' +
+                     (' aria-current="page"' if code == language else '') +
+                     f'>{html.escape(label)}</a>'
                      for code, label in LANGUAGES.items())
     return (f'<!DOCTYPE html><html lang="{language}"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width, initial-scale=1">'
-            '<meta name="robots" content="noindex"><title>' + html.escape(copy['withdrawn']) +
-            '</title></head><body><main><h1>' + html.escape(copy['withdrawn']) + '</h1><p>' +
-            html.escape(copy['withdrawal_notice']) + '</p><a href="../../' + page_name(language) +
-            '">rep0rter</a><nav>' + links + '</nav></main></body></html>')
+            '<meta name="robots" content="noindex"><meta name="color-scheme" content="light dark"><title>' + html.escape(copy['withdrawn']) +
+            '</title><script src="../../theme.js"></script><link rel="stylesheet" href="../../style.css">'
+            '</head><body class="withdrawal-page"><main class="withdrawal-card"><h1>' + html.escape(copy['withdrawn']) + '</h1><p>' +
+            html.escape(copy['withdrawal_notice']) + '</p><a class="button button-primary" href="../../' + page_name(language) +
+            '">' + html.escape(copy['back_home']) + '</a><nav class="languages" aria-label="' + html.escape(copy['language']) +
+            '">' + links + '</nav></main></body></html>')
 
 
 def _sanitize_site(store, root, withdrawn_urls=()):

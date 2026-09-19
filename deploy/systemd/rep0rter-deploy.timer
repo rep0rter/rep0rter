@@ -1,0 +1,11 @@
+[Unit]
+Description=Check GitHub main for tested rep0rter releases
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=60s
+AccuracySec=5s
+Unit=rep0rter-deploy.service
+
+[Install]
+WantedBy=timers.target
