@@ -21,7 +21,6 @@
         root.dataset.brandEntering = 'pending';
         const release = window.Rep0rterScrollLock?.acquire() || (() => { });
         let layer = null;
-        let motion = null;
         let frame = 0;
         let hold = 0;
         let ended = false;
@@ -35,7 +34,6 @@
             clearTimeout(failsafe);
             clearTimeout(hold);
             cancelAnimationFrame(frame);
-            motion?.cancel();
             layer?.remove();
             original?.removeAttribute('data-brand-original');
             delete root.dataset.brandEntering;
@@ -55,7 +53,7 @@
             finish(); };
         const motionPreference = () => { if (reduced.matches)
             finish(); };
-        const failsafe = setTimeout(finish, 3600);
+        const failsafe = setTimeout(finish, 4500);
         cancelEntry = finish;
         window.addEventListener('resize', finish);
         window.addEventListener('pagehide', finish);
@@ -76,7 +74,7 @@
                 if (ended)
                     return;
                 // The locale loader may replace the body after DOMContentLoaded.
-                if (root.getAttribute('aria-busy') === 'true' || !window.Rep0rterMotion) {
+                if (root.getAttribute('aria-busy') === 'true') {
                     frame = requestAnimationFrame(ready);
                     return;
                 }
@@ -98,6 +96,10 @@
                     layer.setAttribute('aria-hidden', 'true');
                     layer.setAttribute('tabindex', '-1');
                     layer.classList.add('brand-entry-clone');
+                    const face = document.createElement('span');
+                    face.className = 'brand-entry-face';
+                    face.append(...Array.from(layer.childNodes));
+                    layer.append(face);
                     // Grid tracks may stretch the anchor far beyond its visible brand.
                     // Animate the actual mark, not the empty width of that grid cell.
                     layer.style.width = 'max-content';
@@ -112,7 +114,8 @@
                     document.body.append(layer);
                     root.dataset.brandEntering = 'active';
                     const visibleWidth = layer.getBoundingClientRect().width;
-                    const scale = Math.max(1, Math.min(3.6, (root.clientWidth - 48) / visibleWidth));
+                    // Include the optical surface's 18px gutters in the mobile safe area.
+                    const scale = Math.max(1, Math.min(3.6, (root.clientWidth - 48) / (visibleWidth + 36)));
                     const x = (root.clientWidth - visibleWidth * scale) / 2 - box.left;
                     const y = (innerHeight - box.height * scale) / 2 - box.top;
                     const paint = (value) => {
@@ -125,11 +128,32 @@
                         root.style.setProperty('--brand-veil-opacity', String(remaining));
                     };
                     paint(0);
+                    layer.dataset.phase = 'reveal';
                     hold = setTimeout(() => {
                         if (ended)
                             return;
-                        motion = window.Rep0rterMotion.spring({ from: 0, to: 1, onUpdate: paint, onComplete: finish });
-                    }, 1200);
+                        layer.dataset.phase = 'hold';
+                        hold = setTimeout(() => {
+                            if (ended)
+                                return;
+                            layer.dataset.phase = 'dock';
+                            // A critically damped spring gives the longer journey a quiet,
+                            // continuous arrival, without changing other interface springs.
+                            const started = performance.now();
+                            const settle = 1 - 10 * Math.exp(-9);
+                            const dock = (now) => {
+                                if (ended)
+                                    return;
+                                const time = Math.min(1, (now - started) / 850);
+                                paint((1 - (1 + 9 * time) * Math.exp(-9 * time)) / settle);
+                                if (time === 1)
+                                    finish();
+                                else
+                                    frame = requestAnimationFrame(dock);
+                            };
+                            frame = requestAnimationFrame(dock);
+                        }, 1200);
+                    }, 650);
                 }
                 catch {
                     finish();
