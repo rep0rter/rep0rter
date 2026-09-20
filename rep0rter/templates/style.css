@@ -105,6 +105,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .masthead-links, .masthead-preferences { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .masthead-links { flex-wrap: wrap; }
 .masthead-preferences { flex-shrink: 0; }
+.masthead-links .icon { flex: 0 0 auto; }
+.masthead-links .write-story-link { gap: 8px; }
+.masthead .wordmark { border-radius: 20px; }
 .preference-menu { position: relative; flex: 0 0 auto; }
 .preference-trigger { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 44px; min-height: 44px; padding: 0 10px; border: 1px solid var(--line); border-radius: 20px; color: var(--muted); background: var(--glass-clear); cursor: pointer; list-style: none; font-size: 11px; font-weight: 600; transition: transform var(--spring), background var(--motion); }
 .preference-trigger::-webkit-details-marker { display: none; }
@@ -371,6 +374,10 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
   .masthead { grid-template-columns: minmax(0, 1fr) auto; }
   .masthead-search { grid-row: 2; grid-column: 1 / -1; }
   .masthead-actions { grid-column: 2; grid-row: 1; }
+  .masthead-links { flex-wrap: nowrap; }
+  .masthead .masthead-links .write-story-link, .masthead .preference-trigger { width: 44px; height: 44px; padding: 0; gap: 0; }
+  .masthead-link-label, .masthead .language-trigger > span { display: none; }
+  .masthead .preference-trigger::after { display: none; }
   .reading-layout { grid-template-columns: minmax(0, 1fr) 236px; gap: 28px; }
   .hero { padding-inline: 0; gap: 10px; }
   .languages a { padding-inline: 12px; }
@@ -398,13 +405,6 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
   .aside-note { grid-column: 1 / -1; padding: 0 12px; }
   .story-card--featured .story-content { display: grid; }
   .story-card--featured .report-figure { margin-top: 0; }
-}
-@media (max-width: 780px) {
-  :root { --header-clearance: 255px; }
-  .masthead-actions { display: contents; }
-  .masthead-preferences { grid-column: 2; grid-row: 1; justify-self: end; }
-  .masthead-links { grid-column: 1 / -1; grid-row: 2; }
-  .masthead-search { grid-row: 3; }
 }
 @media (max-width: 640px) {
   .page-shell { width: calc(100% - 36px); }
@@ -449,6 +449,22 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
   .languages a { padding-inline: 9px; }
   .hero-actions { flex-direction: column; }
   .story-card { padding: 19px; }
+}
+@media (max-width: 480px) {
+  .wordmark { font-size: 19px; gap: 5px; }
+  .wordmark img { width: 26px; height: 26px; }
+}
+@media (max-width: 380px) {
+  .site-header.page-shell { width: calc(100% - 24px); }
+  .masthead { padding-inline: 8px; column-gap: 6px; }
+  .masthead-actions, .masthead-links, .masthead-preferences { gap: 0; }
+  .wordmark { font-size: 18px; gap: 4px; }
+  .wordmark img { width: 24px; height: 24px; }
+  .language-menu .preference-panel { right: -44px; }
+}
+@media (max-width: 350px) {
+  .wordmark { font-size: 15px; gap: 2px; }
+  .wordmark img { width: 20px; height: 20px; }
 }
 @media (max-width: 440px) {
   .filter-fields { grid-template-columns: minmax(0, 1fr); }

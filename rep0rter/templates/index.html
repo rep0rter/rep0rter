@@ -32,7 +32,7 @@
 <link rel="stylesheet" href="{{ prefix }}login.css">
 <script defer src="{{ prefix }}account.js"></script>
 </head>
-<body class="page-{{ page_kind }}">
+<body class="page-{{ page_kind }}" data-brand-skip="{{ copy.brand_skip }}" data-brand-dismiss="{{ copy.brand_dismiss }}" data-brand-intro="{{ copy.brand_intro }}">
 <a class="skip-link" href="#main">{{ copy.skip_content }}</a>
 <div class="ambient" aria-hidden="true"><span></span><span></span><span></span></div>
 <header class="site-header page-shell">
@@ -43,7 +43,7 @@
       {% if not detail %}<button class="search-clear" type="button" data-search-clear aria-label="{{ copy.clear_search }}" title="{{ copy.clear_search }}" hidden>{{ ui.icon('close') }}</button>{% endif %}
     </form>
     <div class="masthead-actions">
-      <nav class="masthead-links" aria-label="{{ copy.resources }}"><a class="write-story-link" href="{{ prefix }}write?lang={{ language }}">{{ copy.write_story }}</a>{% if cfg.google_login_enabled %}<a class="write-story-link sign-in-link" href="{{ prefix }}auth/sign-in?lang={{ language }}&amp;return_to={{ (canonical | replace(cfg.site_url.rstrip('/'), '')) | urlencode }}" data-sign-in data-loading="{{ copy.login_loading }}" data-error="{{ copy.login_error }}" data-retry="{{ copy.login_retry }}" data-close="{{ copy.login_close }}" data-fallback="{{ copy.login_fallback }}">{{ copy.sign_in }}</a>{% endif %}</nav>
+      <nav class="masthead-links" aria-label="{{ copy.resources }}"><a class="write-story-link" href="{{ prefix }}write?lang={{ language }}" aria-label="{{ copy.write_story }}" title="{{ copy.write_story }}">{{ ui.icon('write') }}<span class="masthead-link-label">{{ copy.write_story }}</span></a>{% if cfg.google_login_enabled %}<a class="write-story-link sign-in-link" aria-label="{{ copy.sign_in }}" title="{{ copy.sign_in }}" href="{{ prefix }}auth/sign-in?lang={{ language }}&amp;return_to={{ (canonical | replace(cfg.site_url.rstrip('/'), '')) | urlencode }}" data-sign-in data-loading="{{ copy.login_loading }}" data-error="{{ copy.login_error }}" data-retry="{{ copy.login_retry }}" data-close="{{ copy.login_close }}" data-fallback="{{ copy.login_fallback }}">{{ ui.icon('user') }}<span class="masthead-link-label">{{ copy.sign_in }}</span></a>{% endif %}</nav>
       <div class="masthead-preferences">{{ ui.language_links(copy, language, languages, page_name, compact=True) }}{{ ui.appearance(copy) }}</div>
     </div>
   </div>

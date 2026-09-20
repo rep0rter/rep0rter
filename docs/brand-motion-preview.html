@@ -22,7 +22,7 @@
 </head>
 <body>
   <header>
-    <div><h1>rep0rter · 品牌動態</h1><p>玻璃揭露 → 停留 1.2 秒 → 歸位。按 Escape 可略過。</p></div>
+    <div><h1>rep0rter · 品牌動態</h1><p>按 Escape 可略過；手動重播會清除本機的「不再顯示」設定。</p></div>
     <div class="controls">
       <label>裝置 <select id="device"><option value="desktop">桌機</option><option value="tablet">平板</option><option value="mobile">手機</option></select></label>
       <label>外觀 <select id="theme"><option value="light">淺色</option><option value="dark">深色</option></select></label>
@@ -50,9 +50,10 @@
       stage.style.width = width * scale + 'px';
       stage.style.height = height * scale + 'px';
     };
-    const play = () => {
+    const play = (force = false) => {
       try {
         sessionStorage.removeItem('rep0rter-brand-seen');
+        if (force) localStorage.removeItem('rep0rter-brand-dismissed');
         localStorage.setItem('rep0rter-theme', theme.value);
       } catch { /* The actual entrance still works with unavailable storage. */ }
       document.documentElement.style.colorScheme = theme.value;
@@ -62,9 +63,9 @@
       stage.replaceChildren(frame);
       fit();
     };
-    document.querySelector('#replay').addEventListener('click', play);
-    device.addEventListener('change', play);
-    theme.addEventListener('change', play);
+    document.querySelector('#replay').addEventListener('click', () => play(true));
+    device.addEventListener('change', () => play(true));
+    theme.addEventListener('change', () => play(true));
     addEventListener('resize', fit);
     document.addEventListener('keydown', event => {
       if (event.key === 'Escape') frame?.contentDocument?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));

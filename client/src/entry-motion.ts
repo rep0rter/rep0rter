@@ -5,6 +5,8 @@
   let cancelEntry = () => {};
   const prepareEntry = () => {
     if (!root.hasAttribute('data-brand-entry') || reduced.matches) return;
+    try { if (localStorage.getItem('rep0rter-brand-dismissed') === '1') return; }
+    catch { /* Persistent preferences are optional. */ }
     const navigation = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
     const url = new URL(location.href);
     if ((navigation && navigation.type !== 'navigate') || location.hash || scrollY > 0 ||
@@ -16,6 +18,8 @@
     root.dataset.brandEntering = 'pending';
     const release = window.Rep0rterScrollLock?.acquire() || (() => {});
     let layer: HTMLElement | null = null;
+    let controls: HTMLDialogElement | null = null;
+    let previousFocus: HTMLElement | null = null;
     let frame = 0;
     let hold = 0;
     let ended = false;
@@ -28,12 +32,20 @@
       clearTimeout(failsafe);
       clearTimeout(hold);
       cancelAnimationFrame(frame);
+      const restoreFocus = controls?.contains(document.activeElement);
+      controls?.close();
+      controls?.remove();
       layer?.remove();
       original?.removeAttribute('data-brand-original');
       delete root.dataset.brandEntering;
       root.style.removeProperty('--brand-veil-opacity');
       if (madeInert) document.body.inert = previousInert;
       release();
+      if (restoreFocus) {
+        const target = previousFocus?.isConnected && previousFocus !== document.body
+          ? previousFocus : original || document.querySelector<HTMLElement>('.masthead .wordmark');
+        target?.focus({ preventScroll: true });
+      }
       window.removeEventListener('resize', finish);
       window.removeEventListener('pagehide', finish);
       document.removeEventListener('keydown', escape);
@@ -56,6 +68,34 @@
       previousInert = document.body.inert;
       madeInert = true;
       document.body.inert = true;
+      // A modal dialog escapes the body's inert state, keeping these two actions
+      // keyboard-accessible while the reading interface remains locked.
+      controls = document.createElement('dialog');
+      controls.className = 'brand-entry-controls';
+      const skip = document.createElement('button');
+      skip.type = 'button';
+      skip.className = 'brand-entry-skip';
+      skip.addEventListener('click', finish);
+      const dismiss = document.createElement('button');
+      dismiss.type = 'button';
+      dismiss.className = 'brand-entry-dismiss';
+      dismiss.addEventListener('click', () => {
+        try { localStorage.setItem('rep0rter-brand-dismissed', '1'); }
+        catch { /* The current entrance can still be dismissed without storage. */ }
+        finish();
+      });
+      const labelControls = () => {
+        controls!.setAttribute('aria-label', document.body.dataset.brandIntro || 'Brand introduction');
+        skip.textContent = document.body.dataset.brandSkip || 'Skip';
+        dismiss.textContent = document.body.dataset.brandDismiss || 'Don’t show again';
+      };
+      labelControls();
+      controls.append(skip, dismiss);
+      controls.addEventListener('cancel', event => { event.preventDefault(); finish(); });
+      previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      document.body.append(controls);
+      try { controls.showModal(); }
+      catch { finish(); return; }
       const ready = () => {
         if (ended) return;
         // The locale loader may replace the body after DOMContentLoaded.
@@ -64,6 +104,15 @@
           return;
         }
         try {
+          // Initial language selection can replace the entire body. Reattach
+          // the controls to that body and use its actual translated labels.
+          if (!controls!.isConnected) {
+            document.body.append(controls!);
+            controls!.close();
+            controls!.showModal();
+            document.body.inert = true;
+          }
+          labelControls();
           original = document.querySelector<HTMLElement>('.masthead .wordmark');
           if (!original) { finish(); return; }
           const box = original.getBoundingClientRect();

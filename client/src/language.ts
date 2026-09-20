@@ -182,6 +182,9 @@
         next.body.querySelectorAll('script').forEach(script => script.remove());
         document.body.replaceChildren(...[...next.body.childNodes].map(node => document.importNode(node, true)));
         document.body.className = next.body.className;
+        for (const key of ['brandSkip', 'brandDismiss', 'brandIntro']) {
+          document.body.dataset[key] = next.body.dataset[key] || '';
+        }
         language = locale;
         root.lang = locale;
         if (history) window.history.replaceState(window.history.state, '', publicURL(location.href, locale));
