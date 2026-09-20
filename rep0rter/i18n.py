@@ -65,6 +65,7 @@ def post_text(post, language: str) -> tuple[str, str, bool]:
 
 COPY = {
     "zh-TW": {
+        "presentation": "3 分鐘認識我們",
         "brand_skip": "略過", "brand_dismiss": "下次不再顯示", "brand_intro": "品牌開場",
         "title": "公民科技社群動態", "tagline": "讓彼此的進展被看見，讓下一次協作更容易。",
         "intro": "來自社群現場的消息，附上原文與參與線索。",
@@ -95,6 +96,7 @@ COPY = {
         "image_loading": "圖片載入中…", "image_error": "圖片暫時無法載入，請關閉後重試。",
     },
     "ko": {
+        "presentation": "3분 소개",
         "brand_skip": "건너뛰기", "brand_dismiss": "다시 표시하지 않기", "brand_intro": "브랜드 소개",
         "title": "시빅테크 커뮤니티 소식", "tagline": "서로의 진전을 발견하고, 다음 협업을 시작하세요.",
         "intro": "커뮤니티의 소식과 원문, 참여 방법을 함께 전합니다.",
@@ -125,6 +127,7 @@ COPY = {
         "image_loading": "이미지 불러오는 중…", "image_error": "이미지를 불러올 수 없습니다. 닫은 후 다시 시도해 주세요.",
     },
     "ja": {
+        "presentation": "3分でわかる紹介",
         "brand_skip": "スキップ", "brand_dismiss": "次回から表示しない", "brand_intro": "ブランド紹介",
         "title": "シビックテックのコミュニティニュース", "tagline": "お互いの進展を知り、次の協働へ。",
         "intro": "コミュニティの現場から、原文と参加のきっかけを届けます。",
@@ -155,6 +158,7 @@ COPY = {
         "image_loading": "画像を読み込み中…", "image_error": "画像を読み込めませんでした。閉じてからもう一度お試しください。",
     },
     "en": {
+        "presentation": "3-minute overview",
         "brand_skip": "Skip", "brand_dismiss": "Don’t show again", "brand_intro": "Brand introduction",
         "title": "Civic tech community news", "tagline": "See what others are building. Find your next collaboration.",
         "intro": "Updates from the community, with original sources and ways to take part.",

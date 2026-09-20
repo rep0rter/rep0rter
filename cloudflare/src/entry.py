@@ -385,6 +385,8 @@ class Reporter(DurableObject):
             relative = unquote(path).lstrip('/')
             if '..' in relative.split('/') or '\\' in relative or '\x00' in relative:
                 return Response('Not found', status=404)
+            if relative in ('ppt', 'ppt/'):
+                relative = 'ppt.html'
             if not relative or relative.endswith('/'):
                 relative += 'index.html'
             found = rows(runtime.sql.exec('SELECT data,digest FROM files WHERE path=?', 'site/' + relative))

@@ -114,3 +114,11 @@ Filter & sort 保留原生 details 與鍵盤操作，開啟、收合及自訂日
 開發時可將 `docs/brand-motion-preview.html` 複製至本機產出的網站目錄，以同源 URL 開啟；提供手機／平板／桌機、深淺色與重播控制。預覽載入真實首頁，僅在預覽頁中清除該分頁的品牌播放紀錄，不改變正式首頁的播放政策。此檔不由網站建置流程發布。
 
 窄於 1100px 的 masthead 將投稿、登入、語言與外觀維持同一排 44px 圖示操作，文字名稱保留於 aria-label/title；搜尋在下一排。極窄手機縮小品牌字樣，保留四個完整點擊區域。開場使用原生模態 dialog 提供右上角「略過」、右下角「下次不再顯示」，鍵盤焦點留在可操作範圍；自動歸位時按鈕以 240 ms 淡出，手動略過／不再顯示則讓按鈕、品牌與遮罩一起淡出後清理。淡出期間停用按鈕以防重複操作；關閉後恢復品牌焦點且不捲動。後者以 localStorage 的 `rep0rter-brand-dismissed` 記住這個瀏覽器的選擇；儲存受阻時仍可正常關閉本次開場。
+
+## 7. Public presentation and localized entrance
+
+The public build now includes `ppt.html`, served at `/ppt`, `/ppt/`, and `/ppt.html` by Flask and both native Worker paths. The footer links to the six-slide English introduction. `presentation.py` records eight contributor names and source references from the supplied 2026-09-19 HackMD note. Suggested slide timings total 180 seconds; the companion script is `docs/ppt-speaker-notes.md`.
+
+The talk uses the existing palette, typography and glass surfaces. Arrow keys, Page Up/Down, Home/End, slide buttons, and horizontal touch gestures navigate. Transitions and staged text reveals respect reduced motion. One same-origin iframe shows four actual reader states inside slide 3: timeline, source filter, Japanese, and dark appearance. The same arrows advance or reverse these states before leaving the slide. The frame stays inert so it cannot capture presentation keys, and demo appearance changes do not write the reader’s saved preference. Without JavaScript all six slides remain readable.
+
+The public homepage entrance waits for the selected language before showing controls. All four editions use their actual translated brand note, including on mobile; the temporary mobile note folds away during docking to match the compact masthead. No video or demo-only page is needed for the public entrance.

@@ -78,7 +78,7 @@
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') leave(); };
     const beforeLanguage = () => { if (layer) finish(); };
     const motionPreference = () => { if (reduced.matches) finish(); };
-    const failsafe = setTimeout(finish, 4500);
+    let failsafe = setTimeout(finish, 4500);
     cancelEntry = finish;
     window.addEventListener('resize', finish);
     window.addEventListener('pagehide', finish);
@@ -87,39 +87,6 @@
     reduced.addEventListener('change', motionPreference);
     const start = () => {
       if (ended || leaving) return;
-      if (!document.body.classList.contains('page-home') || scrollY > 0) { finish(); return; }
-      previousInert = document.body.inert;
-      madeInert = true;
-      document.body.inert = true;
-      // A modal dialog escapes the body's inert state, keeping these two actions
-      // keyboard-accessible while the reading interface remains locked.
-      controls = document.createElement('dialog');
-      controls.className = 'brand-entry-controls';
-      controls.tabIndex = -1;
-      const skip = document.createElement('button');
-      skip.type = 'button';
-      skip.className = 'brand-entry-skip';
-      skip.addEventListener('click', leave);
-      const dismiss = document.createElement('button');
-      dismiss.type = 'button';
-      dismiss.className = 'brand-entry-dismiss';
-      dismiss.addEventListener('click', () => {
-        try { localStorage.setItem('rep0rter-brand-dismissed', '1'); }
-        catch { /* The current entrance can still be dismissed without storage. */ }
-        leave();
-      });
-      const labelControls = () => {
-        controls!.setAttribute('aria-label', document.body.dataset.brandIntro || 'Brand introduction');
-        skip.textContent = document.body.dataset.brandSkip || 'Skip';
-        dismiss.textContent = document.body.dataset.brandDismiss || 'Don’t show again';
-      };
-      labelControls();
-      controls.append(skip, dismiss);
-      controls.addEventListener('cancel', event => { event.preventDefault(); leave(); });
-      previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      document.body.append(controls);
-      try { controls.showModal(); }
-      catch { finish(); return; }
       const ready = () => {
         if (ended || leaving) return;
         // The locale loader may replace the body after DOMContentLoaded.
@@ -127,16 +94,43 @@
           frame = requestAnimationFrame(ready);
           return;
         }
+        if (!document.body.classList.contains('page-home') || scrollY > 0) { finish(); return; }
+        // Loading an edition must not consume the reveal/hold/dock duration.
+        clearTimeout(failsafe);
+        failsafe = setTimeout(finish, 4500);
         try {
-          // Initial language selection can replace the entire body. Reattach
-          // the controls to that body and use its actual translated labels.
-          if (!controls!.isConnected) {
-            document.body.append(controls!);
-            controls!.close();
-            controls!.showModal();
-            document.body.inert = true;
-          }
+          previousInert = document.body.inert;
+          madeInert = true;
+          document.body.inert = true;
+          // A modal dialog escapes the body's inert state, keeping these two actions
+          // keyboard-accessible while the reading interface remains locked.
+          controls = document.createElement('dialog');
+          controls.className = 'brand-entry-controls';
+          controls.tabIndex = -1;
+          const skip = document.createElement('button');
+          skip.type = 'button';
+          skip.className = 'brand-entry-skip';
+          skip.addEventListener('click', leave);
+          const dismiss = document.createElement('button');
+          dismiss.type = 'button';
+          dismiss.className = 'brand-entry-dismiss';
+          dismiss.addEventListener('click', () => {
+            try { localStorage.setItem('rep0rter-brand-dismissed', '1'); }
+            catch { /* The current entrance can still be dismissed without storage. */ }
+            leave();
+          });
+          const labelControls = () => {
+            controls!.setAttribute('aria-label', document.body.dataset.brandIntro || 'Brand introduction');
+            skip.textContent = document.body.dataset.brandSkip || 'Skip';
+            dismiss.textContent = document.body.dataset.brandDismiss || 'Don’t show again';
+          };
           labelControls();
+          controls.append(skip, dismiss);
+          controls.addEventListener('cancel', event => { event.preventDefault(); leave(); });
+          previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          document.body.append(controls);
+          try { controls.showModal(); }
+          catch { finish(); return; }
           original = document.querySelector<HTMLElement>('.masthead .wordmark');
           if (!original) { finish(); return; }
           const box = original.getBoundingClientRect();
@@ -148,6 +142,12 @@
           layer.setAttribute('aria-hidden', 'true');
           layer.setAttribute('tabindex', '-1');
           layer.classList.add('brand-entry-clone');
+          // On narrow headers the note is hidden. It still belongs to the
+          // introduction, using the translated source already in this edition.
+          const note = layer.querySelector<HTMLElement>('small');
+          const sourceNote = original.querySelector<HTMLElement>('small');
+          const introOnlyNote = !!note && !!sourceNote && getComputedStyle(sourceNote).display === 'none';
+          if (introOnlyNote) note!.classList.add('brand-entry-note');
           const face = document.createElement('span');
           face.className = 'brand-entry-face';
           face.append(...Array.from(layer.childNodes));
@@ -166,6 +166,7 @@
           document.body.append(layer);
           root.dataset.brandEntering = 'active';
           const visibleWidth = layer.getBoundingClientRect().width;
+          const noteHeight = introOnlyNote ? note!.getBoundingClientRect().height : 0;
           // Include the optical surface's 18px gutters in the mobile safe area.
           const scale = Math.max(1, Math.min(3.6, (root.clientWidth - 48) / (visibleWidth + 36)));
           const x = (root.clientWidth - visibleWidth * scale) / 2 - box.left;
@@ -174,6 +175,12 @@
             if (!layer || !original?.isConnected) { finish(); return; }
             const remaining = Math.max(0, Math.min(1, 1 - value));
             layer.style.transform = `translate(${x * remaining}px, ${y * remaining}px) scale(${1 + (scale - 1) * remaining})`;
+            // Collapse the temporary note continuously so the name and logo
+            // arrive at the exact responsive header geometry before handoff.
+            if (introOnlyNote) {
+              note!.style.height = `${noteHeight * remaining}px`;
+              note!.style.opacity = String(Math.max(0, 1 - value * 2));
+            }
             root.style.setProperty('--brand-veil-opacity', String(remaining));
           };
           paint(0);

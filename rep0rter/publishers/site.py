@@ -216,9 +216,13 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
     if font_source.is_dir():
         shutil.copytree(font_source, cfg.site_dir / "assets" / "fonts", dirs_exist_ok=True)
     for asset in ("style.css", "theme-transition.css", "enchantment.css", "language.css", "language.js", "theme.js",
-                  "enchantment.js", "reading.js", "glass-motion.js", "image-viewer.js", "account.js", "account.css", "login.css", "entry-motion.js", "entry-motion.css"):
+                  "enchantment.js", "reading.js", "glass-motion.js", "image-viewer.js", "account.js", "account.css", "login.css", "entry-motion.js", "entry-motion.css", "ppt.js", "ppt.css"):
         _write(cfg.site_dir / asset, env.get_template(asset).render())
     ctx['style_version'] = hashlib.sha256((cfg.site_dir / 'style.css').read_bytes()).hexdigest()[:12]
+    from ..presentation import TEAM, SOURCES
+    _write(cfg.site_dir / 'ppt.html', env.get_template('ppt.html').render(
+        **ctx, ppt_base=cfg.site_url.rstrip('/'), ppt_team=TEAM, ppt_sources=SOURCES,
+    ))
     tag_counts = {}
     for item in items:
         for tag in item['hashtags']:

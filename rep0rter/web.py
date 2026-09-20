@@ -431,6 +431,8 @@ def create_app(cfg: Config | None = None) -> Flask:
     @app.get('/<path:filename>')
     def static_site(filename='index.html'):
         # Also supports local development without a separate Caddy instance.
+        if filename in ('ppt', 'ppt/'):
+            filename = 'ppt.html'
         if filename in ('style.css', 'theme.js', 'theme-transition.css', 'account.js', 'account.css', 'login.css', 'entry-motion.js', 'entry-motion.css'):
             return send_from_directory(app.root_path + '/templates', filename)
         if filename in branding.values() and not (cfg.site_dir / filename).is_file():

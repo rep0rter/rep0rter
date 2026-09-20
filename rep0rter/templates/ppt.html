@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="A three-minute introduction to rep0rter: community updates, connected.">
+  <link rel="canonical" href="{{ ppt_base }}/ppt">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="rep0rter · Community updates, connected">
+  <meta property="og:description" content="A three-minute introduction to connected civic tech updates.">
+  <meta property="og:url" content="{{ ppt_base }}/ppt">
+  {% if branding %}<meta property="og:image" content="{{ ppt_base }}/{{ branding.logo }}">{% endif %}
+  <meta name="twitter:card" content="summary">
+  <title>rep0rter · Community updates, connected</title>
+  {% if branding %}<link rel="icon" type="image/png" href="{{ ppt_base }}/{{ branding.favicon }}">{% endif %}
+  <script src="{{ ppt_base }}/theme.js"></script>
+  <link rel="stylesheet" href="{{ ppt_base }}/style.css?v={{ style_version }}">
+  <link rel="stylesheet" href="{{ ppt_base }}/ppt.css?v={{ style_version }}">
+  <script defer src="{{ ppt_base }}/ppt.js"></script>
+</head>
+<body class="presentation">
+  <a class="skip-link" href="#slides">Skip to presentation</a>
+  <div class="ppt-ambient" aria-hidden="true"><i></i><i></i><i></i></div>
+  <header class="ppt-header">
+    <a class="ppt-brand wordmark" href="{{ ppt_base }}/index.html?lang=EN">{% if branding %}<img src="{{ ppt_base }}/{{ branding.logo }}" width="36" height="36" alt="">{% endif %}<span>rep0rter</span></a>
+    <p class="ppt-edition">A community project <span>·</span> A 3-minute introduction</p>
+    <a class="ppt-open" href="{{ ppt_base }}/index.html?lang=EN#news" target="_blank" rel="noopener">Open site <span aria-hidden="true">↗</span></a>
+  </header>
+  <main id="slides" class="ppt-stage" tabindex="-1" aria-label="Presentation slides">
+    <section class="ppt-slide ppt-cover" id="slide-1" data-duration="20" aria-labelledby="title-1" data-label="Community updates, connected">
+      <div class="ppt-cover-copy">
+        <p class="ppt-kicker" data-reveal>01 / The idea</p>
+        <h1 id="title-1" data-reveal>Community updates.<br><em>Connected.</em></h1>
+        <p class="ppt-lead" data-reveal>One place to follow what civic tech communities are building, sharing, and learning.</p>
+        <p class="ppt-caption" data-reveal>Across communities. Across languages. Closer to the source.</p>
+      </div>
+      <div class="ppt-orbit" aria-hidden="true" data-reveal>
+        <div class="ppt-orbit-ring"></div><div class="ppt-orbit-ring ppt-orbit-ring--inner"></div>
+        <span class="ppt-orbit-label ppt-orbit-label--one">Ideas</span><span class="ppt-orbit-label ppt-orbit-label--two">People</span><span class="ppt-orbit-label ppt-orbit-label--three">Projects</span>
+        <div class="ppt-logo-lens">{% if branding %}<img src="{{ ppt_base }}/{{ branding.logo }}" alt="" width="176" height="176">{% else %}<span>r0</span>{% endif %}</div>
+        <span class="ppt-orbit-note">rep0rter</span>
+      </div>
+    </section>
+
+    <section class="ppt-slide" id="slide-2" data-duration="25" aria-labelledby="title-2" data-label="Communities across borders">
+      <div class="ppt-section-head"><p class="ppt-kicker" data-reveal>02 / The communities</p><h2 id="title-2" data-reveal>Good ideas travel.<br><em>Updates should, too.</em></h2><p class="ppt-community-intro" data-reveal>Updates from three civic tech communities, together in one timeline.</p></div>
+      <div class="ppt-communities" data-reveal>
+        <article><span class="ppt-community-index">TW / 01</span><h3>g0v</h3><p>Taiwan</p><a href="https://g0v.tw/" target="_blank" rel="noopener">Explore the community <span aria-hidden="true">↗</span></a></article>
+        <article><span class="ppt-community-index">JP / 02</span><h3>Code for Japan</h3><p>Japan</p><a href="https://www.code4japan.org/" target="_blank" rel="noopener">Explore the community <span aria-hidden="true">↗</span></a></article>
+        <article><span class="ppt-community-index">KR / 03</span><h3>Code for Korea</h3><p>Korea</p><a href="https://codefor.kr/" target="_blank" rel="noopener">Explore the community <span aria-hidden="true">↗</span></a></article>
+      </div>
+      <p class="ppt-bottom-note" data-reveal>Three communities. Four reading languages. One shared timeline.</p>
+    </section>
+
+    <section class="ppt-slide ppt-showcase" id="slide-3" data-duration="45" aria-labelledby="title-3" data-label="The reader experience">
+      <div class="ppt-showcase-copy"><p class="ppt-kicker" data-reveal>03 / The experience</p><h2 id="title-3" data-reveal>Less catching up.<br><em>More joining in.</em></h2><p class="ppt-lead" data-reveal>A readable timeline of community updates, with a path back to the original conversation.</p><div class="ppt-demo-label" data-reveal><span></span> The reader, live</div><div class="ppt-demo-steps" data-reveal><p><span data-demo-count>01 / 04</span><strong data-demo-label>Latest updates</strong></p><p class="ppt-demo-hint">Use ← → to explore this demo</p></div></div>
+      <figure class="ppt-browser" data-reveal>
+        <div class="ppt-browser-bar"><div aria-hidden="true"><i></i><i></i><i></i></div><span>rep0rter / community updates</span><span aria-hidden="true">↗</span></div>
+        <div class="ppt-browser-viewport"><iframe data-src="{{ ppt_base }}/index.html?lang=EN#news" loading="lazy" title="Live rep0rter demonstration controlled by presentation arrow keys" tabindex="-1" inert aria-hidden="true"></iframe><div class="ppt-preview-loading">Loading the community timeline…</div></div>
+        <figcaption data-demo-caption>The actual community timeline, with original sources one click away.</figcaption>
+      </figure>
+    </section>
+
+    <section class="ppt-slide" id="slide-4" data-duration="35" aria-labelledby="title-4" data-label="Read, discover, contribute">
+      <div class="ppt-section-head"><p class="ppt-kicker" data-reveal>04 / Built for readers</p><h2 id="title-4" data-reveal>Find your way in.</h2></div>
+      <div class="ppt-feature-layout">
+        <div class="ppt-language-lens" data-reveal><p class="ppt-small-label">Four reading languages</p><div class="ppt-language-list"><span lang="en">English</span><span lang="zh-Hant">繁體中文</span><span lang="ja">日本語</span><span lang="ko">한국어</span></div><p>Read across language boundaries.<br>Check the original when details matter.</p></div>
+        <div class="ppt-feature-list">
+          <article data-reveal><span>01</span><div><h3>Find what matters</h3><p>Search and filter by date, topic, author, and source.</p></div></article>
+          <article data-reveal><span>02</span><div><h3>Keep the context</h3><p>Follow source links. Subscribe through RSS.</p></div></article>
+          <article data-reveal><span>03</span><div><h3>Add your voice</h3><p>Google sign-in and a contribution flow for community updates.</p></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="ppt-slide" id="slide-5" data-duration="30" aria-labelledby="title-5" data-label="From public updates to shared context">
+      <div class="ppt-section-head"><p class="ppt-kicker" data-reveal>05 / Under the hood</p><h2 id="title-5" data-reveal>From public updates<br><em>to shared context.</em></h2></div>
+      <div class="ppt-pipeline">
+        <article data-reveal><span class="ppt-pipeline-step">01 / Collect</span><h3>Public sources</h3><p>Slack · GitHub · Mastodon<br>RSS · Public Notion</p><small>Supported source integrations</small></article>
+        <span class="ppt-pipeline-arrow" aria-hidden="true" data-reveal>→</span>
+        <article class="ppt-pipeline-core" data-reveal><span class="ppt-pipeline-step">02 / Process</span><h3>Collect. Summarize.<br>Translate.</h3><p>Python · SQLite · LLM</p><small>Keep the link to the original</small></article>
+        <span class="ppt-pipeline-arrow" aria-hidden="true" data-reveal>→</span>
+        <article data-reveal><span class="ppt-pipeline-step">03 / Share</span><h3>Meet readers</h3><p>Website · RSS · Telegram</p><small>Supported publishing channels</small></article>
+      </div>
+      <p class="ppt-bottom-note" data-reveal>Jinja · TypeScript · CSS <span aria-hidden="true">/</span> Cloudflare Workers · GitHub Actions</p>
+    </section>
+
+    <section class="ppt-slide ppt-closing" id="slide-6" data-duration="25" aria-labelledby="title-6" data-label="The people and the invitation">
+      <div class="ppt-closing-copy"><p class="ppt-kicker" data-reveal>06 / The people</p><h2 id="title-6" data-reveal>Built by people.<br><em>For participation.</em></h2><p class="ppt-lead" data-reveal>Bring an update. Find a project.<br>Start a conversation.</p><a class="ppt-join" href="{{ ppt_base }}/index.html?lang=EN#news" target="_blank" rel="noopener" data-reveal>Explore rep0rter <span aria-hidden="true">↗</span></a></div>
+      <div class="ppt-team-panel" data-reveal><p class="ppt-small-label">The team</p>
+        {% if ppt_team %}<ul class="ppt-team">{% for member in ppt_team %}<li><div>{% if member.url %}<a href="{{ member.url }}" target="_blank" rel="noopener">{{ member.name }}</a>{% else %}<strong>{{ member.name }}</strong>{% endif %}<span>{{ member.role }}</span></div><span aria-hidden="true">↗</span></li>{% endfor %}</ul>{% else %}<h3>A community effort</h3><p>Made possible by the people building rep0rter and the communities sharing their work.</p>{% endif %}
+        <p class="ppt-team-invite">The next connection could start with you.</p>{% if ppt_team and ppt_team[0].url %}<a class="ppt-credits-source" href="{{ ppt_team[0].url }}" target="_blank" rel="noopener" data-team-source>Project notes ↗</a>{% endif %}
+      </div>
+    </section>
+  </main>
+  <footer class="ppt-controls" aria-label="Slide controls">
+    <div class="ppt-progress-copy"><span data-slide-number>01</span><span class="ppt-progress-divider">/</span><span>06</span><span class="ppt-key-hint">Use ← → to explore</span></div>
+    <nav class="ppt-dots" aria-label="Choose a slide">{% for label in ['The idea', 'The communities', 'The experience', 'Built for readers', 'Under the hood', 'The people'] %}<button type="button" data-slide-to="{{ loop.index0 }}" aria-label="Slide {{ loop.index }}: {{ label }}"{% if loop.first %} aria-current="step"{% endif %}><span>{{ '%02d' | format(loop.index) }}</span></button>{% endfor %}</nav>
+    <div class="ppt-arrows"><button type="button" data-slide-prev aria-label="Previous slide" disabled><span aria-hidden="true">←</span></button><button type="button" data-slide-next aria-label="Next slide"><span aria-hidden="true">→</span></button></div>
+    <div class="ppt-progress-track" aria-hidden="true"><span></span></div>
+  </footer>
+  <p class="visually-hidden" aria-live="polite" aria-atomic="true" data-slide-status></p>
+  <noscript><p class="ppt-noscript">Enable JavaScript for keyboard navigation. All six slides are shown below each other.</p></noscript>
+</body>
+</html>

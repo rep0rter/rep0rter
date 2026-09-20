@@ -57,6 +57,10 @@ html[data-brand-exiting] body::before { transition: opacity 240ms ease-out; }
   will-change: transform;
   transition: opacity 240ms ease-out;
 }
+.brand-entry-clone .brand-entry-note {
+  display: block;
+  overflow: hidden;
+}
 .brand-entry-face {
   position: relative;
   display: inline-flex;
