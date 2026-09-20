@@ -45,7 +45,7 @@
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') finish(); };
     const beforeLanguage = () => { if (layer) finish(); };
     const motionPreference = () => { if (reduced.matches) finish(); };
-    const failsafe = setTimeout(finish, 2400);
+    const failsafe = setTimeout(finish, 3600);
     cancelEntry = finish;
     window.addEventListener('resize', finish);
     window.addEventListener('pagehide', finish);
@@ -104,7 +104,7 @@
           hold = setTimeout(() => {
             if (ended) return;
             motion = window.Rep0rterMotion!.spring({ from: 0, to: 1, onUpdate: paint, onComplete: finish });
-          }, 260);
+          }, 1200);
         } catch { finish(); }
       };
       // Give deferred language initialization and fonts a bounded chance to settle.
