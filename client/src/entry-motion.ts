@@ -22,6 +22,8 @@
     let previousFocus: HTMLElement | null = null;
     let frame = 0;
     let hold = 0;
+    let exitTimer = 0;
+    let leaving = false;
     let ended = false;
     let original: HTMLElement | null = null;
     let previousInert = false;
@@ -31,6 +33,7 @@
       ended = true;
       clearTimeout(failsafe);
       clearTimeout(hold);
+      clearTimeout(exitTimer);
       cancelAnimationFrame(frame);
       const restoreFocus = controls?.contains(document.activeElement);
       controls?.close();
@@ -38,6 +41,7 @@
       layer?.remove();
       original?.removeAttribute('data-brand-original');
       delete root.dataset.brandEntering;
+      delete root.dataset.brandExiting;
       root.style.removeProperty('--brand-veil-opacity');
       if (madeInert) document.body.inert = previousInert;
       release();
@@ -52,7 +56,26 @@
       document.removeEventListener('rep0rter:before-language', beforeLanguage);
       reduced.removeEventListener('change', motionPreference);
     };
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') finish(); };
+    const fadeControls = () => {
+      if (!controls || controls.dataset.leaving) return;
+      if (controls.contains(document.activeElement)) controls.focus({ preventScroll: true });
+      controls.querySelectorAll('button').forEach(button => { button.disabled = true; });
+      controls.dataset.leaving = 'true';
+    };
+    const leave = () => {
+      if (ended || leaving) return;
+      if (reduced.matches || !controls?.isConnected) { finish(); return; }
+      leaving = true;
+      clearTimeout(hold);
+      cancelAnimationFrame(frame);
+      fadeControls();
+      root.dataset.brandExiting = '';
+      root.style.setProperty('--brand-veil-opacity', '0');
+      if (layer) layer.style.opacity = '0';
+      // Let the 240ms opacity transition paint its last frame before cleanup.
+      exitTimer = setTimeout(finish, 280);
+    };
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') leave(); };
     const beforeLanguage = () => { if (layer) finish(); };
     const motionPreference = () => { if (reduced.matches) finish(); };
     const failsafe = setTimeout(finish, 4500);
@@ -63,7 +86,7 @@
     document.addEventListener('rep0rter:before-language', beforeLanguage);
     reduced.addEventListener('change', motionPreference);
     const start = () => {
-      if (ended) return;
+      if (ended || leaving) return;
       if (!document.body.classList.contains('page-home') || scrollY > 0) { finish(); return; }
       previousInert = document.body.inert;
       madeInert = true;
@@ -72,17 +95,18 @@
       // keyboard-accessible while the reading interface remains locked.
       controls = document.createElement('dialog');
       controls.className = 'brand-entry-controls';
+      controls.tabIndex = -1;
       const skip = document.createElement('button');
       skip.type = 'button';
       skip.className = 'brand-entry-skip';
-      skip.addEventListener('click', finish);
+      skip.addEventListener('click', leave);
       const dismiss = document.createElement('button');
       dismiss.type = 'button';
       dismiss.className = 'brand-entry-dismiss';
       dismiss.addEventListener('click', () => {
         try { localStorage.setItem('rep0rter-brand-dismissed', '1'); }
         catch { /* The current entrance can still be dismissed without storage. */ }
-        finish();
+        leave();
       });
       const labelControls = () => {
         controls!.setAttribute('aria-label', document.body.dataset.brandIntro || 'Brand introduction');
@@ -91,13 +115,13 @@
       };
       labelControls();
       controls.append(skip, dismiss);
-      controls.addEventListener('cancel', event => { event.preventDefault(); finish(); });
+      controls.addEventListener('cancel', event => { event.preventDefault(); leave(); });
       previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       document.body.append(controls);
       try { controls.showModal(); }
       catch { finish(); return; }
       const ready = () => {
-        if (ended) return;
+        if (ended || leaving) return;
         // The locale loader may replace the body after DOMContentLoaded.
         if (root.getAttribute('aria-busy') === 'true') {
           frame = requestAnimationFrame(ready);
@@ -160,6 +184,7 @@
             hold = setTimeout(() => {
               if (ended) return;
               layer!.dataset.phase = 'dock';
+              fadeControls();
               // A critically damped spring gives the longer journey a quiet,
               // continuous arrival, without changing other interface springs.
               const started = performance.now();
@@ -178,7 +203,7 @@
       };
       // Give deferred language initialization and fonts a bounded chance to settle.
       void Promise.race([document.fonts.ready, new Promise(resolve => setTimeout(resolve, 250))])
-        .then(() => { if (!ended) frame = requestAnimationFrame(ready); }, finish);
+        .then(() => { if (!ended && !leaving) frame = requestAnimationFrame(ready); }, finish);
     };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
     else start();

@@ -9,6 +9,7 @@ html[data-brand-entering] body::before {
   pointer-events: auto;
 }
 [data-brand-original] { visibility: hidden; }
+html[data-brand-exiting] body::before { transition: opacity 240ms ease-out; }
 .brand-entry-controls {
   position: fixed;
   inset: 0;
@@ -22,7 +23,11 @@ html[data-brand-entering] body::before {
   color: var(--ink);
   background: transparent;
   pointer-events: none;
+  outline: none;
+  opacity: 1;
+  transition: opacity 240ms ease-out;
 }
+.brand-entry-controls[data-leaving] { opacity: 0; }
 .brand-entry-controls::backdrop { background: transparent; pointer-events: none; }
 .brand-entry-controls button {
   position: absolute;
@@ -50,6 +55,7 @@ html[data-brand-entering] body::before {
   user-select: none;
   white-space: nowrap;
   will-change: transform;
+  transition: opacity 240ms ease-out;
 }
 .brand-entry-face {
   position: relative;
