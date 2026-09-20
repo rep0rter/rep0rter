@@ -57,6 +57,7 @@ const search = {action: 'https://example.test/index.zh-TW.html', children: [],
   querySelector() {return this.children[0] || null;}, append(child) {this.children.push(child);}
 };
 const document = {documentElement: {lang: 'zh-TW'}, readyState: 'complete',
+  body: {classList: {contains: name => name === 'page-home'}},
   addEventListener() {},
   querySelectorAll(selector) {
     if (selector === 'a[href]') return [language, home, external, anchor, download];
