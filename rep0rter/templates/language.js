@@ -8,6 +8,23 @@
         const code = (value || '').toUpperCase();
         return byCode[code] || (code === 'ZH-TW' ? 'zh-TW' : null);
     };
+    const preferenceKey = 'rep0rter-language';
+    function rememberLanguage(locale) {
+        try {
+            localStorage.setItem(preferenceKey, locale);
+        }
+        catch { /* The current language remains usable without storage. */ }
+    }
+    function deviceLanguage() {
+        for (const value of navigator.languages?.length ? navigator.languages : [navigator.language]) {
+            const base = (value || '').toLowerCase().split('-')[0];
+            if (base === 'zh')
+                return 'zh-TW';
+            if (base === 'en' || base === 'ja' || base === 'ko')
+                return base;
+        }
+        return 'en';
+    }
     const editionPath = /^(.*\/)(?:index(?:\.(en|zh-TW|ja|ko))?\.html)?$/;
     let language = document.documentElement.lang || 'en';
     let revision = 0;
@@ -159,6 +176,8 @@
         controller?.abort();
         controller = null;
         if (locale === language) {
+            if (!initial && history)
+                rememberLanguage(locale);
             if (history)
                 window.history.replaceState(window.history.state, '', publicURL(location.href, locale));
             closeMenu(!initial);
@@ -193,6 +212,8 @@
                     document.body.dataset[key] = next.body.dataset[key] || '';
                 }
                 language = locale;
+                if (!initial && history)
+                    rememberLanguage(locale);
                 root.lang = locale;
                 if (history)
                     window.history.replaceState(window.history.state, '', publicURL(location.href, locale));
@@ -231,12 +252,28 @@
         }
     }
     function initialize() {
-        const requested = parseLanguage(new URL(location.href).searchParams.get('lang')) || language;
-        if (requested === language)
+        const url = new URL(location.href);
+        let requested = parseLanguage(url.searchParams.get('lang'));
+        // Explicit edition links always win. Only the neutral homepage negotiates
+        // a language, so article links and the presentation keep their own edition.
+        if (!requested && document.body.classList.contains('page-home')) {
+            const edition = url.pathname.match(editionPath)?.[2];
+            if (edition)
+                requested = parseLanguage(edition);
+            else {
+                try {
+                    requested = parseLanguage(localStorage.getItem(preferenceKey));
+                }
+                catch { /* Device language and the English fallback need no storage. */ }
+                requested ||= deviceLanguage();
+            }
+        }
+        const initialLanguage = requested || language;
+        if (initialLanguage === language)
             window.history.replaceState(window.history.state, '', publicURL(location.href, language));
         updateLinks();
-        if (requested !== language)
-            change(requested, { initial: true });
+        if (initialLanguage !== language)
+            change(initialLanguage, { initial: true });
     }
     for (const name of ['pointerdown', 'focusin'])
         document.addEventListener(name, event => {

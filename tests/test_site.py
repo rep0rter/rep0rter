@@ -274,9 +274,9 @@ def test_english_default_and_existing_explicit_english_links(published_site):
         assert ElementTree.parse(cfg.site_dir / filename).findtext("channel/item/guid") == str(entries[-1][0].id)
 
 
-def test_language_switch_does_not_redirect_using_old_browser_preference(published_site):
+def test_explicit_english_link_overrides_stored_language_without_redirect(published_site):
     # Execute the actual served script against a minimal DOM; a stored choice
-    # from the previous release must never take over the English root URL.
+    # must never take over an explicitly requested English URL.
     import shutil
     import subprocess
     if not shutil.which("node"):
@@ -288,7 +288,7 @@ global.document = {
   documentElement: {lang: 'en'}, readyState: 'complete',
   addEventListener: () => {}, querySelectorAll: () => [],
 };
-global.location = new URL('https://example.test/');
+global.location = new URL('https://example.test/?lang=EN');
 location.replace = () => assert.fail('unexpected redirect');
 global.window = {addEventListener: () => {}, history: {state: null,
   replaceState(state, title, url) {
