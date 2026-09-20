@@ -1,36 +1,36 @@
 {% extends "_account_base.html" %}
-{% block page_title %}Post your project{% endblock %}
-{% block edition %}COMMUNITY PROJECTS{% endblock %}
-{% block heading %}Share what you’re building.{% endblock %}
-{% block intro %}Post your civic-tech project to the rep0rter community feed.{% endblock %}
-{% block navigation %}<a href="/">← Back to the feed</a><a href="/write">Write a story</a><a href="{{ url_for('managed_project') }}">Manage automatic project news</a>{% endblock %}
+{% block page_title %}{{ account_copy.post_project }}{% endblock %}
+{% block edition %}{{ account_copy.community_projects }}{% endblock %}
+{% block heading %}{{ account_copy.submit_heading }}{% endblock %}
+{% block intro %}{{ account_copy.submit_intro }}{% endblock %}
+{% block navigation %}<a href="/?lang={{ account_language }}">{{ ui.icon('back') }}<span>{{ account_copy.back_feed }}</span></a><a href="/write?lang={{ account_language }}">{{ ui.icon('chat') }}<span>{{ account_copy.write_title }}</span></a><a href="/projects?lang={{ account_language }}">{{ ui.icon('rss') }}<span>{{ account_copy.manage_news }}</span></a>{% endblock %}
 {% block content %}
 {% if error %}<p class="form-notice" role="alert">{{ error }}</p>{% endif %}
 
-  <div class="account-bar"><span>Signed in as {{ owner.name }}</span>
-    <form action="{{ url_for('logout') }}" method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="quiet-button">Sign out</button></form>
+  <div class="account-bar"><span>{{ account_copy.signed_in }} {{ owner.name }}</span>
+    <form action="{{ url_for('logout') }}" method="post"><input type="hidden" name="ui_language" value="{{ account_language }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="quiet-button">{{ account_copy.sign_out }}</button></form>
   </div>
   <article class="project-form">
-    <h2>Post your project</h2>
-    <p>Your description will be published as written to the website and RSS feed, labeled as an owner submission.</p>
+    <h2>{{ account_copy.post_project }}</h2>
+    <p>{{ account_copy.submit_notice }}</p>
     <form action="{{ url_for('publish') }}" method="post">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="ui_language" value="{{ account_language }}"><input type="hidden" name="csrf" value="{{ csrf }}">
       <input type="hidden" name="submission_token" value="{{ submission_token }}">
-      <label for="title">Project name</label>
+      <label for="title">{{ account_copy.project_name }}</label>
       <input id="title" name="title" value="{{ values.get('title', '') }}" required maxlength="160" autocomplete="off">
-      <label for="url">Project website or repository</label>
+      <label for="url">{{ account_copy.project_url }}</label>
       <input id="url" name="url" type="url" value="{{ values.get('url', '') }}" required maxlength="2048" placeholder="https://github.com/your-team/your-project">
-      <label for="description">Project description</label>
-      <p id="description-help" class="form-help">What does it do, who is it for, and how can people help? Up to 3,000 characters.</p>
+      <label for="description">{{ account_copy.project_description }}</label>
+      <p id="description-help" class="form-help">{{ account_copy.project_description_help }}</p>
       <textarea id="description" name="description" rows="8" required maxlength="3000" aria-describedby="description-help">{{ values.get('description', '') }}</textarea>
-      <label for="language">Description language</label>
+      <label for="language">{{ account_copy.description_language }}</label>
       <select id="language" name="language">{% for code, label in languages.items() %}<option value="{{ code }}"{% if values.get('language', 'en') == code %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
-      <label for="author">Public display name</label>
+      <label for="author">{{ account_copy.author }}</label>
       <input id="author" name="author" value="{{ values.get('author', owner.name) }}" required maxlength="100" autocomplete="nickname">
-      <label class="owner-confirmation"><input type="checkbox" name="owner_confirmed" value="yes" required{% if values.get('owner_confirmed') == 'yes' %} checked{% endif %}> <span>I own this project or am authorized to represent it, and I agree to publish this description, link, and display name publicly.</span></label>
-      <p class="form-help">Google sign-in verifies your account. Project ownership is self-declared. You can publish up to five projects every 24 hours.</p>
-      <button type="submit">{{ 'Retry publishing saved project' if saved_post else 'Publish project to the feed' }}</button>
+      <label class="owner-confirmation"><input type="checkbox" name="owner_confirmed" value="yes" required{% if values.get('owner_confirmed') == 'yes' %} checked{% endif %}> <span>{{ account_copy.project_consent }}</span></label>
+      <p class="form-help">{{ account_copy.project_limit }}</p>
+      <button type="submit">{{ account_copy.retry_project if saved_post else account_copy.publish_project }}</button>
     </form>
   </article>
 {% endblock %}
-{% block footer %}Community projects, shared by the people building them.{% endblock %}
+{% block footer %}{{ account_copy.projects_footer }}{% endblock %}

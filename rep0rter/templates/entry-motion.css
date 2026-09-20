@@ -1,0 +1,28 @@
+/* JS adds this only for an eligible first home visit. No JS: no veil. */
+html[data-brand-entering] body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: var(--canvas);
+  opacity: var(--brand-veil-opacity, 1);
+  pointer-events: auto;
+}
+[data-brand-original] { visibility: hidden; }
+.brand-entry-clone {
+  position: fixed;
+  z-index: 10001;
+  transform-origin: top left;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+  will-change: transform;
+}
+.search-filters[data-filter-moving] { overflow: hidden; will-change: height; }
+.search-filters[data-filter-moving] > summary { position: relative; z-index: 1; }
+.search-filters > summary[aria-expanded="false"] > .icon:last-child { transform: rotate(0); }
+.search-filters > summary[aria-expanded="true"] > .icon:last-child { transform: rotate(180deg); }
+@media (prefers-reduced-motion: reduce) {
+  html[data-brand-entering] body::before, .brand-entry-clone { display: none; }
+  [data-brand-original] { visibility: visible; }
+}

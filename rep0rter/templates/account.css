@@ -2,15 +2,17 @@
 .account-page { min-height: 100svh; }
 .account-page > header, .account-page > main, .account-page > footer { width: min(100% - 48px, 920px); }
 .account-page > header.site-header { padding-block: 16px; }
-.account-page .masthead { display: flex; flex-direction: row; flex-wrap: nowrap; align-items: center; min-height: 76px; gap: 16px; margin: 0; padding: 12px 20px; }
+.account-page .masthead { --nav-depth: 1; display: flex; flex-direction: row; flex-wrap: nowrap; align-items: center; min-height: 76px; gap: 16px; margin: 0; padding: 12px 20px; }
 .account-page .wordmark { min-width: 0; }
+.account-page .wordmark img { flex: 0 0 auto; }
+.account-navigation .icon { flex: 0 0 auto; }
 .account-page .wordmark small { display: block; }
-.account-header-actions { flex: 0 0 auto; margin-left: auto; }
+.account-header-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; margin-left: auto; }
 .account-page .account-intro { padding: 40px 8px 32px; }
 .account-page .account-intro h1 { margin-top: 18px; max-width: 740px; font-size: clamp(30px, 4.7vw, 46px); text-wrap: balance; }
 .account-page .tagline { max-width: 660px; font-size: 16px; }
 .account-navigation { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 22px; }
-.account-navigation a { display: inline-flex; align-items: center; min-height: 44px; color: var(--accent); font-size: 14px; font-weight: 600; text-decoration-thickness: 1px; }
+.account-navigation a { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--accent); font-size: 14px; font-weight: 600; text-decoration-thickness: 1px; }
 .account-page main > article, .account-page main > section { position: relative; background: var(--glass); -webkit-backdrop-filter: blur(20px) saturate(1.1); backdrop-filter: blur(20px) saturate(1.1); }
 .account-page .project-form > p { max-width: 68ch; color: var(--muted); }
 .account-page .project-form label { line-height: 1.6; }
@@ -62,4 +64,12 @@
 @media (forced-colors: active) {
   .account-page main > article, .account-page main > section, .account-page .account-bar, .account-page .project-form .owner-confirmation, .account-page .form-notice, .account-page .preference-option, .account-page .project-form input:not([type=hidden]), .account-page .project-form textarea, .account-page .project-form select { background: Canvas; color: CanvasText; border: 1px solid CanvasText; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
   .account-page .preference-option[aria-pressed=true] { color: HighlightText; background: Highlight; }
+}
+
+@media (max-width: 420px) {
+  .account-page .wordmark img { width: 32px; height: 32px; }
+  .account-page .wordmark small { display: none; }
+  .account-page .wordmark { gap: 8px; font-size: 21px; }
+  .account-header-actions { gap: 4px; }
+  .account-page .masthead { padding-inline: 10px; }
 }

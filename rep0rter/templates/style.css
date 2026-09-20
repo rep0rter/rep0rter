@@ -164,7 +164,6 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .feed-column { min-width: 0; scroll-margin-top: 28px; }
 .section-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; }
 .section-heading h2 { margin-top: 5px; font-size: 29px; font-weight: 700; }
-.edition-badge { color: var(--muted); background: var(--recess); border: 1px solid var(--line); border-radius: 20px; padding: 6px 13px; font-size: 12px; }
 .search-bar { position: relative; margin-bottom: 28px; }
 .search-field { display: flex; align-items: center; gap: 12px; border-radius: 22px; background: var(--recess); box-shadow: var(--shadow-pressed); padding: 0 20px; color: var(--muted); min-height: 58px; }
 .search-field:focus-within { outline: 3px solid var(--focus); outline-offset: 4px; }

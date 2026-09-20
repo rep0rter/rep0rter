@@ -1,57 +1,57 @@
 {% extends "_account_base.html" %}
-{% block page_title %}Write a story{% endblock %}
-{% block edition %}COMMUNITY STORIES{% endblock %}
-{% block heading %}Write a story{% endblock %}
-{% block intro %}Be the reporter of your own work. Share what happened, what you learned, and how others can take part.{% endblock %}
-{% block navigation %}<a href="/">← Back to the feed</a><a href="/submit">Post your project</a><a href="/projects">Manage automatic project news</a>{% endblock %}
+{% block page_title %}{{ account_copy.write_title }}{% endblock %}
+{% block edition %}{{ account_copy.community_stories }}{% endblock %}
+{% block heading %}{{ account_copy.write_title }}{% endblock %}
+{% block intro %}{{ account_copy.write_intro }}{% endblock %}
+{% block navigation %}<a href="/?lang={{ account_language }}">{{ ui.icon('back') }}<span>{{ account_copy.back_feed }}</span></a><a href="/submit?lang={{ account_language }}">{{ ui.icon('chat') }}<span>{{ account_copy.post_project }}</span></a><a href="/projects?lang={{ account_language }}">{{ ui.icon('rss') }}<span>{{ account_copy.manage_news }}</span></a>{% endblock %}
 {% block content %}
 {% if error %}<p class="form-notice" role="alert">{{ error }}</p>{% endif %}
 
-  <div class="account-bar"><span>Signed in as {{ owner.name }}</span>
-    <form action="{{ url_for('logout') }}" method="post"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="quiet-button">Sign out</button></form>
+  <div class="account-bar"><span>{{ account_copy.signed_in }} {{ owner.name }}</span>
+    <form action="{{ url_for('logout') }}" method="post"><input type="hidden" name="ui_language" value="{{ account_language }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="quiet-button">{{ account_copy.sign_out }}</button></form>
   </div>
   {% if preview %}
   <section class="story-preview" aria-labelledby="preview-title">
-    <p class="eyebrow" id="preview-title">PREVIEW · NOT PUBLISHED</p>
-    <p class="translation-note">Self-reported{% if preview.project_name %} · {{ preview.project_name }}{% endif %}</p>
+    <p class="eyebrow" id="preview-title">{{ account_copy.preview_unpublished }}</p>
+    <p class="translation-note">{{ account_copy.self_reported }}{% if preview.project_name %} · {{ preview.project_name }}{% endif %}</p>
     <h2>{{ preview.title }}</h2><p class="project-preview">{{ preview.description }}</p>
-    {% if preview.take_part %}<p class="project-preview"><strong>How to take part</strong><br>{{ preview.take_part }}</p>{% endif %}
+    {% if preview.take_part %}<p class="project-preview"><strong>{{ account_copy.take_part }}</strong><br>{{ preview.take_part }}</p>{% endif %}
     <p class="meta">{{ preview.author }} · {{ preview.event_date }}</p>
     <div class="hashtag-list">{% for tag in preview.hashtags %}<span class="hashtag">#{{ tag }}</span>{% endfor %}</div>
-    {% if preview.evidence %}<p class="meta">Evidence: {% for link in preview.evidence %}<a href="{{ link }}" rel="noopener">Link {{ loop.index }}</a>{% endfor %}</p>{% else %}<p class="form-help">Self-reported · No evidence link supplied.</p>{% endif %}
-    {% if preview.original %}<details class="original-source"><summary>Show original text</summary><blockquote dir="auto">{{ preview.original }}</blockquote></details>{% endif %}
+    {% if preview.evidence %}<p class="meta">{{ account_copy.evidence }}: {% for link in preview.evidence %}<a href="{{ link }}" rel="noopener">{{ account_copy.link }} {{ loop.index }}</a>{% endfor %}</p>{% else %}<p class="form-help">{{ account_copy.no_evidence }}</p>{% endif %}
+    {% if preview.original %}<details class="original-source"><summary>{{ account_copy.show_original }}</summary><blockquote dir="auto">{{ preview.original }}</blockquote></details>{% endif %}
   </section>
   {% endif %}
   <article class="project-form">
-    <h2>Your update</h2>
-    <p>Write the headline and update in English. Your text is published as written; other editions show translation notices until translations are available.</p>
+    <h2>{{ account_copy.your_update }}</h2>
+    <p>{{ account_copy.english_notice }}</p>
     <form action="{{ url_for('write_story') }}" method="post">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input type="hidden" name="ui_language" value="{{ account_language }}"><input type="hidden" name="csrf" value="{{ csrf }}">
       <input type="hidden" name="submission_token" value="{{ submission_token }}">
-      <label for="project_name">Project name <span class="form-help">(optional)</span></label>
-      <input id="project_name" name="project_name" value="{{ values.get('project_name', '') }}" maxlength="160" placeholder="e.g. Open Civic Map">
-      <label for="title">Headline (English)</label>
-      <input id="title" name="title" value="{{ values.get('title', '') }}" required maxlength="160" placeholder="A short, factual headline">
-      <label for="description">What happened (English)</label>
-      <textarea id="description" name="description" rows="6" required maxlength="3000" placeholder="What did you do? What changed?">{{ values.get('description', '') }}</textarea>
-      <label for="take_part">How to take part <span class="form-help">(optional)</span></label>
-      <textarea id="take_part" name="take_part" rows="2" maxlength="500" placeholder="Where to join and what help is needed">{{ values.get('take_part', '') }}</textarea>
-      <label for="hashtags">Hashtags <span class="form-help">(optional)</span></label>
+      <label for="project_name">{{ account_copy.project_name }} <span class="form-help">{{ account_copy.optional }}</span></label>
+      <input id="project_name" name="project_name" value="{{ values.get('project_name', '') }}" maxlength="160" placeholder="{{ account_copy.project_example }}">
+      <label for="title">{{ account_copy.headline }}</label>
+      <input id="title" name="title" value="{{ values.get('title', '') }}" required maxlength="160" placeholder="{{ account_copy.headline_placeholder }}">
+      <label for="description">{{ account_copy.description }}</label>
+      <textarea id="description" name="description" rows="6" required maxlength="3000" placeholder="{{ account_copy.description_placeholder }}">{{ values.get('description', '') }}</textarea>
+      <label for="take_part">{{ account_copy.take_part }} <span class="form-help">{{ account_copy.optional }}</span></label>
+      <textarea id="take_part" name="take_part" rows="2" maxlength="500" placeholder="{{ account_copy.take_part_placeholder }}">{{ values.get('take_part', '') }}</textarea>
+      <label for="hashtags">{{ account_copy.hashtags }} <span class="form-help">{{ account_copy.optional }}</span></label>
       <input id="hashtags" name="hashtags" value="{{ values.get('hashtags', '') }}" maxlength="400" placeholder="#civictech #opendata #開放資料" aria-describedby="hashtag-help">
-      <p class="form-help" id="hashtag-help">Up to eight tags, separated by spaces or commas. Each tag opens a timeline of related stories. Letters in any language, numbers, hyphens and underscores are welcome.</p>
-      <label for="evidence">Evidence links <span class="form-help">(optional, one per line)</span></label>
+      <p class="form-help" id="hashtag-help">{{ account_copy.hashtag_help }}</p>
+      <label for="evidence">{{ account_copy.evidence }} <span class="form-help">{{ account_copy.optional_line }}</span></label>
       <textarea id="evidence" name="evidence" rows="3" maxlength="10244" placeholder="https://github.com/your-team/your-project/pull/123">{{ values.get('evidence', '') }}</textarea>
-      <p class="form-help">Up to five public links: pull requests, meeting notes, or event pages. Stories without evidence links are labeled as having no source.</p>
-      <label for="original">Original text <span class="form-help">(optional, any language)</span></label>
-      <textarea id="original" name="original" rows="4" maxlength="5000" placeholder="Keep the original post or notes alongside your story">{{ values.get('original', '') }}</textarea>
-      <label for="event_date">Date it happened <span class="form-help">(optional, defaults to today)</span></label>
+      <p class="form-help">{{ account_copy.evidence_help }}</p>
+      <label for="original">{{ account_copy.original }} <span class="form-help">{{ account_copy.optional_language }}</span></label>
+      <textarea id="original" name="original" rows="4" maxlength="5000" placeholder="{{ account_copy.original_placeholder }}">{{ values.get('original', '') }}</textarea>
+      <label for="event_date">{{ account_copy.event_date }} <span class="form-help">{{ account_copy.optional_today }}</span></label>
       <input id="event_date" name="event_date" type="date" value="{{ values.get('event_date', '') }}">
-      <label for="author">Public display name</label>
+      <label for="author">{{ account_copy.author }}</label>
       <input id="author" name="author" value="{{ values.get('author', owner.name) }}" required maxlength="100" autocomplete="nickname">
-      <label class="owner-confirmation"><input type="checkbox" name="owner_confirmed" value="yes" required{% if values.get('owner_confirmed') == 'yes' %} checked{% endif %}><span>This is my work or I am authorized to share it. I agree to publish this story, its links, original text, and my display name publicly.</span></label>
-      <p class="form-help">Google verifies your account; the story is self-reported. You can publish up to five stories or projects every 24 hours.</p>
-      <div class="form-actions"><button type="submit" name="action" value="preview" class="quiet-button">Preview story</button><button type="submit" name="action" value="publish">{{ 'Retry publishing saved story' if saved_post else 'Publish story' }}</button></div>
+      <label class="owner-confirmation"><input type="checkbox" name="owner_confirmed" value="yes" required{% if values.get('owner_confirmed') == 'yes' %} checked{% endif %}><span>{{ account_copy.story_consent }}</span></label>
+      <p class="form-help">{{ account_copy.story_limit }}</p>
+      <div class="form-actions"><button type="submit" name="action" value="preview" class="quiet-button">{{ account_copy.preview_story }}</button><button type="submit" name="action" value="publish">{{ account_copy.retry_story if saved_post else account_copy.publish_story }}</button></div>
     </form>
   </article>
 {% endblock %}
-{% block footer %}Community stories, shared by the people doing the work.{% endblock %}
+{% block footer %}{{ account_copy.stories_footer }}{% endblock %}

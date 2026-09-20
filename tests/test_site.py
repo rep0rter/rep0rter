@@ -962,3 +962,18 @@ def test_reader_login_links_and_assets_are_published(published_site):
         assert urljoin('https://example.test/' + relative, link['href']).startswith('https://example.test/auth/sign-in?')
         assert parse_qs(urlsplit(link['href']).query)['return_to'] == ['/' + relative]
         assert doc.select_one('script[src$="account.js"]')
+
+
+def test_reader_entry_motion_and_filter_assets(published_site):
+    _, cfg, _, entries, _ = published_site
+    home = html(cfg.site_dir / 'index.html')
+    detail = html(cfg.site_dir / f'posts/{entries[0][0].id}/index.html')
+    assert home.html.has_attr('data-brand-entry')
+    assert not detail.html.has_attr('data-brand-entry')
+    assert not home.select('.edition-badge')
+    scripts = [tag['src'] for tag in home.select('head script[src]')]
+    assert scripts.index('theme.js') < scripts.index('entry-motion.js') < scripts.index('glass-motion.js')
+    assert home.select_one('link[href="entry-motion.css"]')
+    assert (cfg.site_dir / 'entry-motion.js').stat().st_size > 0
+    assert (cfg.site_dir / 'entry-motion.css').stat().st_size > 0
+    assert home.select_one('[data-filters] summary')
