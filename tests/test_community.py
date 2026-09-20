@@ -1,6 +1,6 @@
 """Real story publication, Unicode timelines, OAuth return paths and withdrawals."""
 import time
-from urllib.parse import unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 from xml.etree import ElementTree
 
 from bs4 import BeautifulSoup
@@ -68,7 +68,11 @@ def test_preview_publish_rss_timelines_and_duplicate_retry(web, monkeypatch):
         assert doc.h1.get_text() == '#開放資料'
         assert not doc.select('article details.original-source, article blockquote')
         assert doc.select_one('article .meta a[href="https://example.test/map"]')
-        assert doc.select_one('.story-timeline') and doc.select_one('a[href*="write?tag="]')
+        assert doc.select_one('.story-timeline')
+        write_link = doc.select_one('.timeline-context a[href*="write?"]')
+        assert write_link
+        query = parse_qs(urlsplit(write_link['href']).query)
+        assert query['tag'] == ['開放資料'] and query['lang'] == [language]
         assert doc.select_one('.day-heading time')['datetime'] == '2026-01-15'
         assert client.get('/tags/%E9%96%8B%E6%94%BE%E8%B3%87%E6%96%99/' + page_name(language)).status_code == 200
     categories = ElementTree.parse(cfg.site_dir / 'feed.xml').findall('./channel/item/category')

@@ -6,7 +6,7 @@ import hashlib
 import re
 import secrets
 import time
-from urllib.parse import unquote, urlsplit
+from urllib.parse import unquote, urlencode, urlsplit
 import uuid
 
 from authlib.integrations.base_client.errors import OAuthError
@@ -18,6 +18,7 @@ from requests import RequestException
 
 from .config import Config, load_config
 from .i18n import COPY, LANGUAGES, page_name
+from .account_copy import ACCOUNT_COPY
 from . import community, hashtags, projects, project_automation
 from .publishers import site
 from .store import Store
@@ -125,10 +126,29 @@ def create_app(cfg: Config | None = None) -> Flask:
                 return '/'
         return value
 
+    branding = site.branding_paths()
+
+    def account_page_name(language):
+        # Never replay OAuth codes or one-time callback arguments on a language change.
+        path = request.path if request.path in ('/write', '/submit', '/projects') or request.path.startswith('/projects/') else '/auth/sign-in'
+        args = {key: request.args[key] for key in ('tag', 'destination', 'return_to') if key in request.args}
+        if path == '/auth/sign-in':
+            args.setdefault('destination', session.get('login_destination', '/auth/return'))
+            args.setdefault('return_to', reader_return(session.get('reader_return', '/')))
+            if session.get('login_tag'):
+                args.setdefault('tag', session['login_tag'])
+        args['lang'] = language
+        return path + '?' + urlencode(args)
+
     @app.context_processor
     def account_ui():
-        # Existing authoring forms remain English; the sign-in card is localized.
-        return {'copy': COPY['en'], 'account_language': 'en'}
+        language = ui_language()
+        if cfg.google_login_enabled:
+            session['ui_language'] = language
+        return {'copy': COPY[language], 'account_language': language,
+                'account_copy': ACCOUNT_COPY[language], 'languages': LANGUAGES,
+                'account_page_name': account_page_name, 'branding': branding}
+
 
     def sign_in_page(*, error=None, status=200, destination='/auth/return', values=None):
         language = ui_language()
@@ -143,7 +163,24 @@ def create_app(cfg: Config | None = None) -> Flask:
 
     @app.get('/auth/sign-in')
     def sign_in():
-        return sign_in_page(status=200 if cfg.google_login_enabled else 503)
+        destination = request.args.get('destination', '/auth/return')
+        if destination not in ('/write', '/submit', '/projects'):
+            destination = '/auth/return'
+        values = {}
+        if destination == '/write':
+            try:
+                values['hashtags'] = hashtags.normalize(request.args.get('tag', ''))
+            except ValueError:
+                pass
+        if cfg.google_login_enabled and account() and destination != '/auth/return':
+            query = {'lang': ui_language()}
+            if values.get('hashtags'):
+                query['tag'] = values['hashtags']
+            target = destination + '?' + urlencode(query)
+            if request.args.get('fragment') == '1':
+                return {'destination': target}
+            return redirect(target, code=303)
+        return sign_in_page(destination=destination, values=values, status=200 if cfg.google_login_enabled else 503)
 
     def form_page(*, error=None, status=200, values=None, saved_post=None, story=False, preview=None):
         owner = account() if cfg.google_login_enabled else None
@@ -171,7 +208,7 @@ def create_app(cfg: Config | None = None) -> Flask:
             response.headers['X-Content-Type-Options'] = 'nosniff'
             response.headers['X-Frame-Options'] = 'DENY'
             response.headers['Content-Security-Policy'] = (
-                f"default-src 'self'; script-src {cfg.site_url.rstrip('/')}/theme.js; style-src 'self'; "
+                f"default-src 'self'; script-src {cfg.site_url.rstrip('/')}/theme.js {cfg.site_url.rstrip('/')}/account.js; style-src 'self'; "
                 # Chromium applies form-action to the OAuth POST's redirect too.
                 "img-src 'self'; form-action 'self' https://accounts.google.com; "
                 "frame-ancestors 'none'; base-uri 'none'"
@@ -273,6 +310,7 @@ def create_app(cfg: Config | None = None) -> Flask:
             session.clear()
             session['ui_language'] = language
             session['reader_return'] = return_to
+            session['login_destination'] = destination
             session['login_tag'] = login_tag
             return sign_in_page(destination=destination, error='Google sign-in was cancelled or could not be verified. Please try again.', status=400)
         db = store()
@@ -393,8 +431,12 @@ def create_app(cfg: Config | None = None) -> Flask:
     @app.get('/<path:filename>')
     def static_site(filename='index.html'):
         # Also supports local development without a separate Caddy instance.
-        if filename in ('style.css', 'theme.js', 'theme-transition.css', 'account.js', 'account.css', 'login.css'):
+        if filename in ('ppt', 'ppt/'):
+            filename = 'ppt.html'
+        if filename in ('style.css', 'theme.js', 'theme-transition.css', 'account.js', 'account.css', 'login.css', 'entry-motion.js', 'entry-motion.css'):
             return send_from_directory(app.root_path + '/templates', filename)
+        if filename in branding.values() and not (cfg.site_dir / filename).is_file():
+            return send_from_directory(app.root_path + '/../assets', 'logo.png')
         return send_from_directory(cfg.site_dir, filename)
 
     return app

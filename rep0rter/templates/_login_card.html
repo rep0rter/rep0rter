@@ -10,8 +10,8 @@
   {% elif owner %}
     <p class="login-identity">{{ owner.name }}</p>
     <div class="login-actions">
-      <a class="button button-primary" href="/write">{{ copy.write_story }} {{ ui.icon('arrow') }}</a>
-      <a class="button button-secondary" href="/projects">{{ copy.login_projects }}</a>
+      <a class="button button-primary" href="/write?lang={{ account_language }}">{{ copy.write_story }} {{ ui.icon('arrow') }}</a>
+      <a class="button button-secondary" href="/projects?lang={{ account_language }}">{{ copy.login_projects }}</a>
     </div>
     <form action="{{ url_for('logout') }}" method="post" class="login-logout">
       <input type="hidden" name="csrf" value="{{ csrf }}">

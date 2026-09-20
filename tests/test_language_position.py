@@ -35,7 +35,12 @@ function page(options = {}) {
   link.closest = selector => selector === 'a[data-language]' ? link : null;
   const links = [link];
   let status = null;
-  const body = new Element({unchanged: true, append(element) { status = element; }});
+  const body = new Element({unchanged: true, classList: {contains: name => name === 'page-home' && !!options.home}, append(element) { status = element; }});
+  const stored = {value: options.saved || null};
+  const localStorage = {
+    getItem() {if (options.blockStorage) throw Error('Storage blocked'); return stored.value;},
+    setItem(key, value) {if (options.blockStorage) throw Error('Storage blocked'); stored.value = value;}
+  };
   const document = new Element({documentElement: root, body, readyState: 'complete',
     querySelector(selector) {
       if (selector === '.language-menu') return menu;
@@ -58,7 +63,8 @@ function page(options = {}) {
     calls.push({url: String(url), init, resolve, reject});
   });
   class DOMParser {parseFromString() {return {documentElement: {lang: 'wrong'}, querySelector() {return null;}};}}
-  vm.runInNewContext(SOURCE, {window, document, location, URL, Element, AbortController, fetch, DOMParser,
+  vm.runInNewContext(SOURCE, {window, document, location, URL, Element, AbortController, fetch, DOMParser, localStorage,
+    navigator: {languages: options.languages || ['en-US'], language: 'en-US'},
     CustomEvent: class {constructor(type, options) {this.type = type;this.detail = options.detail;}}
   });
   const click = (event = {}) => {
@@ -66,13 +72,43 @@ function page(options = {}) {
     document.emit('click', {target: link, button: 0, preventDefault() {prevented = true;}, ...event});
     return prevented;
   };
-  return {window, document, root, link, links, location, calls, writes, menu, trigger, body, click, status: () => status};
+  return {window, document, root, link, links, location, calls, writes, menu, trigger, body, click, stored, status: () => status};
 }
 const flush = () => new Promise(resolve => setImmediate(resolve));
 (async () => { CASE })().catch(error => {console.error(error);process.exitCode = 1;});
 '''
 
 CASES = {
+    'homepage_language_negotiation_preserves_explicit_choices_and_english_fallback': r'''
+const cases = [
+  [{languages:['ja-JP']}, 'ja'],
+  [{languages:['zh-HK']}, 'zh-TW'],
+  [{languages:['ko-KR']}, 'ko'],
+  [{languages:['de-DE','ja-JP']}, 'ja'],
+  [{languages:['en-GB','ja-JP']}, 'en'],
+  [{languages:['fr-FR']}, 'en'],
+  [{languages:['ko-KR'], saved:'ja'}, 'ja'],
+  [{languages:['ja-JP'], saved:'bad'}, 'ja'],
+  [{languages:['ja-JP'], saved:'ko', blockStorage:true}, 'ja'],
+  [{languages:['ja-JP'], saved:'ko', url:'https://example.test/?lang=EN'}, 'en'],
+  [{languages:['ja-JP'], saved:'ko', url:'https://example.test/index.en.html'}, 'en'],
+  [{languages:['ko-KR'], saved:'ko', language:'ja', url:'https://example.test/index.ja.html'}, 'ja'],
+];
+for (const [options, expected] of cases) {
+  const p = page({home:true, url:'https://example.test/', ...options});
+  if (expected === (options.language || 'en')) assert.equal(p.calls.length, 0);
+  else assert.equal(p.calls[0].url, `https://example.test/index.${expected}.html`);
+  assert.equal(p.stored.value, options.saved || null, 'Automatic detection must not save a manual preference');
+}
+const article = page({languages:['ja-JP']});
+assert.equal(article.calls.length, 0, 'Device language must not override an article edition');
+const manual = page({locale:'en'});
+manual.click();
+assert.equal(manual.stored.value, 'en');
+const blocked = page({locale:'en', blockStorage:true});
+blocked.click();
+assert.equal(blocked.calls.length, 0);
+''',
     'canonical_query_urls_preserve_search_hash_and_nested_paths': r'''
 const source = page();
 assert.equal(source.location.href, 'https://example.test/index.html?q=moon&topic=space&lang=EN#story-days');

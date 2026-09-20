@@ -103,7 +103,7 @@ def test_login_form_security_policy_allows_google_redirect_only(web):
         directives = {part.strip().split()[0]: part.strip().split()[1:]
                       for part in policy.split(';') if part.strip()}
         assert directives['form-action'] == ["'self'", 'https://accounts.google.com']
-        assert directives['script-src'] == ['http://localhost/theme.js']
+        assert directives['script-src'] == ['http://localhost/theme.js', 'http://localhost/account.js']
         assert directives['frame-ancestors'] == ["'none'"]
 
 
@@ -291,8 +291,8 @@ def test_authenticated_card_offers_account_actions_and_logout(web, monkeypatch):
     response = client.get('/auth/sign-in?fragment=1&lang=ZH')
     soup = BeautifulSoup(response.text, 'html.parser')
     assert soup.select_one('h1').text == '你已登入'
-    assert soup.select_one('a[href="/write"]')
-    assert soup.select_one('a[href="/projects"]')
+    assert soup.select_one('a[href="/write?lang=zh-TW"]')
+    assert soup.select_one('a[href="/projects?lang=zh-TW"]')
     assert soup.select_one('form[action="/auth/logout"] input[name="csrf"]')
     assert not soup.select_one('form[action="/auth/google"]')
 
@@ -307,3 +307,61 @@ def test_cancelled_login_retains_language_and_reader_return(web):
     assert fields(response)['return_to'] == '/index.html?q=test'
     assert fields(response)['ui_language'] == 'zh-TW'
     assert BeautifulSoup(response.text, 'html.parser').select_one('[role=alert]')
+
+
+@pytest.mark.parametrize('locale', ['en', 'zh-TW', 'ja', 'ko'])
+def test_account_pages_share_locale_brand_and_language_navigation(web, monkeypatch, locale):
+    from rep0rter.account_copy import ACCOUNT_COPY
+    client, _ = login(web, monkeypatch)
+    for path in ('/write', '/submit', '/projects'):
+        response = client.get(path, query_string={'lang': locale})
+        doc = BeautifulSoup(response.text, 'html.parser')
+        assert doc.html['lang'] == locale
+        assert len(doc.select('.language-menu [data-language]')) == 4
+        assert doc.select_one('.wordmark img')
+        assert client.get(doc.select_one('.wordmark img')['src']).status_code == 200
+        assert doc.select_one('link[rel=icon]')
+        assert len(doc.select('.account-navigation svg path')) >= 3
+        assert fields(response)['ui_language'] == locale
+        if path == '/write':
+            assert doc.select_one('h1').text == ACCOUNT_COPY[locale]['write_title']
+            assert ACCOUNT_COPY[locale]['english_notice'] in response.text
+    assert all(set(copy) == set(ACCOUNT_COPY['en']) for copy in ACCOUNT_COPY.values())
+
+
+def test_writer_and_signin_use_same_card_but_keep_intent(web):
+    client = web[0].test_client()
+    normal = client.get('/auth/sign-in?lang=ZH&fragment=1')
+    writer = client.get('/auth/sign-in?lang=ZH&fragment=1&destination=/write&tag=civictech')
+    direct = client.get('/write?lang=ZH&tag=civictech')
+    cards = [BeautifulSoup(response.text, 'html.parser').select_one('[data-auth-card]') for response in (normal, writer, direct)]
+    assert len({card.get_text(' ', strip=True) for card in cards}) == 1
+    assert fields(normal)['destination'] == '/auth/return'
+    assert fields(writer)['destination'] == fields(direct)['destination'] == '/write'
+    assert fields(writer)['tag'] == 'civictech'
+
+
+def test_authenticated_write_entry_goes_to_writer_with_language_and_tag(web, monkeypatch):
+    client, _ = login(web, monkeypatch)
+    response = client.get('/auth/sign-in?lang=ZH&fragment=1&destination=/write&tag=civictech')
+    assert response.json == {'destination': '/write?lang=zh-TW&tag=civictech'}
+    assert response.headers['Cache-Control'] == 'no-store'
+    # Arbitrary destinations never turn this into an open redirect endpoint.
+    response = client.get('/auth/sign-in?fragment=1&destination=https://evil.test/')
+    assert response.status_code == 200
+    assert not response.is_json
+
+
+def test_language_links_never_replay_oauth_callback_arguments(web):
+    client = web[0].test_client()
+    with client.session_transaction() as state:
+        state['login_destination'] = '/write'
+        state['login_tag'] = 'civictech'
+    response = client.get('/auth/google/callback?code=private-code&state=expired-state')
+    doc = BeautifulSoup(response.text, 'html.parser')
+    for link in doc.select('.language-menu a'):
+        parsed = urlsplit(link['href'])
+        assert parsed.path == '/auth/sign-in'
+        query = parse_qs(parsed.query)
+        assert query['destination'] == ['/write'] and query['tag'] == ['civictech']
+        assert 'code' not in query and 'state' not in query

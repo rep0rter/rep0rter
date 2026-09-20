@@ -35,11 +35,23 @@
   } else restoreReading();
   window.addEventListener('pageshow', event => { if (event.persisted) restoreReading(); });
   document.addEventListener('click', event => {
-    const trigger = (event.target as Element | null)?.closest<HTMLAnchorElement>('a[data-sign-in]');
+    const trigger = (event.target as Element | null)?.closest<HTMLAnchorElement>('a[href]');
+    if (!trigger) return;
+    const targetURL = new URL(trigger.href);
+    const entry = document.querySelector<HTMLElement>('[data-sign-in]');
+    const authoring = !document.body.classList.contains('account-page') && !trigger.closest('[data-auth-card]') && entry &&
+      targetURL.origin === location.origin && ['/write', '/submit', '/projects'].includes(targetURL.pathname);
+    if (!trigger.matches('[data-sign-in]') && !authoring) return;
+    const labels = entry?.dataset || trigger.dataset;
     if (!trigger || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || typeof HTMLDialogElement === 'undefined' || !HTMLDialogElement.prototype.showModal) return;
     event.preventDefault();
     dismiss?.();
-    const url = new URL(trigger.href);
+    const url = authoring ? new URL('/auth/sign-in', location.origin) : new URL(trigger.href);
+    if (authoring) {
+      url.searchParams.set('destination', targetURL.pathname);
+      const tag = targetURL.searchParams.get('tag');
+      if (tag) url.searchParams.set('tag', tag);
+    }
     url.searchParams.set('return_to', location.pathname + location.search + location.hash);
     url.searchParams.set('lang', document.documentElement.lang);
     const fallbackURL = url.href;
@@ -53,7 +65,7 @@
     close.className = 'login-close';
     close.type = 'button';
     close.autofocus = true;
-    close.setAttribute('aria-label', trigger.dataset.close || 'Close');
+    close.setAttribute('aria-label', labels.close || 'Close');
     close.innerHTML = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m6 6 12 12M6 18 18 6"/></svg>';
     toolbar.append(close);
     const content = document.createElement('div');
@@ -96,12 +108,20 @@
       content.replaceChildren();
       const status = document.createElement('p');
       status.setAttribute('role', 'status');
-      status.textContent = trigger.dataset.loading || 'Loading…';
+      status.textContent = labels.loading || 'Loading…';
       content.append(status);
       content.setAttribute('aria-busy', 'true');
       try {
         const response = await fetch(url, { signal: request.signal, credentials: 'same-origin', cache: 'no-store' });
-        if (!response.ok || !response.headers.get('content-type')?.includes('text/html')) throw Error('Sign-in unavailable');
+        if (!response.ok) throw Error('Sign-in unavailable');
+        if (response.headers.get('content-type')?.includes('application/json') && authoring) {
+          const result = await response.json() as { destination?: string };
+          const next = new URL(result.destination || '', location.origin);
+          if (next.origin !== location.origin || !['/write', '/submit', '/projects'].includes(next.pathname)) throw Error('Invalid destination');
+          if (!disposed && !closing && controller === request) location.assign(next.href);
+          return;
+        }
+        if (!response.headers.get('content-type')?.includes('text/html')) throw Error('Invalid sign-in response');
         const parsed = new DOMParser().parseFromString(await response.text(), 'text/html');
         const card = parsed.querySelector<HTMLElement>('[data-auth-card]');
         if (!card) throw Error('Missing sign-in card');
@@ -111,18 +131,18 @@
         dialog.setAttribute('aria-labelledby', 'login-title');
       } catch {
         if (disposed || closing || controller !== request) return;
-        status.textContent = trigger.dataset.error || 'Sign-in unavailable';
+        status.textContent = labels.error || 'Sign-in unavailable';
         status.setAttribute('role', 'alert');
         const actions = document.createElement('div');
         actions.className = 'login-status-actions';
         const retry = document.createElement('button');
         retry.type = 'button';
         retry.className = 'button button-secondary';
-        retry.textContent = trigger.dataset.retry || 'Try again';
+        retry.textContent = labels.retry || 'Try again';
         retry.addEventListener('click', () => { close.focus({ preventScroll: true }); void load(); });
         const fallback = document.createElement('a');
         fallback.href = fallbackURL;
-        fallback.textContent = trigger.dataset.fallback || 'Open sign-in page';
+        fallback.textContent = labels.fallback || 'Open sign-in page';
         actions.append(retry, fallback);
         content.append(actions);
       } finally {
@@ -154,4 +174,86 @@
   });
   document.addEventListener('rep0rter:before-language', () => dismiss?.());
   window.addEventListener('pagehide', () => dismiss?.());
+})();
+
+// Account editions reuse server translations without discarding an unsent draft.
+(() => {
+  type Field = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+  let request: AbortController | null = null;
+  document.addEventListener('click', event => {
+    if (!document.body.classList.contains('account-page')) return;
+    const link = (event.target as Element | null)?.closest<HTMLAnchorElement>('a[data-language]');
+    if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    const url = new URL(link.href);
+    if (url.origin !== location.origin) return;
+    const menu = link.closest<HTMLDetailsElement>('details');
+    if (menu) menu.open = false;
+    request?.abort();
+    request = null;
+    document.documentElement.removeAttribute('aria-busy');
+    if (link.dataset.language === document.documentElement.lang) {
+      menu?.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true });
+      return;
+    }
+    const controller = new AbortController();
+    request = controller;
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const root = document.documentElement;
+    root.setAttribute('aria-busy', 'true');
+    const fields = (form: HTMLFormElement) => [...form.querySelectorAll<Field>('input[name],textarea[name],select[name]')];
+    void (async () => {
+      try {
+        const response = await fetch(url, { signal: controller.signal, credentials: 'same-origin', cache: 'no-store' });
+        if (!response.ok) throw Error('Account edition unavailable');
+        const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+        if (!page.body.classList.contains('account-page') || page.documentElement.lang !== link.dataset.language) throw Error('Invalid account edition');
+        if (controller !== request) return;
+        if (document.querySelector('.project-form form') && !page.querySelector('.project-form form')) throw Error('Session changed; keep draft');
+        // Capture at commit time, so typing during a slow request is preserved too.
+        const forms = [...document.querySelectorAll<HTMLFormElement>('main form')];
+        const nextForms = [...page.querySelectorAll<HTMLFormElement>('main form')];
+        forms.forEach((form, index) => {
+          const next = nextForms[index];
+          // Buttons named action shadow form.action; read the URL attribute.
+          if (!next || new URL(form.getAttribute('action') || location.href, location.href).pathname !== new URL(next.getAttribute('action') || url.href, url).pathname) return;
+          const values = fields(form);
+          fields(next).forEach(field => {
+            if (['csrf', 'ui_language'].includes(field.name)) return;
+            const previous = values.find(item => item.name === field.name && item.type === field.type);
+            if (!previous) return;
+            field.value = previous.value;
+            if (field instanceof HTMLInputElement && previous instanceof HTMLInputElement) field.checked = previous.checked;
+          });
+        });
+        const position = { top: scrollY, left: scrollX };
+        page.body.querySelectorAll('script').forEach(script => script.remove());
+        document.dispatchEvent(new CustomEvent('rep0rter:before-language'));
+        document.body.replaceChildren(...[...page.body.childNodes].map(node => document.importNode(node, true)));
+        document.body.className = page.body.className;
+        document.body.dataset.accountLanguageError = page.body.dataset.accountLanguageError || '';
+        root.lang = page.documentElement.lang;
+        document.title = page.title;
+        history.replaceState(history.state, '', url);
+        document.dispatchEvent(new CustomEvent('rep0rter:language-applied'));
+        window.scrollTo({ ...position, behavior: 'instant' });
+        document.querySelector<HTMLElement>('.language-trigger')?.focus({ preventScroll: true });
+      } catch {
+        if (controller !== request) return;
+        let notice = document.querySelector<HTMLElement>('[data-account-language-notice]');
+        if (!notice) {
+          notice = document.createElement('p');
+          notice.dataset.accountLanguageNotice = '';
+          notice.className = 'form-notice';
+          notice.setAttribute('role', 'alert');
+          document.querySelector('main')?.prepend(notice);
+        }
+        notice.textContent = document.body.dataset.accountLanguageError || 'Could not change language. Your draft is unchanged.';
+      } finally {
+        clearTimeout(timeout);
+        if (controller === request) { request = null; root.removeAttribute('aria-busy'); }
+      }
+    })();
+  });
+  window.addEventListener('pagehide', () => { request?.abort(); request = null; document.documentElement.removeAttribute('aria-busy'); });
 })();
