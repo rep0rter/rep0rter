@@ -21,7 +21,8 @@ def main():
     # The frontend health record describes the last publication. It can retain
     # the previous SHA until the first cycle after a new engine deployment.
     request = urllib.request.Request('https://rep0rter-engine.sky-hong.workers.dev/healthz',
-                                     headers={'Cache-Control': 'no-cache'})
+                                     headers={'Cache-Control': 'no-cache',
+                                              'User-Agent': 'rep0rter-github-runner/1.0'})
     with urllib.request.urlopen(request, timeout=30) as response:
         health = json.load(response)
     check(os.environ['GITHUB_SHA'], health)
