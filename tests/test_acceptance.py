@@ -50,6 +50,7 @@ def test_deployment_preflight_keeps_commit_and_scheduler_guards(monkeypatch):
     seen = []
     def response(request, timeout):
         seen.append(request.full_url)
+        assert request.get_header('User-agent') == 'rep0rter-github-runner/1.0'
         return io.BytesIO(json.dumps(health).encode())
     monkeypatch.setattr(module.urllib.request, 'urlopen', response)
     monkeypatch.setenv('GITHUB_SHA', 'tested')
