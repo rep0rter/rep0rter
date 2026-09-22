@@ -16,6 +16,7 @@ from ..slack_text import mention_names_from_html
 log = logging.getLogger(__name__)
 OVERLAP = 7200
 REFRESH_INTERVAL = 21600
+MAX_REPLY_REFRESH_QUEUE = 100
 
 
 def _budget_debt(state):
@@ -221,12 +222,49 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
             failures += 1
     # Missing parents and active root snapshots share a persistent, bounded queue.
     queue = read_state(store, 'slack:root_refresh')
+    # A newly stored reply can revive an existing old thread. Derive pending
+    # work from durable event timestamps, so a crash between channel commit and
+    # queue insertion cannot lose it. last_seen proves the root was observed
+    # after that reply; repeated overlap payloads do not create new work.
+    pending = set()
+    for root_id, state in queue.items():
+        if not state.get('reply_pending'):
+            continue
+        root = store.get_event(root_id)
+        if (root is None or root.container_id.removeprefix('slack:') not in public_ids
+                or root.meta.get('deleted_at') or not _allowed(store, event=root)):
+            state['reply_pending'] = False
+            continue
+        last_seen = store.conn.execute('SELECT last_seen FROM events WHERE id=?', (root_id,)).fetchone()[0]
+        if last_seen >= state.get('requested_at', 0):
+            state['reply_pending'] = False
+            continue
+        pending.add(root_id)
+    reply_roots = store.conn.execute("""SELECT root.id, max(reply.first_seen) AS requested_at
+        FROM events reply JOIN events root ON root.id=reply.parent_id
+        WHERE reply.source='slack' AND root.source='slack'
+          AND NOT EXISTS(SELECT 1 FROM event_tombstones t WHERE t.event_id=root.id)
+          AND NOT EXISTS(SELECT 1 FROM event_tombstones t WHERE t.event_id=reply.id)
+          AND json_extract(root.meta,'$.deleted_at') IS NULL
+          AND json_extract(reply.meta,'$.deleted_at') IS NULL
+        GROUP BY root.id HAVING max(reply.first_seen)>root.last_seen
+        ORDER BY requested_at,root.id LIMIT ?""", (MAX_REPLY_REFRESH_QUEUE,)).fetchall()
+    for root_id, requested_at in reply_roots:
+        if root_id in pending or len(pending) >= MAX_REPLY_REFRESH_QUEUE:
+            continue
+        root = store.get_event(root_id)
+        if not _allowed(store, event=root):
+            continue
+        queue[root_id] = dict(queue.get(root_id, {}), reply_pending=True, requested_at=requested_at)
+        pending.add(root_id)
+    with store.conn:
+        write_state(store, 'slack:root_refresh', queue)
     missing = store.conn.execute("SELECT DISTINCT e.parent_id FROM events e LEFT JOIN events root ON root.id=e.parent_id WHERE e.source='slack' AND e.parent_id IS NOT NULL AND root.id IS NULL").fetchall()
     tracked = store.conn.execute("SELECT e.id FROM events e WHERE e.source='slack' AND e.kind='message' AND e.ts>=? AND NOT EXISTS(SELECT 1 FROM event_tombstones t WHERE t.event_id=e.id) AND json_extract(e.meta,'$.deleted_at') IS NULL ORDER BY e.last_seen LIMIT 100", (now - 48*3600,)).fetchall()
     older = store.conn.execute("SELECT e.id FROM events e WHERE e.source='slack' AND e.kind='message' AND e.ts<? AND NOT EXISTS(SELECT 1 FROM event_tombstones t WHERE t.event_id=e.id) AND json_extract(e.meta,'$.deleted_at') IS NULL ORDER BY e.last_seen LIMIT 2", (now - 48*3600,)).fetchall()
-    due_ids = {r[0] for r in missing} | {r[0] for r in tracked} | {r[0] for r in older}
+    due_ids = pending | {r[0] for r in missing} | {r[0] for r in tracked} | {r[0] for r in older}
     root_attempts = 0
-    for root_id in sorted(due_ids, key=lambda root: (queue.get(root, {}).get('attempted_at', 0), root)):
+    for root_id in sorted(due_ids, key=lambda root: (root not in pending, queue.get(root, {}).get('attempted_at', 0), queue.get(root, {}).get('requested_at', 0), root)):
         last = queue.get(root_id, {})
         if now - last.get('attempted_at', 0) < REFRESH_INTERVAL:
             continue
@@ -243,8 +281,10 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         try:
             root_attempts += 1
             root = refresh_root(session, channel_id, root_ts, public_ids)
-            queue[root_id] = {'attempted_at': now, 'resolved': root is not None}
+            queue[root_id] = dict(last, attempted_at=now, resolved=root is not None)
             if root and _allowed(store, event=root):
+                queue[root_id].pop('error', None)
+                queue[root_id]['reply_pending'] = False
                 root.meta.update(observed_at=now, fetched_at=time.time(), bootstrap=False, recovery=False)
                 persist(store, 'slack:root_refresh', queue, [root], metrics, now)
                 with store.conn:
@@ -256,7 +296,7 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         except BudgetExceeded:
             break
         except Exception as exc:
-            queue[root_id] = {'attempted_at': now, 'resolved': False, 'error': str(exc)}
+            queue[root_id] = dict(last, attempted_at=now, resolved=False, error=str(exc))
             reasons[root_id] = str(exc)
             transport_failures += 1
             failures += 1
