@@ -90,3 +90,37 @@ macOS 本機原有圖卡測試的字型預設路徑不存在。本次透過暫�
 ## 橫式圖卡本機驗證
 
 執行 `python scripts/verify-image-viewer.py --url http://127.0.0.1:8765/index.html?lang=ZH`（需選用的 Playwright 與 Chromium）可檢查 320×568、390×844、667×375、768×1024、1440×900 的雙主題浮層。涵蓋尺寸、圖片與下載同步、焦點、連續開關、觸控取消、背景位置、長說明捲動、減少動態、載入失敗恢復及四語切換。這是 Chromium 模擬檢查，未取代實體 iOS／Android 的雙指操作驗證。
+
+## 5. 登入與帳號介面
+
+登入入口改用原頁 `dialog`，共用 `_login_card.html`；`/auth/sign-in` 提供無 JavaScript 時仍可操作的獨立頁。介面提供繁中、英文、日文、韓文，配色沿用主站 tokens。登入視窗支援 Escape、外側點擊、焦點返回與載入失敗重試，顯示期間停止背景捲動。帳號頁的共用版型為 `_account_base.html`，並在 CSS 前載入既有 `theme.js`，同步手動偏好與裝置配色。
+
+Google 驗證保留 CSRF、OIDC state／nonce、PKCE 與可撤銷工作階段。回程限制為首頁、文章、來源及標籤閱讀頁，保留原網址的語言、搜尋條件及錨點。瀏覽器可以使用 sessionStorage 時，等待初始語言載入完成後再恢復閱讀高度；儲存受阻仍可登入及返回原網址。從投稿或專案管理開始登入時，保留原本目的地與投稿標籤。Google 登入本身仍需前往 Google 完成驗證。
+
+前端維護 `client/src/account.ts`，以 `npm --prefix client run build` 產生提交的 `account.js`；`login.css` 管理登入卡片／浮層，`account.css` 管理投稿與專案表單。新增靜態資產由既有建站流程一併產出。帳號頁 CSP 只允許指定的主題與帳號腳本，不開放行內腳本。
+
+`python scripts/verify-login-ui.py --url http://127.0.0.1:8766` 可檢查有登入設定、四語資料的本機預覽。檢查不提交 Google 表單，涵蓋 320／390／768／1440px、深淺色、鍵盤、閱讀位置、延遲語言載入、圖片浮層、重試、儲存受阻與停用 JavaScript。真實 Google 帳號登入及實體手機仍需另行驗收。
+
+## 6. 共用入口與進場動態
+
+主站「登入」和「寫文章」現在使用同一個登入浮層；差別只在驗證完成後的目的地。已登入者點「寫文章」會進入投稿表單。直接開啟 `/write` 或停用 JavaScript 時仍顯示同一張登入卡片的完整頁面。
+
+帳號頁補回主站品牌 Logo、favicon、導覽圖示及四語選單。`account_copy.py` 集中管理投稿與專案表單翻譯，使用者的稿件保持原文。切換語言會保留欄位、勾選狀態、投稿識別與目前捲動高度；請求失敗時留下原稿，快速操作以最後選擇為準。不把表單草稿送入語言切換的 GET 請求。
+
+`client/src/entry-motion.ts` 與 `entry-motion.css` 負責首頁進場：同一分頁首次進入首頁時，品牌先以 650 ms 的柔和光學揭露置中顯現，保持清晰 1.2 秒，再以 850 ms 的臨界阻尼彈簧縮回導覽列原位置。薄玻璃襯底在歸位前段退去，完整流程約 2.7 秒；真實 Logo 與文字負責呈現，沒有影片或新增動畫套件；期間鎖定捲動與背景互動。主題沿用首次繪製前的設定。重載、返回、搜尋／篩選／錨點連結、登入回程和減少動態設定跳過進場。Escape、視窗尺寸變動、離頁或最長 4.5 秒保險計時均可解除，不依賴永久儲存。
+
+Filter & sort 保留原生 details 與鍵盤操作，開啟、收合及自訂日期區塊的高度變化改用可中斷的彈簧動畫；快速反向操作接續目前高度與速度。動畫結束清除暫時樣式，減少動態時直接切換。日期區塊旁的 `edition-badge` 已移除，語言狀態只保留在選單內。
+
+開發時可將 `docs/brand-motion-preview.html` 複製至本機產出的網站目錄，以同源 URL 開啟；提供手機／平板／桌機、深淺色與重播控制。預覽載入真實首頁，僅在預覽頁中清除該分頁的品牌播放紀錄，不改變正式首頁的播放政策。此檔不由網站建置流程發布。
+
+窄於 1100px 的 masthead 將投稿、登入、語言與外觀維持同一排 44px 圖示操作，文字名稱保留於 aria-label/title；搜尋在下一排。極窄手機縮小品牌字樣，保留四個完整點擊區域。開場使用原生模態 dialog 提供右上角「略過」、右下角「下次不再顯示」，鍵盤焦點留在可操作範圍；自動歸位時按鈕以 240 ms 淡出，手動略過／不再顯示則讓按鈕、品牌與遮罩一起淡出後清理。淡出期間停用按鈕以防重複操作；關閉後恢復品牌焦點且不捲動。後者以 localStorage 的 `rep0rter-brand-dismissed` 記住這個瀏覽器的選擇；儲存受阻時仍可正常關閉本次開場。
+
+## 7. Public presentation and localized entrance
+
+The public build now includes `ppt.html`, served at `/ppt`, `/ppt/`, and `/ppt.html` by Flask and both native Worker paths. The footer links to the six-slide English introduction. `presentation.py` records eight contributor names and source references from the supplied 2026-09-19 HackMD note. Suggested slide timings total 180 seconds; the companion script is `docs/ppt-speaker-notes.md`.
+
+The talk uses the existing palette, typography and glass surfaces. Arrow keys, Page Up/Down, Home/End, slide buttons, and horizontal touch gestures navigate. Transitions and staged text reveals respect reduced motion. One same-origin iframe shows four actual reader states inside slide 3: timeline, source filter, Japanese, and dark appearance. The same arrows advance or reverse these states before leaving the slide. The frame stays inert so it cannot capture presentation keys, and demo appearance changes do not write the reader’s saved preference. Without JavaScript all six slides remain readable.
+
+The public homepage entrance waits for the selected language before showing controls. All four editions use their actual translated brand note, including on mobile; the temporary mobile note folds away during docking to match the compact masthead. No video or demo-only page is needed for the public entrance.
+
+The neutral homepage selects its language from an explicit `?lang=` value, an explicit edition filename, a saved language-menu choice, then the browser's ordered language preferences. English is the fallback when none is supported. Chinese device locales use the Traditional Chinese edition. The entrance uses that same edition's brand note and controls; failed language loads leave the existing readable edition intact. Storage failures do not block the entrance or language menu.

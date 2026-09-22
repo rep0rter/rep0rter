@@ -67,19 +67,27 @@ def _author_avatar(event, cfg: Config) -> str:
     return "cards/" + filename
 
 
-def _branding(cfg: Config) -> dict:
+def branding_paths() -> dict:
+    """Shared immutable asset names for generated readers and account pages."""
     logo = Path(__file__).resolve().parents[2] / "assets" / "logo.png"
     if not logo.is_file():
         return {}
     version = hashlib.sha256(logo.read_bytes()).hexdigest()[:12]
-    folder = cfg.site_dir / "assets"
-    folder.mkdir(exist_ok=True)
+    return {name: f"assets/{name}-{version}.png" for name in ("logo", "favicon", "social")}
+
+
+def _branding(cfg: Config) -> dict:
+    paths = branding_paths()
+    if not paths:
+        return {}
+    logo = Path(__file__).resolve().parents[2] / "assets" / "logo.png"
+    (cfg.site_dir / "assets").mkdir(exist_ok=True)
     with Image.open(logo) as original:
         for name, size in (("logo", 192), ("favicon", 32), ("social", 460)):
             image = original.convert("RGB")
             image.thumbnail((size, size))
-            image.save(folder / f"{name}-{version}.png")
-    return {name: f"assets/{name}-{version}.png" for name in ("logo", "favicon", "social")}
+            image.save(cfg.site_dir / paths[name])
+    return paths
 
 
 def _safe_url(url):
@@ -116,18 +124,21 @@ def _display_text(post, language):
 def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
     cfg.ensure_dirs()
     # Homepage is bounded; permanent pages survive falling out of that window.
-    rows = store.recent_posts(limit=-1)
+    all_rows = store.recent_posts(limit=-1)
+    examples = [row for row in all_rows if 'source_example' in row[0].reasons]
+    rows = [row for row in all_rows if 'source_example' not in row[0].reasons]
+    visible_post_ids = {post.id for post, _, _ in rows}
+    # Historical examples must not leak through another report's revision/source links.
+    example_urls = {event.url for _, event, _ in examples} - {event.url for _, event, _ in rows}
     items = []
     names = store.user_names("slack")
     from ..sources import plain_text
     from ..stories import info
     with CardRenderer(cfg) as cards:
         for post, event, container in rows:
-            if 'source_example' in post.reasons:
-                # Keep public quotations short; summaries and links carry the report.
-                excerpt = ' '.join(plain_text(event).split()[:12])[:40].rstrip()
-                event = replace(event, text=excerpt, html='',
-                                meta={**event.meta, 'plain_text': excerpt, 'content_format': 'plain'})
+            story = info(store, post.id)
+            story['versions'] = [version for version in story['versions'] if version['id'] in visible_post_ids]
+            story['sources'] = [source for source in story['sources'] if source['url'] not in example_urls]
             image = cards.render(event, container, names)
             image_dark = cards.render(event, container, names, theme="dark")
             headline, summary, _ = _display_text(post, 'en')
@@ -146,7 +157,7 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
                 "channel": container.name if container else event.container_id,
                 "source_label": ('#' if event.source == 'slack' else '') + (container.name if container else event.container_id),
                 "source_url": _safe_url(event.url),
-                "story": info(store, post.id),
+                "story": story,
                 "content_warning": event.meta.get('content_warning', ''),
                 "published_local": _fmt_local(post.published_at),
                 "published_rfc822": _fmt_rfc822(post.published_at),
@@ -171,9 +182,8 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
                                and 0 <= now - last_healthy_at <= 9000)
     ctx = {"cfg": cfg, "languages": LANGUAGES, "page_name": page_name,
            "generated_local": _fmt_local(now), "generated_rfc822": _fmt_rfc822(now),
-           "event_count": store.event_count(), "post_count": store.post_count(),
+           "event_count": store.event_count(), "post_count": store.post_count() - len(examples),
            "branding": _branding(cfg),
-           "has_examples": any("source_example" in item["post"].reasons for item in items),
            "last_healthy": _fmt_local(last_healthy_at) if last_healthy_at else None,
            "collection_complete": collection_complete}
     template = env.get_template("index.html")
@@ -206,9 +216,13 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
     if font_source.is_dir():
         shutil.copytree(font_source, cfg.site_dir / "assets" / "fonts", dirs_exist_ok=True)
     for asset in ("style.css", "theme-transition.css", "enchantment.css", "language.css", "language.js", "theme.js",
-                  "enchantment.js", "reading.js", "glass-motion.js", "image-viewer.js"):
+                  "enchantment.js", "reading.js", "glass-motion.js", "image-viewer.js", "account.js", "account.css", "login.css", "entry-motion.js", "entry-motion.css", "ppt.js", "ppt.css"):
         _write(cfg.site_dir / asset, env.get_template(asset).render())
     ctx['style_version'] = hashlib.sha256((cfg.site_dir / 'style.css').read_bytes()).hexdigest()[:12]
+    from ..presentation import TEAM, SOURCES
+    _write(cfg.site_dir / 'ppt.html', env.get_template('ppt.html').render(
+        **ctx, ppt_base=cfg.site_url.rstrip('/'), ppt_team=TEAM, ppt_sources=SOURCES,
+    ))
     tag_counts = {}
     for item in items:
         for tag in item['hashtags']:
@@ -244,9 +258,6 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
             render_page(language, source_items, source_path + page_name(language), "../../", source_items[0]["source_label"])
         for tag, tag_items in tagged.items():
             render_page(language, tag_items, hashtags.path(tag) + page_name(language), '../../', '#' + tag, tag=tag)
-        examples = [item for item in localized if 'source_example' in item['post'].reasons]
-        if examples:
-            render_page(language, examples, 'examples/' + page_name(language), '../', COPY[language]['source_examples'])
         root_outputs.append((language, localized[:limit]))
     # Publish discovery pages after every linked story and asset exists.
     for language, localized in root_outputs:

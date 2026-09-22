@@ -55,6 +55,7 @@ export class PublishedSite extends DurableObject {
       const health = row ? JSON.parse(row.value) : {ready:false, runtime:'cloudflare-workers'};
       return Response.json(health, {status:health.ready ? 200 : 503, headers:{'Cache-Control':'no-store'}});
     }
+    if (path === 'ppt' || path === 'ppt/') path = 'ppt.html';
     if (!path || path.endsWith('/')) path += 'index.html';
     const row = [...this.sql.exec('SELECT data,digest FROM assets WHERE path=?', path)][0];
     if (!row) return new Response('Not found', {status:404});

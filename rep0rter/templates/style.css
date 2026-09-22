@@ -105,6 +105,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .masthead-links, .masthead-preferences { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .masthead-links { flex-wrap: wrap; }
 .masthead-preferences { flex-shrink: 0; }
+.masthead-links .icon { flex: 0 0 auto; }
+.masthead-links .write-story-link { gap: 8px; }
+.masthead .wordmark { border-radius: 20px; }
 .preference-menu { position: relative; flex: 0 0 auto; }
 .preference-trigger { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 44px; min-height: 44px; padding: 0 10px; border: 1px solid var(--line); border-radius: 20px; color: var(--muted); background: var(--glass-clear); cursor: pointer; list-style: none; font-size: 11px; font-weight: 600; transition: transform var(--spring), background var(--motion); }
 .preference-trigger::-webkit-details-marker { display: none; }
@@ -164,7 +167,6 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .feed-column { min-width: 0; scroll-margin-top: 28px; }
 .section-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; }
 .section-heading h2 { margin-top: 5px; font-size: 29px; font-weight: 700; }
-.edition-badge { color: var(--muted); background: var(--recess); border: 1px solid var(--line); border-radius: 20px; padding: 6px 13px; font-size: 12px; }
 .search-bar { position: relative; margin-bottom: 28px; }
 .search-field { display: flex; align-items: center; gap: 12px; border-radius: 22px; background: var(--recess); box-shadow: var(--shadow-pressed); padding: 0 20px; color: var(--muted); min-height: 58px; }
 .search-field:focus-within { outline: 3px solid var(--focus); outline-offset: 4px; }
@@ -298,7 +300,7 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
 /* Landscape image cards: site materials around unmodified source artwork. */
 .image-viewer-open, .image-viewer-open body { overflow: hidden; }
 .image-viewer {
-  width: min(1080px, calc(100% - 32px), calc((100dvh - 210px) * 40 / 21 + 64px));
+  width: min(1080px, calc(100% - 32px), calc((100dvh - 250px) * 40 / 21 + 64px));
   min-width: min(280px, calc(100% - 24px)); max-width: none;
   max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px);
   padding: 0; border: 1px solid var(--line); border-radius: 32px;
@@ -372,6 +374,10 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
   .masthead { grid-template-columns: minmax(0, 1fr) auto; }
   .masthead-search { grid-row: 2; grid-column: 1 / -1; }
   .masthead-actions { grid-column: 2; grid-row: 1; }
+  .masthead-links { flex-wrap: nowrap; }
+  .masthead .masthead-links .write-story-link, .masthead .preference-trigger { width: 44px; height: 44px; padding: 0; gap: 0; }
+  .masthead-link-label, .masthead .language-trigger > span { display: none; }
+  .masthead .preference-trigger::after { display: none; }
   .reading-layout { grid-template-columns: minmax(0, 1fr) 236px; gap: 28px; }
   .hero { padding-inline: 0; gap: 10px; }
   .languages a { padding-inline: 12px; }
@@ -399,13 +405,6 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
   .aside-note { grid-column: 1 / -1; padding: 0 12px; }
   .story-card--featured .story-content { display: grid; }
   .story-card--featured .report-figure { margin-top: 0; }
-}
-@media (max-width: 780px) {
-  :root { --header-clearance: 255px; }
-  .masthead-actions { display: contents; }
-  .masthead-preferences { grid-column: 2; grid-row: 1; justify-self: end; }
-  .masthead-links { grid-column: 1 / -1; grid-row: 2; }
-  .masthead-search { grid-row: 3; }
 }
 @media (max-width: 640px) {
   .page-shell { width: calc(100% - 36px); }
@@ -451,6 +450,22 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
   .hero-actions { flex-direction: column; }
   .story-card { padding: 19px; }
 }
+@media (max-width: 480px) {
+  .wordmark { font-size: 19px; gap: 5px; }
+  .wordmark img { width: 26px; height: 26px; }
+}
+@media (max-width: 380px) {
+  .site-header.page-shell { width: calc(100% - 24px); }
+  .masthead { padding-inline: 8px; column-gap: 6px; }
+  .masthead-actions, .masthead-links, .masthead-preferences { gap: 0; }
+  .wordmark { font-size: 18px; gap: 4px; }
+  .wordmark img { width: 24px; height: 24px; }
+  .language-menu .preference-panel { right: -44px; }
+}
+@media (max-width: 350px) {
+  .wordmark { font-size: 15px; gap: 2px; }
+  .wordmark img { width: 20px; height: 20px; }
+}
 @media (max-width: 440px) {
   .filter-fields { grid-template-columns: minmax(0, 1fr); }
   .filter-dates { grid-template-columns: minmax(0, 1fr); }
@@ -487,7 +502,7 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
   .hero h1 span { background: none; color: CanvasText; }
 }
 
-/* Server-rendered account forms stay script-free and follow device appearance. */
+/* Base account form controls; account.css adds the shared reader shell. */
 .account-page > header, .account-page > main, .account-page > footer { width: min(100% - 40px, 920px); margin-inline: auto; }
 .account-page > header { padding-block: 24px 32px; }
 .account-page .masthead { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px 24px; margin-bottom: 32px; }
@@ -507,7 +522,6 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
 .account-page button { min-height: 44px; padding: 12px 20px; border: 1px solid transparent; border-radius: var(--radius-control); background: #315c8f; color: #fff; font: 600 16px/1.5 var(--font-body); box-shadow: var(--shadow-button); }
 .account-page button:focus-visible, .account-page input:focus-visible, .account-page textarea:focus-visible, .account-page select:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
 .account-page .quiet-button { border-color: var(--line); background: var(--surface); color: var(--ink); }
-.account-page .google-login { border-color: #747775; background: #fff; color: #1f1f1f; }
 .account-page .project-form button { margin-top: 24px; }
 .account-page .form-help { margin-top: 10px; color: var(--muted); font-size: 14px; }
 .account-page .project-form .owner-confirmation { display: flex; align-items: flex-start; gap: 12px; min-height: 44px; font-size: 14px; font-weight: 400; }

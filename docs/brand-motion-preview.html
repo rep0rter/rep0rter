@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>rep0rter · 品牌動態預覽</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; background: light-dark(#eef2f6,#11161e); color: light-dark(#202b39,#f2f5fa); }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 20px 24px; }
+    header { max-width: 1280px; margin: 0 auto 20px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
+    h1 { margin: 0; font-size: 20px; letter-spacing: -.03em; }
+    p { margin: 6px 0 0; font-size: 13px; opacity: .8; }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+    select, button { min-height: 44px; border: 1px solid light-dark(#cbd5e1,#40516a); border-radius: 20px; padding: 8px 14px; font: inherit; background: light-dark(#f9fbfd,#232b36); color: inherit; }
+    button { cursor: pointer; background: light-dark(#315c8f,#abcaf3); color: light-dark(#fff,#11161e); border-color: transparent; font-weight: 600; }
+    :focus-visible { outline: 3px solid #699fe4; outline-offset: 3px; }
+    #stage { position: relative; margin: auto; overflow: hidden; border-radius: 24px; box-shadow: 0 10px 36px #0002; }
+    iframe { display: block; border: 0; transform-origin: top left; background: light-dark(#eef2f6,#11161e); }
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>rep0rter · 品牌動態</h1><p>按 Escape 可略過；手動重播會清除本機的「不再顯示」設定。</p></div>
+    <div class="controls">
+      <label>裝置 <select id="device"><option value="desktop">桌機</option><option value="tablet">平板</option><option value="mobile">手機</option></select></label>
+      <label>外觀 <select id="theme"><option value="light">淺色</option><option value="dark">深色</option></select></label>
+      <button id="replay" type="button">重新播放</button>
+    </div>
+  </header>
+  <main id="stage" aria-label="網站實際進場動畫"></main>
+  <script>
+    // Developer preview only: serve this file alongside the locally built site.
+    // A fresh iframe navigation replays the real entry script, not a mock animation.
+    const device = document.querySelector('#device');
+    const theme = document.querySelector('#theme');
+    const stage = document.querySelector('#stage');
+    let frame;
+    if (innerWidth < 600) device.value = 'mobile';
+    theme.value = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    const fit = () => {
+      if (!frame) return;
+      const [width, height] = { desktop: [1440, 900], tablet: [768, 1024], mobile: [390, 844] }[device.value];
+      const availableHeight = Math.max(240, innerHeight - stage.getBoundingClientRect().top - 24);
+      const scale = Math.min(1, (innerWidth - 48) / width, availableHeight / height);
+      frame.style.width = width + 'px';
+      frame.style.height = height + 'px';
+      frame.style.transform = `scale(${scale})`;
+      stage.style.width = width * scale + 'px';
+      stage.style.height = height * scale + 'px';
+    };
+    const play = (force = false) => {
+      try {
+        sessionStorage.removeItem('rep0rter-brand-seen');
+        if (force) localStorage.removeItem('rep0rter-brand-dismissed');
+        localStorage.setItem('rep0rter-theme', theme.value);
+      } catch { /* The actual entrance still works with unavailable storage. */ }
+      document.documentElement.style.colorScheme = theme.value;
+      frame = document.createElement('iframe');
+      frame.title = 'rep0rter 首頁品牌進場預覽';
+      frame.src = './index.html?lang=ZH';
+      stage.replaceChildren(frame);
+      fit();
+    };
+    document.querySelector('#replay').addEventListener('click', () => play(true));
+    device.addEventListener('change', () => play(true));
+    theme.addEventListener('change', () => play(true));
+    addEventListener('resize', fit);
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') frame?.contentDocument?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    play();
+  </script>
+</body>
+</html>

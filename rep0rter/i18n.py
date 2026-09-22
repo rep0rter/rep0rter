@@ -65,6 +65,8 @@ def post_text(post, language: str) -> tuple[str, str, bool]:
 
 COPY = {
     "zh-TW": {
+        "presentation": "3 分鐘認識我們",
+        "brand_skip": "略過", "brand_dismiss": "下次不再顯示", "brand_intro": "品牌開場",
         "title": "公民科技社群動態", "tagline": "讓彼此的進展被看見，讓下一次協作更容易。",
         "intro": "來自社群現場的消息，附上原文與參與線索。",
         "language": "閱讀語言", "code": "原始碼", "archive": "g0v Slack 存檔",
@@ -94,6 +96,8 @@ COPY = {
         "image_loading": "圖片載入中…", "image_error": "圖片暫時無法載入，請關閉後重試。",
     },
     "ko": {
+        "presentation": "3분 소개",
+        "brand_skip": "건너뛰기", "brand_dismiss": "다시 표시하지 않기", "brand_intro": "브랜드 소개",
         "title": "시빅테크 커뮤니티 소식", "tagline": "서로의 진전을 발견하고, 다음 협업을 시작하세요.",
         "intro": "커뮤니티의 소식과 원문, 참여 방법을 함께 전합니다.",
         "language": "읽기 언어", "code": "소스 코드", "archive": "g0v Slack 아카이브",
@@ -123,6 +127,8 @@ COPY = {
         "image_loading": "이미지 불러오는 중…", "image_error": "이미지를 불러올 수 없습니다. 닫은 후 다시 시도해 주세요.",
     },
     "ja": {
+        "presentation": "3分でわかる紹介",
+        "brand_skip": "スキップ", "brand_dismiss": "次回から表示しない", "brand_intro": "ブランド紹介",
         "title": "シビックテックのコミュニティニュース", "tagline": "お互いの進展を知り、次の協働へ。",
         "intro": "コミュニティの現場から、原文と参加のきっかけを届けます。",
         "language": "表示言語", "code": "ソースコード", "archive": "g0v Slack アーカイブ",
@@ -152,6 +158,8 @@ COPY = {
         "image_loading": "画像を読み込み中…", "image_error": "画像を読み込めませんでした。閉じてからもう一度お試しください。",
     },
     "en": {
+        "presentation": "3-minute overview",
+        "brand_skip": "Skip", "brand_dismiss": "Don’t show again", "brand_intro": "Brand introduction",
         "title": "Civic tech community news", "tagline": "See what others are building. Find your next collaboration.",
         "intro": "Updates from the community, with original sources and ways to take part.",
         "language": "Reading language", "code": "Source code", "archive": "g0v Slack archive",
@@ -284,13 +292,43 @@ for _language, _values in {
                                'self_reported', 'no_evidence', 'take_part'), _values))
 
 
-for _language, _label in {
-    'en': 'Source examples',
-    'zh-TW': '來源範例',
-    'ja': '情報源の実例',
-    'ko': '출처별 실제 사례',
-}.items():
-    COPY[_language]['source_examples'] = _label
-
 for _language, _label in {'en': 'Sign in', 'zh-TW': '登入', 'ja': 'ログイン', 'ko': '로그인'}.items():
     COPY[_language]['sign_in'] = _label
+
+
+# Shared by the static reader's dialog and server-rendered sign-in fallback.
+for _language, _values in {
+    'en': ('Welcome to rep0rter', 'Your community. Your next story.',
+           'Sign in to share an update or manage your project news.', 'Continue with Google',
+           'Your email stays private. Nothing is published without your confirmation.',
+           'Keep reading', 'Close sign-in', 'Preparing secure sign-in…',
+           'Sign-in could not load. Please try again.', 'Try again', 'Open sign-in page',
+           'You’re signed in', 'Choose what you would like to do next.', 'Manage project news',
+           'Sign out', 'Sign-in is not available yet', 'Please check back soon.'),
+    'zh-TW': ('歡迎回到 rep0rter', '你的社群，下一則故事。',
+              '登入後，分享近況或管理你的專案消息。', '使用 Google 繼續',
+              '你的電子郵件不會公開。所有內容都會在你確認後才發布。',
+              '繼續閱讀', '關閉登入視窗', '正在準備安全登入…',
+              '暫時無法載入登入，請再試一次。', '重試', '開啟登入頁',
+              '你已登入', '接下來，想做些什麼？', '管理專案消息',
+              '登出', '登入功能尚未開放', '請稍後再回來看看。'),
+    'ja': ('rep0rter へようこそ', 'あなたのコミュニティ、次のストーリー。',
+           'ログインして近況を投稿したり、プロジェクトのニュースを管理できます。', 'Google で続行',
+           'メールアドレスは公開されません。確認なしに投稿されることはありません。',
+           '閲覧を続ける', 'ログイン画面を閉じる', '安全なログインを準備中…',
+           'ログイン画面を読み込めませんでした。もう一度お試しください。', '再試行', 'ログインページを開く',
+           'ログイン済みです', '次に何をしますか？', 'プロジェクトニュースを管理',
+           'ログアウト', 'ログインはまだ利用できません', 'しばらくしてからご確認ください。'),
+    'ko': ('rep0rter에 오신 것을 환영해요', '우리 커뮤니티의 다음 이야기.',
+           '로그인하여 근황을 공유하거나 프로젝트 소식을 관리하세요.', 'Google로 계속하기',
+           '이메일은 공개되지 않으며 확인 없이 게시되지 않습니다.',
+           '계속 읽기', '로그인 닫기', '안전한 로그인을 준비하고 있어요…',
+           '로그인을 불러오지 못했습니다. 다시 시도해 주세요.', '다시 시도', '로그인 페이지 열기',
+           '로그인되었습니다', '다음으로 무엇을 할까요?', '프로젝트 소식 관리',
+           '로그아웃', '아직 로그인할 수 없습니다', '잠시 후 다시 확인해 주세요.'),
+}.items():
+    COPY[_language].update(zip((
+        'login_welcome', 'login_title', 'login_intro', 'login_google', 'login_privacy',
+        'login_read', 'login_close', 'login_loading', 'login_error', 'login_retry',
+        'login_fallback', 'login_signed_in', 'login_next', 'login_projects',
+        'login_logout', 'login_unavailable', 'login_later'), _values))
