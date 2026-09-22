@@ -161,7 +161,7 @@ def review_decision(store, decision_id: int, label: str, note: str, now: float):
 
 
 def evaluation_report(store, now: float) -> dict:
-    """Latest observation per event, with explicit observation period and no success claims."""
+    """Current coverage and latest reviewed snapshots, without transferring labels."""
     ensure_audit(store)
     all_rows = store.conn.execute("SELECT * FROM editorial_decisions ORDER BY evaluated_at,id").fetchall()
     # A different policy's history cannot qualify the current scoring rollout.
@@ -173,7 +173,12 @@ def evaluation_report(store, now: float) -> dict:
     shadow_times = [r["evaluated_at"] for r in rows if r["mode"] == "shadow"]
     shadow_dates = {datetime.fromtimestamp(ts, TZ).date().isoformat() for ts in shadow_times}
     shadow_span = max(shadow_times) - min(shadow_times) if shadow_times else 0
-    reviewed = [r for r in latest.values() if r["reviewer_label"]]
+    # A new hourly observation must not erase a review of a saved decision.
+    # Select the most recently evaluated *labeled snapshot* for each event, and
+    # score that exact row, including its original threshold and live selection.
+    # Never attach its label to a newer text, counters, or scoring version.
+    labeled = [r for r in rows if r["reviewer_label"]]
+    reviewed = list({r["event_id"]: r for r in labeled}.values())
     buckets = {"small_under_100": 0, "medium_under_1000": 0, "large_1000_plus": 0}
     for r in latest.values():
         snapshot = json.loads(r["snapshot"])
@@ -194,11 +199,19 @@ def evaluation_report(store, now: float) -> dict:
             "other_version_observations": len(all_rows)-len(rows),
             "observation_complete": shadow_span >= 14*86400 and len(shadow_dates) >= 14,
             "events": len(latest), "observations": len(rows), "reviewed_events": len(reviewed),
+            "reviewed_observations": len(labeled),
+            "review_basis": "latest_reviewed_snapshot_per_event",
+            "reviewed_decision_ids": [r["id"] for r in reviewed],
+            "latest_observation_reviewed_events": sum(bool(r["reviewer_label"]) for r in latest.values()),
             "false_positive_labels": sum(proposed_selected(r) and r["reviewer_label"] == "reject" for r in reviewed),
             "false_negative_labels": sum(not proposed_selected(r) and r["reviewer_label"] == "publish" for r in reviewed),
             "live_selection_false_positive_labels": sum(r["selected"] and r["reviewer_label"] == "reject" for r in reviewed),
             "eligible_channel_size_coverage": buckets,
-            "note": "Only current-version shadow snapshots qualify the observation window; unreviewed events are not accuracy evidence."}
+            "note": "Only current-version shadow snapshots qualify the observation window. "
+                    "Label metrics use each event's latest evaluated, reviewed snapshot in that version, "
+                    "not its latest unreviewed observation. Channel-size coverage uses latest observations; "
+                    "latest_observation_reviewed_events counts reviews of those exact rows. "
+                    "Unreviewed snapshots are not accuracy evidence."}
 
 
 def replay_decision(store, decision_id: int) -> dict:
