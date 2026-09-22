@@ -16,6 +16,16 @@ bound to its original evidence snapshot; a later unreviewed observation neither
 erases it nor inherits its label. Latest-observation coverage is reported
 separately from the latest reviewed snapshot per event.
 
+The two-week shadow window counts only Slack observations of the current score
+version. RSS, Notion and GitHub use proposed scores directly, even with the global
+`shadow` setting, so they cannot fill missing Slack observation days.
+`shadow_review_coverage` separates proposed gate/threshold results from actual
+selection after ranking, and counts publish/reject verdicts on both sides by
+channel size. `review` labels remain unresolved; absent channel sizes are
+`unknown`. Reviews use their original channel-size snapshot, so their buckets
+can differ from latest-observation buckets. Coverage is evidence for a human
+rollout decision, not automatic permission to switch modes.
+
 `REP0RTER_EDITORIAL_MODE=shadow` is the default. Each eligible collection window
 gets paired legacy and proposed scores, exact event/counter/container snapshots,
 scoring time, all components, selection/exclusion reasons, and actual selection.
