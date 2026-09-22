@@ -75,6 +75,7 @@ def collect_all(store, days=2, max_channels=None, config=None, *, session=None):
     for index, (name, collect) in enumerate(jobs):
         # Reserve a fair remaining share for each independent source.
         transport.limit = metrics.requests + max(0, (total_budget - metrics.requests) // (len(jobs)-index))
+        before = asdict(metrics)
         try:
             n = collect()
             total += n
@@ -90,6 +91,10 @@ def collect_all(store, days=2, max_channels=None, config=None, *, session=None):
             failures += 1
             record_source_error(store, name, exc)
             sources[name] = {'healthy': False, 'error': str(exc)}
+        finally:
+            # Attribute retries and failed requests to the source that spent
+            # them, including a collector that raised before returning events.
+            sources[name]['metrics'] = {key: value - before[key] for key, value in asdict(metrics).items()}
     healthy = failures == 0
     health = {'healthy': healthy, 'last_attempt_at': started, 'finished_at': time.time(),
               'last_healthy_at': time.time() if healthy else previous.get('last_healthy_at'),
