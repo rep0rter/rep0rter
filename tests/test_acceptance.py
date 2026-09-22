@@ -39,13 +39,22 @@ def test_repeated_same_day_observations_do_not_satisfy_window(tmp_path):
         assert result['collection']['observed_utc_dates'] == 1
 
 
-def test_deployment_preflight_keeps_commit_and_scheduler_guards():
+def test_deployment_preflight_keeps_commit_and_scheduler_guards(monkeypatch):
     spec = importlib.util.spec_from_file_location('check_deployed', Path(__file__).parents[1] / 'cloudflare/check_deployed.py')
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     health = {'source_commit': 'tested', 'ready': True, 'runtime': 'cloudflare-workers',
               'scheduler': 'github-actions', 'scheduled': True}
     module.check('tested', health)
+    import io
+    seen = []
+    def response(request, timeout):
+        seen.append(request.full_url)
+        return io.BytesIO(json.dumps(health).encode())
+    monkeypatch.setattr(module.urllib.request, 'urlopen', response)
+    monkeypatch.setenv('GITHUB_SHA', 'tested')
+    module.main()
+    assert seen == ['https://rep0rter-engine.sky-hong.workers.dev/healthz']
     with pytest.raises(RuntimeError, match='Actions commit new, Worker commit tested'):
         module.check('new', health)
     with pytest.raises(RuntimeError, match='GitHub Actions'):
