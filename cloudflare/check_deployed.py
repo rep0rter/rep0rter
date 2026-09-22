@@ -18,7 +18,9 @@ def check(expected, health):
 
 
 def main():
-    request = urllib.request.Request('https://rep0rter.observe.tw/healthz',
+    # The frontend health record describes the last publication. It can retain
+    # the previous SHA until the first cycle after a new engine deployment.
+    request = urllib.request.Request('https://rep0rter-engine.sky-hong.workers.dev/healthz',
                                      headers={'Cache-Control': 'no-cache'})
     with urllib.request.urlopen(request, timeout=30) as response:
         health = json.load(response)

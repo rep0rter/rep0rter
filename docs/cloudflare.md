@@ -11,7 +11,7 @@ account features, and holds the durable SQLite database and generated assets.
 `report`, `build`, and `deliver` dispatches. GitHub cron can be delayed. The workflow requires
 passing Offline tests for its exact main commit; the Worker also rejects a
 runner whose source commit differs from the deployed engine.
-An early public health check reports both commit IDs before installing Python
+An early engine health check reports both commit IDs before installing Python
 dependencies and Chromium when deployment has fallen behind. Deploy tested main;
 do not bypass the runner's version guard. Successful reporting runs print an
 `Acceptance evidence` JSON record with aggregate editorial/collection observations
