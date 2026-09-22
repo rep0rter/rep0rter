@@ -104,6 +104,34 @@ def test_registry_isolates_failed_source_and_preserves_last_healthy(tmp_path,mon
         assert 'metrics' in health and 'requests' in health['metrics']
 
 
+def test_registry_attributes_metrics_even_when_a_source_raises(tmp_path, monkeypatch):
+    monkeypatch.setenv('REP0RTER_GITHUB_REPOS', 'example/civic')
+    monkeypatch.setattr(registry.slack_archive, 'make_session', lambda: Mock(headers={}))
+    monkeypatch.setattr('rep0rter.collectors.state.sleep', lambda _: None)
+    def github_collect(store, repos, session, metrics, days):
+        session.get('https://example.test/github')
+        metrics.new_events += 2
+        return 2
+    def slack_collect(store, days, max_channels, session, metrics):
+        session.get('https://example.test/slack')
+        session.get('https://example.test/slack-retry')
+    monkeypatch.setattr(registry.github, 'collect', github_collect)
+    monkeypatch.setattr(registry.slack_incremental, 'collect', slack_collect)
+    session = Mock(headers={})
+    session.get.side_effect = [Mock(content=b'github'), Mock(content=b'failure'), RuntimeError('timeout')]
+    with Store(tmp_path/'db') as store:
+        assert registry.collect_all(store, session=session) == 2
+        health = json.loads(store.get_kv('collector_health'))
+        github_metrics = health['sources']['github']['metrics']
+        slack_metrics = health['sources']['slack']['metrics']
+        assert github_metrics == dict(requests=1, bytes=6, pages=1, new_events=2, updated_events=0, duplicate_payloads=0)
+        assert slack_metrics == dict(requests=2, bytes=7, pages=1, new_events=0, updated_events=0, duplicate_payloads=0)
+        assert not health['sources']['slack']['healthy']
+        assert health['metrics'] == {key: github_metrics[key]+slack_metrics[key] for key in github_metrics}
+        saved = json.loads(store.conn.execute("SELECT value FROM kv WHERE key LIKE 'collector_metrics:%'").fetchone()[0])
+        assert saved['sources'] == health['sources']
+
+
 def test_excluded_source_never_fetched(tmp_path,monkeypatch):
     from rep0rter import policy
     monkeypatch.setattr(policy,'container_allowed',lambda *args:False)

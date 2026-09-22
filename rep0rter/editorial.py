@@ -170,7 +170,11 @@ def evaluation_report(store, now: float) -> dict:
     first = min((r["evaluated_at"] for r in rows), default=now)
     last = max((r["evaluated_at"] for r in rows), default=now)
     observed_dates = {datetime.fromtimestamp(r["evaluated_at"], TZ).date().isoformat() for r in rows}
-    shadow_times = [r["evaluated_at"] for r in rows if r["mode"] == "shadow"]
+    # Only Slack actually uses the legacy/proposed shadow comparison. Other
+    # adapters use proposed scores even when the global setting says shadow.
+    shadow_rows = [r for r in rows if r["mode"] == "shadow" and r["evaluated_at"] <= now
+                   and json.loads(r["snapshot"])["event"]["source"] == "slack"]
+    shadow_times = [r["evaluated_at"] for r in shadow_rows]
     shadow_dates = {datetime.fromtimestamp(ts, TZ).date().isoformat() for ts in shadow_times}
     shadow_span = max(shadow_times) - min(shadow_times) if shadow_times else 0
     # A new hourly observation must not erase a review of a saved decision.
@@ -189,6 +193,32 @@ def evaluation_report(store, now: float) -> dict:
         decision = json.loads(row["decision"])
         snapshot = json.loads(row["snapshot"])
         return decision["eligible"] and decision["score"] >= snapshot["threshold"]
+    # Report both sides of the review sample. "review" is an unresolved human
+    # judgment, not a publish/reject verdict. Never infer a missing channel size.
+    shadow_coverage = {name: dict.fromkeys((
+        "observed_events", "reviewed_events", "publish_labels", "reject_labels", "review_labels",
+        "proposed_selected_reviewed", "proposed_excluded_reviewed",
+        "live_selected_reviewed", "live_excluded_reviewed",
+        "false_positive_labels", "false_negative_labels"), 0)
+        for name in (*buckets, "unknown")}
+    def channel_size(row):
+        members = (json.loads(row["snapshot"]).get("container") or {}).get("num_members")
+        if members is None:
+            return "unknown"
+        return "small_under_100" if members < 100 else "medium_under_1000" if members < 1000 else "large_1000_plus"
+    for r in {r["event_id"]: r for r in shadow_rows}.values():
+        shadow_coverage[channel_size(r)]["observed_events"] += 1
+    for r in {r["event_id"]: r for r in shadow_rows if r["reviewer_label"]}.values():
+        coverage = shadow_coverage[channel_size(r)]
+        coverage["reviewed_events"] += 1
+        coverage[r["reviewer_label"] + "_labels"] += 1
+        if r["reviewer_label"] == "review":
+            continue
+        proposed = proposed_selected(r)
+        coverage["proposed_selected_reviewed" if proposed else "proposed_excluded_reviewed"] += 1
+        coverage["live_selected_reviewed" if r["selected"] else "live_excluded_reviewed"] += 1
+        coverage["false_positive_labels"] += int(proposed and r["reviewer_label"] == "reject")
+        coverage["false_negative_labels"] += int(not proposed and r["reviewer_label"] == "publish")
     return {"score_version": SCORE_VERSION, "observed_days": round((now-first)/86400, 2),
             "observation_dates": len(observed_dates), "first_observation": first if rows else None,
             "last_observation": last if rows else None,
@@ -196,6 +226,8 @@ def evaluation_report(store, now: float) -> dict:
             "shadow_observation_dates": len(shadow_dates),
             "shadow_observation_span_days": round(shadow_span/86400, 2),
             "shadow_observations": len(shadow_times),
+            "shadow_source": "slack",
+            "shadow_review_coverage": shadow_coverage,
             "other_version_observations": len(all_rows)-len(rows),
             "observation_complete": shadow_span >= 14*86400 and len(shadow_dates) >= 14,
             "events": len(latest), "observations": len(rows), "reviewed_events": len(reviewed),
@@ -207,11 +239,14 @@ def evaluation_report(store, now: float) -> dict:
             "false_negative_labels": sum(not proposed_selected(r) and r["reviewer_label"] == "publish" for r in reviewed),
             "live_selection_false_positive_labels": sum(r["selected"] and r["reviewer_label"] == "reject" for r in reviewed),
             "eligible_channel_size_coverage": buckets,
-            "note": "Only current-version shadow snapshots qualify the observation window. "
+            "note": "Only current-version Slack shadow snapshots qualify the observation window. "
                     "Label metrics use each event's latest evaluated, reviewed snapshot in that version, "
                     "not its latest unreviewed observation. Channel-size coverage uses latest observations; "
                     "latest_observation_reviewed_events counts reviews of those exact rows. "
-                    "Unreviewed snapshots are not accuracy evidence."}
+                    "Shadow review coverage separates live selection from proposed gate/threshold results, "
+                    "before ranking and the per-run cap. Observed channel sizes use latest shadow snapshots; "
+                    "reviewed channel sizes use the reviewed snapshots. Review labels are unresolved, "
+                    "and unreviewed snapshots are not accuracy evidence."}
 
 
 def replay_decision(store, decision_id: int) -> dict:

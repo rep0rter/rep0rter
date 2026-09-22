@@ -473,6 +473,45 @@ def test_root_transport_error_stays_degraded_between_refresh_attempts(tmp_path, 
         assert 'invalid root refresh' in health['reasons'][root.id]
 
 
+def test_missing_exact_root_stays_unhealthy_through_backoff_and_clears_on_recovery(tmp_path, monkeypatch):
+    from rep0rter.collectors.state import write_state
+    now = 1000000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda session: [_scheduled_channel('C', 1000000)])
+    child = Event('slack:C:990000', 'slack', 'thread_reply', 'slack:C', 990000,
+                  text='Reply', parent_id='slack:C:500000', meta={'context_incomplete': True})
+    get = pages(monkeypatch, [[], [{'ts': '500000', 'text': 'Recovered exact parent'}]])
+    with Store(tmp_path/'db') as store:
+        with store.conn:
+            write_state(store, 'slack:C', {'last_complete_ts': '990000', 'last_posted': now,
+                'total_messages': 10, 'last_refresh': now, 'last_reconciliation': now})
+        persist(store, 'fixture', {}, [child], Metrics(), now-100)
+        # An unattempted missing root is already a known context gap.
+        inc.collect(store, session=BudgetSession(Mock(headers={}), Metrics(), limit=0))
+        assert not read_state(store, 'slack:health')['history_complete']
+        get.assert_not_called()
+        inc.collect(store, session=Mock(headers={}))
+        health = read_state(store, 'slack:health')
+        assert not health['healthy'] and health['available']
+        assert 'exact parent' in health['reasons'][child.parent_id]
+        assert not read_state(store, 'slack:root_refresh')[child.parent_id]['resolved']
+        now += 60
+        inc.collect(store, session=Mock(headers={}))
+        assert get.call_count == 1
+        assert not read_state(store, 'slack:health')['healthy']
+        now += inc.REFRESH_INTERVAL
+        # Isolate the root retry from the periodic channel scan.
+        with store.conn:
+            state = read_state(store, 'slack:C')
+            state.update(last_refresh=now, last_reconciliation=now)
+            write_state(store, 'slack:C', state)
+        inc.collect(store, session=Mock(headers={}))
+        assert get.call_count == 2
+        assert read_state(store, 'slack:health')['healthy']
+        assert store.get_event(child.parent_id).text == 'Recovered exact parent'
+        assert not store.get_event(child.id).meta['context_incomplete']
+
+
 def test_new_reply_refreshes_existing_old_root_before_unrelated_sweep(tmp_path, monkeypatch):
     from rep0rter.collectors.state import write_state
     now = 1000000

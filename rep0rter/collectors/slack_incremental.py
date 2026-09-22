@@ -282,6 +282,8 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
             root_attempts += 1
             root = refresh_root(session, channel_id, root_ts, public_ids)
             queue[root_id] = dict(last, attempted_at=now, resolved=root is not None)
+            if root is None:
+                queue[root_id]['error'] = 'root refresh did not return exact parent; upstream completeness unknown'
             if root and _allowed(store, event=root):
                 queue[root_id].pop('error', None)
                 queue[root_id]['reply_pending'] = False
@@ -306,11 +308,17 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         state = read_state(store, cid)
         if _allowed(store, container_id=cid) and state.get('gap') and state.get('error'):
             reasons.setdefault(cid, state['error'])
-    # Root transport failures are unresolved debt too; skipping a six-hour
-    # refresh must not turn the very next hourly health check green.
+    # Missing roots, deferred reply refreshes and failed lookups remain gaps
+    # during the six-hour backoff or while bounded refresh slots are exhausted.
+    missing_ids = {r[0] for r in missing}
     for root_id in due_ids:
         root_state = queue.get(root_id, {})
-        if not root_state.get('error'):
+        error = root_state.get('error')
+        if not error and root_state.get('reply_pending'):
+            error = 'new reply awaiting root refresh'
+        if not error and root_id in missing_ids and store.get_event(root_id) is None:
+            error = 'missing root awaiting bounded refresh'
+        if not error:
             continue
         _, channel_id, _ = root_id.split(':', 2)
         if channel_id not in public_ids or not _allowed(store, container_id='slack:' + channel_id):
@@ -320,7 +328,7 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         root = store.get_event(root_id)
         if root and (root.meta.get('deleted_at') or root.meta.get('content_status') == 'deleted' or not _allowed(store, event=root)):
             continue
-        reasons.setdefault(root_id, root_state['error'])
+        reasons.setdefault(root_id, error)
     failures = max(failures, len(reasons))
     queue = {k:v for k,v in queue.items() if k in due_ids or now-v.get('attempted_at',0)<7*86400}
     with store.conn:

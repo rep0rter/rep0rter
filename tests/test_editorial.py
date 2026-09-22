@@ -201,3 +201,56 @@ def test_two_sparse_shadow_dates_do_not_qualify_two_weeks(tmp_path):
         report=evaluation_report(store,NOW+30*86400)
         assert report['shadow_observation_span_days']==14
         assert not report['observation_complete']
+
+
+def test_other_sources_and_future_rows_do_not_qualify_slack_shadow_window(tmp_path):
+    e = event('工作坊開放報名，歡迎一起來參與 https://example.test')
+    with Store(tmp_path/'db') as store:
+        for day in range(15):
+            when = NOW + day * 86400
+            e.source = 'rss'
+            record_decision(store, e, None, CFG, when, evaluate(e, None, CFG, when), True, mode='shadow')
+        e.source = 'slack'
+        record_decision(store, e, None, CFG, NOW, evaluate(e, None, CFG, NOW), True, mode='shadow')
+        record_decision(store, e, None, CFG, NOW+30*86400, evaluate(e, None, CFG, NOW), True, mode='shadow')
+        result = evaluation_report(store, NOW+14*86400)
+        assert result['shadow_source'] == 'slack'
+        assert result['shadow_observations'] == result['shadow_observation_dates'] == 1
+        assert result['shadow_observation_span_days'] == 0
+        assert not result['observation_complete']
+
+
+def test_shadow_review_coverage_uses_exact_reviewed_source_mode_and_channel_size(tmp_path):
+    e = event('工作坊開放報名，歡迎一起來參與 https://example.test')
+    small = Container('slack:C', 'slack', 'small', num_members=10)
+    large = Container('slack:C', 'slack', 'large', num_members=1000)
+    with Store(tmp_path/'db') as store:
+        key = record_decision(store, e, small, CFG, NOW, evaluate(e, small, CFG, NOW), False, mode='shadow')
+        review_decision(store, key, 'reject', 'False positive before ranking', NOW+1)
+        e.text = 'Changed to an uninformative message'
+        record_decision(store, e, large, CFG, NOW+60, evaluate(e, large, CFG, NOW+60), True, mode='shadow')
+        # A review in active mode must not displace the shadow review.
+        key = record_decision(store, e, large, CFG, NOW+120, evaluate(e, large, CFG, NOW+120), True)
+        review_decision(store, key, 'publish', 'Active review', NOW+121)
+        e.id = 'slack:C:2'
+        key = record_decision(store, e, None, CFG, NOW, evaluate(e, None, CFG, NOW), True, mode='shadow')
+        review_decision(store, key, 'publish', 'False negative', NOW+1)
+        e.id = 'slack:C:3'
+        key = record_decision(store, e, small, CFG, NOW, evaluate(e, small, CFG, NOW), False, mode='shadow')
+        review_decision(store, key, 'review', 'Still uncertain', NOW+1)
+        e.id, e.source = 'rss:1', 'rss'
+        key = record_decision(store, e, small, CFG, NOW, evaluate(e, small, CFG, NOW), True, mode='shadow')
+        review_decision(store, key, 'reject', 'Different source', NOW+1)
+        result = evaluation_report(store, NOW+180)['shadow_review_coverage']
+        assert result['large_1000_plus']['observed_events'] == 1
+        assert result['large_1000_plus']['reviewed_events'] == 0
+        small_result = result['small_under_100']
+        assert small_result['observed_events'] == 1
+        assert small_result['reviewed_events'] == 2
+        assert small_result['reject_labels'] == small_result['review_labels'] == 1
+        assert small_result['proposed_selected_reviewed'] == small_result['live_excluded_reviewed'] == 1
+        assert small_result['proposed_excluded_reviewed'] == 0
+        assert small_result['false_positive_labels'] == 1
+        unknown = result['unknown']
+        assert unknown['publish_labels'] == unknown['proposed_excluded_reviewed'] == 1
+        assert unknown['live_selected_reviewed'] == unknown['false_negative_labels'] == 1
