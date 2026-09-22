@@ -253,7 +253,7 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         if root_id in pending or len(pending) >= MAX_REPLY_REFRESH_QUEUE:
             continue
         root = store.get_event(root_id)
-        if not _allowed(store, event=root):
+        if root.container_id.removeprefix('slack:') not in public_ids or not _allowed(store, event=root):
             continue
         queue[root_id] = dict(queue.get(root_id, {}), reply_pending=True, requested_at=requested_at)
         pending.add(root_id)
