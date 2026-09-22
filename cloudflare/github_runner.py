@@ -141,6 +141,8 @@ def main():
                 collected, posted = run_once(cfg)
                 with Store(cfg.db_path) as store:
                     healthy = json.loads(store.get_kv('collector_health', '{}')).get('healthy', False)
+                    from rep0rter.acceptance import report as acceptance_report
+                    print('Acceptance evidence: ' + json.dumps(acceptance_report(store), ensure_ascii=False))
                 print(f'Reporting complete: collected={collected}, posted={posted}, collection_healthy={healthy}')
             elif args.mode == 'deliver':
                 from rep0rter.delivery import enqueue_existing, deliver_pending

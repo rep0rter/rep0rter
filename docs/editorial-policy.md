@@ -8,6 +8,14 @@ and opt-out retention rules as the event store.
 
 ## Rollout and evaluation
 
+`python -m rep0rter acceptance-report` combines editorial evidence with the
+retained collection metrics and configured request limits. The production Actions
+runner prints this aggregate after reporting, so Cloudflare observations can be
+reviewed without exporting the private database. A reviewed decision remains
+bound to its original evidence snapshot; a later unreviewed observation neither
+erases it nor inherits its label. Latest-observation coverage is reported
+separately from the latest reviewed snapshot per event.
+
 `REP0RTER_EDITORIAL_MODE=shadow` is the default. Each eligible collection window
 gets paired legacy and proposed scores, exact event/counter/container snapshots,
 scoring time, all components, selection/exclusion reasons, and actual selection.

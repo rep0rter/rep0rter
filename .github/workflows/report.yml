@@ -37,6 +37,8 @@ jobs:
           latest=max(runs,key=lambda r:r['id'],default={})
           assert latest.get('conclusion')=='success', 'This exact main commit must pass Offline tests first'
           PY
+      - name: Verify deployed Worker before installing the reporting stack
+        run: python3 cloudflare/check_deployed.py
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
