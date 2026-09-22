@@ -471,3 +471,87 @@ def test_root_transport_error_stays_degraded_between_refresh_attempts(tmp_path, 
         health = read_state(store, 'slack:health')
         assert not health['healthy'] and not health['history_complete']
         assert 'invalid root refresh' in health['reasons'][root.id]
+
+
+def test_new_reply_refreshes_existing_old_root_before_unrelated_sweep(tmp_path, monkeypatch):
+    from rep0rter.collectors.state import write_state
+    now = 1000000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda session: [_scheduled_channel('C', now)])
+    path = tmp_path/'db'
+    with Store(path) as store:
+        with store.conn:
+            write_state(store, 'slack:C', {'last_complete_ts': '990000', 'last_posted': now,
+                'total_messages': 10, 'last_refresh': now, 'last_reconciliation': now})
+        # More old roots than the two-entry background sweep; target is newest.
+        for ts in ['100000', '200000', '300000', '500000']:
+            persist(store, 'fixture', {}, [Event('slack:C:'+ts, 'slack', 'message', 'slack:C',
+                float(ts), text='Old context')], Metrics(), now-10000+int(ts)/1000)
+        child = Event('slack:C:990000', 'slack', 'thread_reply', 'slack:C', 990000,
+            text='New material update', parent_id='slack:C:500000')
+        persist(store, 'fixture', {}, [child], Metrics(), now-100)
+        # Persist pending work even when all requests have already been spent.
+        exhausted = BudgetSession(Mock(headers={}), Metrics(), limit=0)
+        inc.collect(store, session=exhausted)
+        queue = read_state(store, 'slack:root_refresh')
+        assert queue[child.parent_id]['reply_pending']
+        assert 'attempted_at' not in queue[child.parent_id]
+    # A fresh process gets only one request: it must serve the new reply, not
+    # either unrelated older root, and must not advance the channel watermark.
+    get = pages(monkeypatch, [[{'ts': '500000', 'text': 'Updated root context'}]])
+    with Store(path) as store:
+        transport = BudgetSession(Mock(headers={}), Metrics(), limit=1)
+        # The mock API bypasses BudgetSession; charge the actual lookup here.
+        def refresh(session, channel, ts, public_ids):
+            session.metrics.requests += 1
+            return original_refresh(session, channel, ts, public_ids)
+        original_refresh = inc.refresh_root
+        monkeypatch.setattr(inc, 'refresh_root', refresh)
+        inc.collect(store, session=transport)
+        assert get.call_count == 1
+        assert get.call_args.kwargs['before'] == '500001'
+        assert store.get_event(child.parent_id).text == 'Updated root context'
+        assert read_state(store, 'slack:C')['last_complete_ts'] == '990000'
+        assert not read_state(store, 'slack:root_refresh')[child.parent_id]['reply_pending']
+        # Re-observing the reply through the overlap does not schedule it again.
+        persist(store, 'fixture', {}, [child], Metrics(), now+1)
+        inc.collect(store, session=BudgetSession(Mock(headers={}), Metrics(), limit=0))
+        assert not read_state(store, 'slack:root_refresh')[child.parent_id]['reply_pending']
+
+
+def test_reply_refresh_queue_is_bounded_and_drains_unattempted_first(tmp_path, monkeypatch):
+    from rep0rter.collectors.state import write_state
+    now = 1000000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda session: [_scheduled_channel('C', now)])
+    monkeypatch.setattr(inc, 'MAX_REPLY_REFRESH_QUEUE', 2)
+    with Store(tmp_path/'db') as store:
+        with store.conn:
+            write_state(store, 'slack:C', {'last_complete_ts': '990000', 'last_posted': now,
+                'total_messages': 10, 'last_refresh': now, 'last_reconciliation': now})
+        for index in range(3):
+            root_id = 'slack:C:'+str(500000+index)
+            persist(store, 'fixture', {}, [Event(root_id, 'slack', 'message', 'slack:C',
+                500000+index, text='Existing root')], Metrics(), now-10000)
+            persist(store, 'fixture', {}, [Event('slack:C:'+str(990000+index), 'slack',
+                'thread_reply', 'slack:C', 990000+index, text='New reply', parent_id=root_id)],
+                Metrics(), now-100+index)
+        inc.collect(store, session=BudgetSession(Mock(headers={}), Metrics(), limit=0))
+        pending = lambda: [k for k,v in read_state(store,'slack:root_refresh').items() if v.get('reply_pending')]
+        assert len(pending()) == 2
+        attempts = []
+        def refresh(session, channel, ts, public_ids):
+            session.metrics.requests += 1
+            attempts.append(ts)
+            if ts == '500000':
+                raise RuntimeError('temporary upstream failure')
+            return Event('slack:C:'+ts,'slack','message','slack:C',float(ts),text='Refreshed')
+        monkeypatch.setattr(inc, 'refresh_root', refresh)
+        inc.collect(store, session=BudgetSession(Mock(headers={}), Metrics(), limit=1))
+        inc.collect(store, session=BudgetSession(Mock(headers={}), Metrics(), limit=1))
+        assert attempts == ['500000', '500001']
+        assert len(pending()) == 1
+        # The third durable reply refills the bounded queue on the next run.
+        inc.collect(store, session=BudgetSession(Mock(headers={}), Metrics(), limit=1))
+        assert attempts == ['500000', '500001', '500002']
+        assert pending() == ['slack:C:500000']

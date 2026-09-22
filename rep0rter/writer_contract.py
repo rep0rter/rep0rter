@@ -33,7 +33,15 @@ EMOJI = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F\u200D\u20E3]")
 RELATIVE = re.compile(r"今天|今晚|明天|後天|昨日|昨天|下週|下周|本週|這週|週末|今夜|本日|明日|来週|오늘|내일|다음\s*주|\b(?:today|tonight|tomorrow|yesterday|next week|this weekend)\b", re.I)
 SPECULATIVE = re.compile(r"可能|或許|預計|提議|打算|希望|maybe|might|propos|planning|予定|検討|예정|제안", re.I)
 ATTRIBUTION = re.compile(r"討論|來源|參與者|提到|表示|指出|推測|建議|according|discussion|suggest|source|participant|投稿|議論|提案|原文|出典|발언|논의|출처|원문|자료에 따르면|참여자에 따르면", re.I)
-OPEN_INVITE = re.compile(r"開放報名|自由參加|歡迎報名|人人|open registration|open to (?:all|everyone)|register now|参加自由|誰でも|자유롭게\s*참여", re.I)
+_OPEN_INVITE = re.compile(r"開放報名|自由參加|歡迎報名|人人|open registration|open to (?:all|everyone)|register now|参加自由|誰でも|자유롭게\s*참여", re.I)
+# Negation applies only immediately before each invitation, never to a whole
+# sentence: "not open registration, but register now" still contains an invite.
+_INVITE_NEGATION = re.compile(
+    r"(?:不(?:再|能|可|會)?|未|尚未|沒(?:有)?|無|非|並非|禁止|勿)\s*$"
+    r"|\b(?:not|no|never|without|\w+n['’]t)(?:\s+(?:currently|yet|longer))?\s+$",
+    re.I,
+)
+
 CLOSED = re.compile(r"閉門|不開放|非公開|closed[- ]door|invitation[- ]only|非公開|초청|비공개", re.I)
 PARTICIPATION = re.compile(r"報名|登記參加|參加連結|\bregister\b|\bregistration\b|sign[ -]?up|申[し込]?込[みむ]?|申し込み|신청|참가\s*등록", re.I)
 NO_PARTICIPATION = re.compile(r"不[再需]?開放報名|沒有開放報名|報名[已]?截止|報名[已]?結束|registration\s+(?:is\s+)?closed|受付終了|신청\s*마감", re.I)
@@ -237,6 +245,11 @@ def author_mentioned(text: str, aliases: list[str]) -> bool:
     return False
 
 
+def has_open_invitation(text: str) -> bool:
+    return any(not _INVITE_NEGATION.search(text[:match.start()])
+               for match in _OPEN_INVITE.finditer(text))
+
+
 def text_errors(headline, summary, aliases=(), channel="", language=None) -> list[str]:
     errors = []
     headline_limit, summary_limit = text_limits(language)
@@ -254,7 +267,9 @@ def text_errors(headline, summary, aliases=(), channel="", language=None) -> lis
             errors.append(key + ":relative_date")
         if URL.search(value):
             errors.append(key + ":url_must_be_structured")
-        if re.search(r"(?:的時候|(?<!小)時|之前|之後|的話|以及|並且|\b(?:when|while|because|and|although))$", value.strip().rstrip("。.!！?？"), re.I):
+        # Compound nouns/adverbs (逾時, 小時, 即時, etc.) are complete; a
+        # bare temporal suffix in 登入時/晚宴時 still indicates a cut-off clause.
+        if re.search(r"(?:的時候|(?<![小逾超耗費計定即準臨平隨同限工學延按當暫及])時|之前|之後|的話|以及|並且|\b(?:when|while|because|and|although))$", value.strip().rstrip("。.!！?？"), re.I):
             errors.append(key + ":incomplete_clause")
         if author_mentioned(value, list(aliases)):
             errors.append(key + ":author_repeated")
@@ -338,9 +353,9 @@ def validate_response(data, bundle) -> tuple[dict, list[str]]:
             if not EDITORIAL_CORRECTION.search(str(item.get("headline", ""))) or not ATTRIBUTION.search(str(item.get("summary", ""))):
                 local.append("recovered_context_requires_editorial_correction_and_source_attribution")
         if CANCEL.search(source) and bundle["metadata"].get("story_update"):
-            if not CANCEL.search(combined) or not ATTRIBUTION.search(combined) or OPEN_INVITE.search(combined):
+            if not CANCEL.search(combined) or not ATTRIBUTION.search(combined) or has_open_invitation(combined):
                 local.append("correction_must_preserve_cancellation_and_attribution")
-        if CLOSED.search(source) and OPEN_INVITE.search(combined):
+        if CLOSED.search(source) and has_open_invitation(combined):
             local.append("unfounded_open_invitation")
         if SPECULATIVE.search(source) and not SPECULATIVE.search(combined):
             local.append("speculation_must_be_preserved")
@@ -432,7 +447,7 @@ def fallback(bundle, errors=None) -> WriteResult:
     if any(CANCEL.search(r["text"]) for r in bundle["evidence"]):
         result.needs_review, result.review_reason = True, "cancellation_or_delay_requires_review"
         return result
-    if OPEN_INVITE.search(text) and any(CLOSED.search(r["text"]) or NO_PARTICIPATION.search(r["text"])
+    if has_open_invitation(text) and any(CLOSED.search(r["text"]) or NO_PARTICIPATION.search(r["text"])
                                        for r in bundle["evidence"]):
         result.needs_review, result.review_reason = True, "closed_event_correction_requires_review"
         return result

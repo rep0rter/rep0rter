@@ -59,8 +59,11 @@ export class PublishedSite extends DurableObject {
     if (!path || path.endsWith('/')) path += 'index.html';
     const row = [...this.sql.exec('SELECT data,digest FROM assets WHERE path=?', path)][0];
     if (!row) return new Response('Not found', {status:404});
+    // Only shared, content-addressed assets are immutable. Reports and their
+    // cards must revalidate so corrections and withdrawals remain effective.
+    const cacheControl = path.startsWith('assets/') ? 'public, max-age=31536000, immutable' : 'no-cache';
     const headers = new Headers({'Content-Type':TYPES[path.split('.').pop()] || 'application/octet-stream',
-      'Cache-Control':'no-cache', 'ETag':`"${row.digest}"`, 'X-Content-Type-Options':'nosniff'});
+      'Cache-Control':cacheControl, 'ETag':`"${row.digest}"`, 'X-Content-Type-Options':'nosniff'});
     if (request.headers.get('If-None-Match') === headers.get('ETag')) return new Response(null,{status:304,headers});
     return new Response(request.method === 'HEAD' ? null : row.data,{headers});
   }

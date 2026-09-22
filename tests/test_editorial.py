@@ -67,6 +67,70 @@ def test_snapshot_is_immutable_and_review_report_honest(tmp_path):
         assert report['observed_days'] == 1
 
 
+@pytest.mark.parametrize('original_text,latest_text,label,false_positives,false_negatives', [
+    ('工作坊開放報名，歡迎一起來參與 https://example.test', 'edited, no announcement', 'reject', 1, 0),
+    ('not an announcement', '工作坊開放報名，歡迎一起來參與 https://example.test', 'publish', 0, 1),
+])
+def test_review_survives_new_unreviewed_snapshot_without_label_transfer(
+    tmp_path, original_text, latest_text, label, false_positives, false_negatives,
+):
+    e = event(original_text)
+    with Store(tmp_path/'db') as store:
+        original = record_decision(store, e, None, CFG, NOW, evaluate(e, None, CFG, NOW), True)
+        review_decision(store, original, label, 'Review of the original text', NOW+1)
+        e.text = latest_text
+        later = record_decision(store, e, None, CFG, NOW+3600,
+                                evaluate(e, None, CFG, NOW+3600), False)
+        report = evaluation_report(store, NOW+3601)
+        assert report['events'] == 1 and report['observations'] == 2
+        assert report['reviewed_events'] == report['reviewed_observations'] == 1
+        assert report['review_basis'] == 'latest_reviewed_snapshot_per_event'
+        assert report['reviewed_decision_ids'] == [original]
+        assert report['latest_observation_reviewed_events'] == 0
+        assert report['false_positive_labels'] == false_positives
+        assert report['false_negative_labels'] == false_negatives
+        assert report['live_selection_false_positive_labels'] == int(label == 'reject')
+        assert report['eligible_channel_size_coverage']['small_under_100'] == false_negatives
+        assert store.conn.execute('SELECT reviewer_label FROM editorial_decisions WHERE id=?',
+                                  (later,)).fetchone()[0] is None
+
+
+def test_latest_reviewed_snapshot_counts_once_and_keeps_its_original_threshold(tmp_path):
+    e = event('工作坊開放報名，歡迎一起來參與 https://example.test')
+    with Store(tmp_path/'db') as store:
+        original = record_decision(store, e, None, CFG, NOW, evaluate(e, None, CFG, NOW), True)
+        review_decision(store, original, 'reject', 'Original review', NOW+1)
+        high_threshold = SimpleNamespace(**{**vars(CFG), 'score_threshold': 20})
+        later = record_decision(store, e, None, high_threshold, NOW+3600,
+                                evaluate(e, None, high_threshold, NOW+3600), False)
+        review_decision(store, later, 'publish', 'Missed at higher threshold', NOW+3601)
+        # Re-reviewing the old decision later must not replace the newer snapshot.
+        review_decision(store, original, 'reject', 'Confirmed old review', NOW+3602)
+        report = evaluation_report(store, NOW+3603)
+        assert report['reviewed_events'] == 1 and report['reviewed_observations'] == 2
+        assert report['reviewed_decision_ids'] == [later]
+        assert report['latest_observation_reviewed_events'] == 1
+        assert report['false_positive_labels'] == 0
+        assert report['false_negative_labels'] == 1
+        assert report['live_selection_false_positive_labels'] == 0
+
+
+def test_reviews_of_other_scoring_versions_are_not_current_accuracy_evidence(tmp_path):
+    e = event('工作坊開放報名，歡迎一起來參與 https://example.test')
+    with Store(tmp_path/'db') as store:
+        original = record_decision(store, e, None, CFG, NOW, evaluate(e, None, CFG, NOW), True)
+        review_decision(store, original, 'reject', 'Different policy', NOW+1)
+        with store.conn:
+            store.conn.execute("UPDATE editorial_decisions SET score_version='old-version' WHERE id=?", (original,))
+        record_decision(store, e, None, CFG, NOW+3600, evaluate(e, None, CFG, NOW+3600), True)
+        report = evaluation_report(store, NOW+3601)
+        assert report['other_version_observations'] == 1
+        assert report['reviewed_events'] == report['reviewed_observations'] == 0
+        assert report['reviewed_decision_ids'] == []
+        assert report['latest_observation_reviewed_events'] == 0
+        assert report['false_positive_labels'] == report['false_negative_labels'] == 0
+
+
 def test_anonymous_27_root_fixture_preserves_seven_editorial_verdicts():
     from pathlib import Path
     data=json.loads((Path(__file__).parent/'fixtures/editorial/reviewed_roots.json').read_text())

@@ -440,3 +440,127 @@ def test_recovered_context_accepts_localized_original_source_attribution(languag
     valid,errors=validate_response(data,bundle)
     assert language not in valid
     assert language+':recovered_context_requires_editorial_correction_and_source_attribution' in errors
+
+
+@pytest.mark.parametrize('headline', [
+    '討論指出 v2.1 修正登入逾時', '修正請求超時', '查詢不再耗時',
+    '活動長達三小時', '資料更新改為即時', '活動要求準時', '通知標示為臨時',
+    '兩場活動開始時間相同且同時',
+])
+@pytest.mark.parametrize('field', ['headline', 'summary'])
+def test_complete_time_compounds_are_not_truncated_clauses(headline, field):
+    copy = {'headline': '版本更新', 'summary': '參與者提到 PR 已合併'}
+    copy[field] = headline
+    assert not text_errors(**copy)
+
+
+@pytest.mark.parametrize('copy', [
+    '參與者登入時', '出席社群晚宴時', '修正登入問題的時候',
+    '活動開始之前', '版本發布之後', '參與者建議的話', '修正錯誤以及',
+    '部署更新並且', 'The update works when',
+])
+def test_incomplete_time_and_joining_clauses_still_fail(copy):
+    assert 'summary:incomplete_clause' in text_errors('Update', copy)
+
+
+def closed_response(summary, language='zh-TW', *, cancelled=False):
+    c = candidate('9/19 工作坊為閉門活動' + ('，活動取消' if cancelled else ''))
+    bundle = evidence_bundle(c, NOW)
+    bundle['metadata']['story_update'] = cancelled
+    data = response()
+    for edition in data['translations'].values():
+        edition['headline'] = 'Workshop update'
+        edition['summary'] = ('Source: workshop cancelled' if cancelled
+                              else 'Source: invitation-only workshop')
+    data['translations'][language]['summary'] = summary
+    return data, bundle
+
+
+@pytest.mark.parametrize('summary', [
+    '來源指出工作坊為閉門活動，不開放報名',
+    '來源指出工作坊為閉門活動，未開放報名',
+    '來源指出工作坊為閉門活動，沒有開放報名',
+    '來源指出工作坊為閉門活動，尚未開放報名',
+    '來源指出工作坊為閉門活動，不再開放報名',
+    '來源指出工作坊為閉門活動，不 歡迎報名',
+    '來源指出工作坊為閉門活動，不歡迎報名',
+    '來源指出工作坊為閉門活動，不能自由參加',
+    '來源指出工作坊為閉門活動，並非人人都能參加',
+])
+def test_closed_event_accepts_negated_chinese_invitations(summary):
+    data, bundle = closed_response(summary)
+    valid, errors = validate_response(data, bundle)
+    assert set(valid) == set(LANGUAGES)
+    assert errors == []
+
+
+@pytest.mark.parametrize('summary', [
+    'Source: not open registration', 'Source: no open registration',
+    'Source: not currently open to all', 'Source: no longer open to everyone',
+    "Source: it isn't open to everyone", 'Source: it isn’t open to everyone',
+    'Source: do not register now', 'Source: never register now',
+])
+def test_closed_event_accepts_negated_english_invitations(summary):
+    data, bundle = closed_response(summary, 'en')
+    valid, errors = validate_response(data, bundle)
+    assert set(valid) == set(LANGUAGES)
+    assert errors == []
+
+
+@pytest.mark.parametrize('language,summary', [
+    ('zh-TW', '來源指出活動取消，不開放報名'),
+    ('zh-TW', '來源指出活動取消，沒有開放報名'),
+    ('zh-TW', '來源指出活動取消，不能自由參加'),
+    ('en', 'Source: workshop cancelled, not open registration'),
+    ('en', 'Source: workshop cancelled; do not register now'),
+])
+def test_cancellation_correction_accepts_negated_invitation(language, summary):
+    data, bundle = closed_response(summary, language, cancelled=True)
+    valid, errors = validate_response(data, bundle)
+    assert set(valid) == set(LANGUAGES)
+    assert errors == []
+
+
+@pytest.mark.parametrize('language,summary', [
+    ('zh-TW', '來源指出開放報名'), ('zh-TW', '來源指出歡迎報名'),
+    ('zh-TW', '來源指出自由參加'), ('zh-TW', '來源指出人人都能參加'),
+    ('zh-TW', '來源指出不開放報名，但歡迎報名'),
+    ('zh-TW', '來源指出不僅開放報名'),
+    ('en', 'Source: open registration'), ('en', 'Source: open to all'),
+    ('en', 'Source: open to everyone'), ('en', 'Source: register now'),
+    ('en', 'Source: not open registration, but register now'),
+    ('en', 'Source: not only open registration'),
+])
+@pytest.mark.parametrize('cancelled', [False, True])
+def test_true_invitation_is_rejected_even_after_a_negated_one(language, summary, cancelled):
+    if cancelled:
+        summary += ' cancelled'
+    data, bundle = closed_response(summary, language, cancelled=cancelled)
+    valid, errors = validate_response(data, bundle)
+    assert language not in valid
+    assert language + ':unfounded_open_invitation' in errors
+    if cancelled:
+        assert language + ':correction_must_preserve_cancellation_and_attribution' in errors
+
+
+def test_closed_event_fallback_accepts_complete_negated_source_copy():
+    result = write(candidate('這場閉門工作坊不開放報名'), None, NOW)
+    assert not result.needs_review
+    assert '不開放報名' in result.summary
+
+
+def test_writer_does_not_retry_valid_timeout_headline_or_closed_correction():
+    for data, c in [
+        (software_response('e1'), candidate('已合併的 PR 修正登入逾時')),
+        (closed_response('來源指出工作坊為閉門活動，不開放報名')[0],
+         candidate('9/19 工作坊為閉門活動，不開放報名')),
+    ]:
+        if data['event_date'] is None:
+            data['translations']['zh-TW']['headline'] = '討論指出 v2.1 修正登入逾時'
+        llm = Mock()
+        llm.chat_json.return_value = data
+        result = write(c, llm, NOW)
+        assert result.writer_mode == 'llm'
+        assert set(result.translations) == set(LANGUAGES)
+        assert not result.validation_errors
+        assert llm.chat_json.call_count == 1
