@@ -70,6 +70,45 @@ def test_threads_activation_requires_complete_bounded_settings(monkeypatch):
         module.install_configuration()
 
 
+def test_model_overlay_replaces_legacy_model_without_replacing_credentials(monkeypatch):
+    import os
+    from rep0rter.config import Config
+    for name in ('AI_MODEL', 'AI_BASE_URL', 'AI_API_KEY', 'TELEGRAM_BOT_TOKEN'):
+        monkeypatch.setenv(name, '')
+    monkeypatch.delenv('THREADS_ENABLED', raising=False)
+    monkeypatch.setenv('REP0RTER_CONFIG', json.dumps({
+        'AI_MODEL': 'legacy-model', 'AI_BASE_URL': 'https://example.test/v1',
+        'AI_API_KEY': 'private-test', 'TELEGRAM_BOT_TOKEN': 'telegram-test',
+    }))
+    monkeypatch.setenv('AI_MODEL', 'gpt-6-luna')
+    module.install_configuration()
+    assert Config().ai_model == 'gpt-6-luna'
+    assert os.environ['AI_BASE_URL'] == 'https://example.test/v1'
+    assert os.environ['AI_API_KEY'] == 'private-test'
+    assert os.environ['TELEGRAM_BOT_TOKEN'] == 'telegram-test'
+
+
+@pytest.mark.parametrize('override', [None, ''])
+def test_absent_model_overlay_preserves_explicit_secret_model(monkeypatch, override):
+    from rep0rter.config import Config
+    monkeypatch.delenv('THREADS_ENABLED', raising=False)
+    monkeypatch.setenv('REP0RTER_CONFIG', json.dumps({'AI_MODEL': 'custom-model'}))
+    monkeypatch.setenv('AI_MODEL', '')
+    if override is None:
+        monkeypatch.delenv('AI_MODEL')
+    module.install_configuration()
+    assert Config().ai_model == 'custom-model'
+
+
+def test_model_default_and_override_are_evaluated_at_configuration_time(monkeypatch):
+    from rep0rter.config import Config
+    monkeypatch.delenv('AI_MODEL', raising=False)
+    assert Config().ai_model == 'gpt-6-luna'
+    assert not Config().llm_enabled
+    monkeypatch.setenv('AI_MODEL', 'gpt-6-sol')
+    assert Config().ai_model == 'gpt-6-sol'
+
+
 def test_unacknowledged_checkpoint_poisoning_prevents_further_work(tmp_path):
     runtime = module.RunnerRuntime('https://example.test', 'private', tmp_path, 'lease')
     runtime.request = lambda *a: b'{"committed":0}'

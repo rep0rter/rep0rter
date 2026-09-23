@@ -32,6 +32,7 @@
     "crons": []
   },
   "vars": {
+    "AI_MODEL": "gpt-6-luna",
     "REP0RTER_SITE_URL": "https://rep0rter.observe.tw",
     "RUN_ENABLED": "false",
     "RUNNER_ENABLED": "true"

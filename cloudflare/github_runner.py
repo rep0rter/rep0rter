@@ -92,11 +92,14 @@ class RunnerRuntime:
 
 
 def install_configuration():
-    """Add Threads to the existing reporting job without replacing shared secrets."""
+    """Overlay public model and Threads settings without replacing shared secrets."""
+    model_override = os.environ.get('AI_MODEL')
     configuration = json.loads(os.environ['REP0RTER_CONFIG'])
     for key, value in configuration.items():
         if key.startswith(('REP0RTER_', 'TELEGRAM_', 'AI_')) and isinstance(value, str):
             os.environ[key] = value
+    if model_override:
+        os.environ['AI_MODEL'] = model_override
     if 'THREADS_ENABLED' in os.environ:
         enabled = os.environ['THREADS_ENABLED'].lower() in ('1', 'true', 'yes')
         token = os.environ.get('THREADS_ACCESS_TOKEN', '')
@@ -136,6 +139,7 @@ def main():
         success = healthy = False
         try:
             cfg = Config()
+            print(f'AI model: {cfg.ai_model}')
             if args.mode == 'report':
                 from rep0rter.cli import run_once
                 collected, posted = run_once(cfg)

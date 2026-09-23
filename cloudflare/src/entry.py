@@ -70,6 +70,10 @@ class Runtime:
         for key, value in configuration.items():
             if key.startswith(('REP0RTER_', 'TELEGRAM_', 'AI_')) and isinstance(value, str):
                 os.environ[key] = value
+        # Public deployment settings take precedence over legacy secret values.
+        model_override = getattr(env, 'AI_MODEL', None)
+        if model_override:
+            os.environ['AI_MODEL'] = model_override
         os.environ['REP0RTER_SITE_URL'] = getattr(env, 'REP0RTER_SITE_URL', 'https://rep0rter.observe.tw')
         os.environ['REP0RTER_DATA_DIR'] = str(self.root)
 
@@ -167,8 +171,10 @@ class Runtime:
         self.publish_public()
 
     def health(self):
+        from rep0rter.config import Config
         return {'ready': self.meta('imported') == 'true' and self.meta('site_built_at') is not None,
                 'runtime': 'cloudflare-workers', 'source_commit': SOURCE_COMMIT,
+                'ai_model': Config().ai_model,
                 'scheduled': getattr(self.env, 'RUN_ENABLED', 'false') == 'true' or getattr(self.env, 'RUNNER_ENABLED', 'false') == 'true',
                 'scheduler': 'github-actions' if getattr(self.env, 'RUNNER_ENABLED', 'false') == 'true' else 'cloudflare',
                 'last_started': self.meta('last_started'), 'last_finished': self.meta('last_finished'),

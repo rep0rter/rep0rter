@@ -52,6 +52,7 @@ jobs:
       - name: Collect, write and publish with durable checkpoints
         env:
           REP0RTER_CONFIG: ${{ secrets.REP0RTER_CONFIG }}
+          AI_MODEL: gpt-6-luna
           REP0RTER_RUNNER_TOKEN: ${{ secrets.REP0RTER_RUNNER_TOKEN }}
           THREADS_ACCESS_TOKEN: ${{ secrets.REP0RTER_THREADS_ACCESS_TOKEN }}
           THREADS_ENABLED: ${{ vars.REP0RTER_THREADS_ENABLED || '0' }}
