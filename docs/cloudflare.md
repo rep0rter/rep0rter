@@ -43,6 +43,15 @@ secrets `REP0RTER_CONFIG` (the existing application configuration as JSON) and
 `RUNNER_TOKEN` secret. Tokens are sent only in headers. Rotate both copies together.
 `REP0RTER_CONFIG` also remains a Worker secret for account operations.
 
+All writing and translation use `gpt-6-luna`. Local development reads `AI_MODEL`
+from `.env`, with the same default in `Config`. The reporting workflow and both
+Worker configurations explicitly set `AI_MODEL`; these public settings override
+any older model value inside `REP0RTER_CONFIG` without replacing credentials.
+Change the workflow and Worker configurations together when changing models.
+The runner prints its effective model, and `/healthz` includes the Worker's
+effective `ai_model`. GPT-6 Luna supports the existing Chat Completions request
+and JSON text output; no prompt or API endpoint change is needed.
+
 The engine's `Reporter` Durable Object stores database pages and files. The
 separate JavaScript frontend's `PublishedSite` Durable Object atomically switches
 public generations. Withdrawals persist their exclusions ledger and scrub the

@@ -95,7 +95,7 @@ Docker 已包含 Chromium 與 Noto CJK 字型。本機若使用其他字型，�
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | 推播用。bot 要是頻道管理員 |
 | `TELEGRAM_TEST_CHAT_ID` + `REP0RTER_TELEGRAM_TEST=1` | 開發時推到測試頻道 |
 | `REP0RTER_TELEGRAM_LANGUAGE` | 圖片說明語言，`zh-TW`／`ko`／`ja`／`en`；預設英文，缺英文時保留待送並等待補譯，不自動改發中文 |
-| `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | OpenAI 相容端點。沒設就用純文字摘錄 |
+| `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` | OpenAI 相容端點；模型預設為 `gpt-6-luna`。未設定端點或金鑰時使用純文字摘錄 |
 | `REP0RTER_SCORE_THRESHOLD` | 門檻，預設 6。調低會報更多 |
 | `REP0RTER_MAX_ITEMS_PER_RUN` | 每小時最多幾則，預設 5 |
 | `REP0RTER_KEYWORDS` | 逗號分隔，覆蓋內建的活動/徵人/發布關鍵字 |

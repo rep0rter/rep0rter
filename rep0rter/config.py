@@ -87,7 +87,7 @@ class Config:
     # llm (OpenAI-compatible chat completions)
     ai_base_url: str | None = _env("AI_BASE_URL")
     ai_api_key: str | None = _env("AI_API_KEY")
-    ai_model: str | None = _env("AI_MODEL")
+    ai_model: str | None = field(default_factory=lambda: _env("AI_MODEL", "gpt-6-luna"))
     ai_timeout_seconds: int = _env_int("AI_TIMEOUT_SECONDS", 120)
 
     @property
