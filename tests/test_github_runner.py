@@ -11,6 +11,67 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 
 
+@pytest.mark.parametrize('upload_fails', [False, True])
+def test_publication_logs_exact_safe_capacity_before_upload(tmp_path, capsys, upload_fails):
+    import io
+    import zipfile
+    runtime = module.RunnerRuntime('https://example.test', 'PRIVATE-TOKEN', tmp_path, 'PRIVATE-LEASE')
+    runtime.pages = [b'x' * 4096, b'y' * 4096]
+    files = {'site/index.html': b'<html>PRIVATE-CONTENT</html>',
+             'site/feed.xml': b'<rss/>', 'site/cards/private-name.png': b'png' * 100,
+             'image-cache/private-name.bin': b'cached' * 200,
+             'exclusions.json': b'{"private-policy":true}'}
+    for name, data in files.items():
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    captured = {}
+    def request(action, body, content_type):
+        # The evidence must survive the same size rejection it diagnoses.
+        captured['logs'] = capsys.readouterr().out
+        captured['body'] = body
+        assert action == 'publish' and content_type == 'application/zip'
+        if upload_fails:
+            raise RuntimeError('Worker publish failed with HTTP 413')
+    runtime.request = request
+    if upload_fails:
+        with pytest.raises(RuntimeError, match='HTTP 413'):
+            runtime.publish_site(None)
+    else:
+        runtime.publish_site(None)
+    logs = captured['logs']
+    evidence = json.loads(logs.split('Capacity evidence: ', 1)[1].splitlines()[0])
+    assert evidence['usage'] == {
+        'database_bytes': 8192,
+        'zip_bytes': len(captured['body']),
+        'expanded_bytes': sum(map(len, files.values())),
+        'public_asset_bytes': sum(len(data) for name, data in files.items() if name.startswith('site/')),
+        'public_asset_count': 3,
+        'largest_file_bytes': 1200,
+    }
+    with zipfile.ZipFile(io.BytesIO(captured['body'])) as archive:
+        assert {name: archive.read(name) for name in archive.namelist()} == files
+    assert '::warning' not in logs
+    assert all(secret not in logs for secret in ('PRIVATE', 'private-name', 'private-policy', str(tmp_path)))
+
+
+@pytest.mark.parametrize('name', module.CAPACITY_LIMITS)
+def test_capacity_warning_starts_at_eighty_percent_without_changing_limits(name, capsys):
+    limit = module.CAPACITY_LIMITS[name]
+    threshold = (limit * 4 + 4) // 5
+    usage = dict.fromkeys(module.CAPACITY_LIMITS, 0)
+    usage[name] = threshold - 1
+    module.report_capacity(usage)
+    assert '::warning' not in capsys.readouterr().out
+    for size in (threshold, limit + 1):
+        usage[name] = size
+        module.report_capacity(usage)
+        output = capsys.readouterr().out
+        warnings = [line for line in output.splitlines() if line.startswith('::warning')]
+        assert len(warnings) == 1 and f'{name} uses {size} of {limit}' in warnings[0]
+        assert json.loads(output.split('Capacity evidence: ', 1)[1].splitlines()[0])['limits'][name] == limit
+
+
 def test_commits_are_remote_before_return_and_unchanged_pages_are_omitted(tmp_path):
     import base64
     runtime = module.RunnerRuntime('https://example.test', 'private', tmp_path, 'lease')
