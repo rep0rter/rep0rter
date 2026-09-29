@@ -17,7 +17,6 @@ import socket
 import tempfile
 import ssl
 import time
-from datetime import datetime
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
@@ -26,10 +25,11 @@ import urllib3
 from jinja2 import Environment, PackageLoader, select_autoescape
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
-from ..config import TAIPEI, Config
+from ..config import Config
 from ..runtime import services
 from ..slack_text import to_plain
 from ..store import Container, Event, Post
+from .dates import event_date_text
 
 log = logging.getLogger(__name__)
 SIZE = (1200, 630)
@@ -265,7 +265,7 @@ class CardRenderer:
             original = "（來源訊息沒有可顯示的文字 / No source text available）"
         ctx = {"theme": theme, "author": author, "source": source, "channel": channel,
                "original": original[:4000] + ("…" if len(original) > 4000 else ""),
-               "date": datetime.fromtimestamp(event.ts, TAIPEI).strftime("%Y.%m.%d · %H:%M UTC+8"),
+               "date": event_date_text(event, card=True),
                "initial": author.strip()[:1].upper() or "r", "host": host,
                "url": event.url,
                "brand": self.cfg.site_title,
@@ -298,7 +298,7 @@ class CardRenderer:
         channel = container.name if container else event.container_id
         ctx = {"theme": theme, "author": author, "source": source, "channel": channel,
                "headline": translated["headline"].strip(), "summary": translated["summary"].strip(),
-               "date": datetime.fromtimestamp(event.ts, TAIPEI).strftime("%Y.%m.%d · %H:%M UTC+8"),
+               "date": event_date_text(event, card=True),
                "initial": author.strip()[:1].upper() or "r", "host": host, "url": event.url,
                "brand": "rep0rter", "report": True, "owner_submitted": event.meta.get('owner_submitted', False),
                "self_reported": event.meta.get('self_reported', False),

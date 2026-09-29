@@ -26,6 +26,7 @@ from ..store import Store
 from ..topics import classify_topics, localized_topics
 from .. import hashtags
 from .cards import CardRenderer, identity_image
+from .dates import event_date, event_date_text
 
 log = logging.getLogger(__name__)
 env = Environment(loader=PackageLoader("rep0rter", "templates"),
@@ -179,7 +180,8 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
                 "content_warning": event.meta.get('content_warning', ''),
                 "published_local": _fmt_local(post.published_at),
                 "published_rfc822": _fmt_rfc822(post.published_at),
-                "event_local": _fmt_local(event.ts),
+                "event_local": event_date_text(event),
+                "event_iso": event_date(event).isoformat(),
                 "day": datetime.fromtimestamp(post.published_at, TAIPEI).strftime("%Y-%m-%d"),
                 "image": image.relative_to(cfg.site_dir).as_posix(), "image_size": image.stat().st_size,
                 "original_image": image.relative_to(cfg.site_dir).as_posix(),
@@ -211,7 +213,8 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
         timeline = bool(prefix and not detail)
         if timeline:
             page_items = [{**item, 'day': item['event_local'][:10]} for item in
-                          sorted(page_items, key=lambda item: (item['event'].ts, item['post'].id), reverse=True)]
+                          sorted(page_items, key=lambda item: (item['event_local'][:10], item['event'].ts,
+                                                              item['post'].id), reverse=True)]
         days = {}
         for item in page_items:
             days.setdefault(item["day"], []).append(item)

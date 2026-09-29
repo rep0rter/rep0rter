@@ -1,4 +1,5 @@
 import io
+from datetime import datetime
 
 from PIL import Image
 
@@ -65,6 +66,24 @@ def report_post():
     return Post('slack:C:1', 1, 10, '中文標題', '中文摘要', translations={
         'en': {'headline': 'Civic data workshop', 'summary': 'The community is planning a workshop.'},
     })
+
+
+def test_original_and_english_cards_keep_day_only_source_date(tmp_path, monkeypatch):
+    import rep0rter.publishers.cards as cards
+
+    dates = []
+    monkeypatch.setattr(cards, 'identity_image', lambda *_: None)
+    monkeypatch.setattr(CardRenderer, '_render_image',
+                        lambda self, event, ctx, *args, **kwargs: dates.append(ctx['date']))
+    event = example()
+    event.ts = datetime.fromisoformat('2026-09-18T00:00:00+09:00').timestamp()
+    event.meta = {'date_precision': 'day', 'feed_format': 'code4japan-json'}
+    with CardRenderer(Config(data_dir=tmp_path)) as renderer:
+        renderer.render(event, None)
+        renderer.render_report(event, None, report_post())
+        event.meta = {}
+        renderer.render(event, None)
+    assert dates == ['2026.09.18', '2026.09.18', '2026.09.17 · 23:00 UTC+8']
 
 
 def test_report_card_uses_translated_copy_and_clear_attribution(tmp_path, monkeypatch):

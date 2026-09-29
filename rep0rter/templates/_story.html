@@ -16,7 +16,7 @@
       {% if it.event.meta.get('take_part') %}<p class="take-part"><strong>{{ copy.take_part }}</strong> {{ it.event.meta.take_part }}</p>{% endif %}
       {% if it.hashtags %}<nav class="hashtag-list" aria-label="{{ copy.hashtags }}">{% for name in it.hashtags %}<a class="hashtag" href="{{ prefix }}{{ tag_path(name) }}{{ page_name(language) }}" rel="tag">#{{ name }}</a>{% endfor %}</nav>{% endif %}
       <p class="byline"><span class="avatar-initial" aria-hidden="true">{{ (it.event.author_name or it.channel)[:1] }}{% if it.author_avatar %}<img data-author-avatar src="{{ prefix }}{{ it.author_avatar }}" width="29" height="29" loading="lazy" decoding="async" alt="">{% endif %}</span><span>{{ it.event.author_name or it.channel }}</span></p>
-      <p class="meta"><span>{{ copy.published }} <time>{{ it.event_local }}</time></span>
+      <p class="meta"><span>{{ copy.published }} <time datetime="{{ it.event_iso }}">{{ it.event_local }}</time></span>
         {% if it.event.reply_count %}<span aria-label="{{ copy.replies }}: {{ it.event.reply_count }}">{{ ui.icon('chat') }} {{ it.event.reply_count }}</span>{% endif %}
         {% if it.source_url %}<a href="{{ it.source_url }}" rel="noopener">{{ copy.source }} {{ ui.icon('link') }}</a>{% endif %}
       </p>

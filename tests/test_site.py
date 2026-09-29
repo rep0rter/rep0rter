@@ -6,6 +6,7 @@ import json
 import re
 import time
 from dataclasses import replace
+from datetime import datetime
 from urllib.parse import unquote, urljoin, urlsplit
 from xml.etree import ElementTree
 
@@ -882,6 +883,38 @@ def test_batch_timestamps_keep_latest_preview_feed_and_home_window_in_same_order
         assert doc.select_one('[data-preview-post-id]')['data-preview-post-id'] == str(newest.id)
         assert [article['data-post-id'] for article in doc.select('article')] == [str(newest.id)]
         assert ElementTree.parse(cfg.site_dir / feed).findtext('channel/item/guid') == str(newest.id)
+
+
+@pytest.mark.parametrize('metadata,stamp,expected', [
+    ({'date_precision': 'day', 'feed_format': 'code4japan-json'},
+     '2026-09-18T00:00:00+09:00', '2026-09-18'),
+    ({'date_precision': 'day', 'source_date': '2026-09-18', 'date_timezone': 'unspecified'},
+     '2026-09-18T00:00:00+00:00', '2026-09-18'),
+    ({}, '2026-09-18T09:30:00+09:00', '2026-09-18 08:30'),
+])
+def test_source_timelines_preserve_day_precision_and_original_calendar_date(published_site, metadata, stamp, expected):
+    store, cfg, _, entries, _ = published_site
+    post, event = entries[-1]
+    with store.conn:
+        store.conn.execute('UPDATE events SET ts=?, meta=? WHERE id=?',
+                           (datetime.fromisoformat(stamp).timestamp(), json.dumps(metadata), event.id))
+        store.conn.execute('UPDATE events SET ts=? WHERE id=?',
+                           (datetime.fromisoformat('2026-09-17T23:30:00+08:00').timestamp(), entries[0][1].id))
+    site.build(store, cfg)
+
+    for page, _ in EDITIONS.values():
+        home = html(cfg.site_dir / page)
+        article = home.find('article', id=str(post.id))
+        source = html(cfg.site_dir / article.select_one('.channel')['href'])
+        detail = html(cfg.site_dir / 'posts' / str(post.id) / page)
+        for doc in (home, source, detail):
+            shown = doc.find('article', id=str(post.id)).select_one('.meta time')
+            assert shown.get_text() == expected
+            assert shown['datetime'] == (expected if ' ' not in expected else expected.replace(' ', 'T') + ':00+08:00')
+        timeline_article = source.find('article', id=str(post.id))
+        assert timeline_article['data-date'] == '2026-09-18'
+        assert timeline_article.find_parent('section', class_='day').select_one('time')['datetime'] == '2026-09-18'
+        assert [heading.get_text() for heading in source.select('.day-heading time')] == ['2026-09-18', '2026-09-17']
 
 
 def test_source_examples_are_removed_from_every_public_output_after_rebuild(published_site):
