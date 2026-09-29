@@ -211,8 +211,9 @@
             if (persist)
                 writeURL(state);
         };
-        const clearQuery = () => { input.value = ''; update(); input.focus(); };
-        const reset = () => { input.value = ''; setState(defaults); update(); input.focus(); };
+        let composing = false;
+        const clearQuery = () => { composing = false; input.value = ''; update(); input.focus(); };
+        const reset = () => { composing = false; input.value = ''; setState(defaults); update(); input.focus(); };
         form.hidden = false;
         if (filters)
             filters.hidden = false;
@@ -223,12 +224,23 @@
         update(false);
         listen(form, 'submit', event => {
             event.preventDefault();
+            if (composing)
+                return;
             update();
             document.querySelector('#news')?.scrollIntoView({ block: 'start', behavior: 'auto' });
         });
-        listen(input, 'input', () => update());
-        listen(input, 'keydown', event => { if (event.key === 'Escape')
-            clearQuery(); });
+        // Keep the current results stable while an input method builds a candidate.
+        // Escape and Enter belong to the IME until that candidate is committed.
+        listen(input, 'compositionstart', () => { composing = true; });
+        listen(input, 'compositionend', () => { composing = false; update(); });
+        listen(input, 'input', event => { if (!composing && !event.isComposing)
+            update(); });
+        listen(input, 'keydown', event => {
+            if (composing || event.isComposing || event.keyCode === 229)
+                return;
+            if (event.key === 'Escape')
+                clearQuery();
+        });
         listen(clear, 'click', clearQuery);
         Object.values(fields).forEach(field => listen(field, 'change', () => update()));
         listen(document.querySelector('[data-filters-reset]'), 'click', reset);

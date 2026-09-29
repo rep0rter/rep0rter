@@ -263,7 +263,16 @@
     const requested = parseLanguage(new URL(location.href).searchParams.get('lang')) || language;
     change(requested, { history: false });
   });
-  window.addEventListener('pagehide', () => { revision += 1; controller?.abort(); });
+  window.addEventListener('pagehide', () => {
+    revision += 1;
+    controller?.abort();
+    controller = null;
+    document.documentElement.removeAttribute('aria-busy');
+    notice();
+  });
+  // A suspended fetch cannot finish after returning through the back/forward
+  // cache. Reconcile any explicit edition still waiting in the restored URL.
+  window.addEventListener('pageshow', event => { if (event.persisted) initialize(); });
   window.Rep0rterLanguage = Object.freeze({ change, publicURL });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initialize, { once: true });
   else initialize();

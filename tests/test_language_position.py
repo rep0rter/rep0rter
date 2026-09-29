@@ -243,10 +243,31 @@ const source = page();
 source.click();
 source.window.emit('pagehide');
 assert.equal(source.calls[0].init.signal.aborted, true);
+assert.equal(source.root.attributes['aria-busy'], undefined, 'A cached page must not retain a cancelled loading state');
+assert.equal(source.status().hidden, true);
 const before = source.status().textContent;
 source.calls[0].reject(Error('request finished after leaving'));
 await flush();
 assert.equal(source.status().textContent, before);
+''',
+    'cached_return_retries_an_initial_edition_cancelled_by_navigation': r'''
+const source = page({url: 'https://example.test/index.html?lang=KO&q=stars#report'});
+assert.equal(source.calls.length, 1);
+source.window.emit('pagehide');
+assert.equal(source.calls[0].init.signal.aborted, true);
+assert.equal(source.root.attributes['aria-busy'], undefined);
+source.window.emit('pageshow', {persisted:true});
+assert.equal(source.calls.length, 2);
+assert.equal(source.calls[1].url, 'https://example.test/index.ko.html');
+assert.equal(source.root.attributes['aria-busy'], 'true');
+assert.equal(source.trigger.focused, undefined);
+source.calls[0].reject(Error('stale request'));
+await flush();
+assert.equal(source.root.attributes['aria-busy'], 'true');
+source.calls[1].reject(Error('offline'));
+await flush();
+assert.equal(source.root.attributes['aria-busy'], undefined);
+assert.equal(source.location.href, 'https://example.test/index.html?lang=EN&q=stars#report');
 ''',
 }
 

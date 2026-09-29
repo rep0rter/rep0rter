@@ -149,6 +149,35 @@ const afterSort=counts();search('data');assert.deepEqual(counts(),afterSort);
 """)
 
 
+def test_ime_composition_keeps_results_and_url_stable_until_text_is_committed():
+    run_js("""
+search('open');
+const before = visible();
+input.emit('compositionstart');
+input.value = 'unfinished composition';
+input.emit('input', {isComposing: true});
+assert.deepEqual(visible(), before);
+assert.equal(params().get('q'), 'open');
+input.emit('keydown', {key:'Escape', isComposing:true});
+assert.equal(input.value, 'unfinished composition', 'Escape belongs to the input method');
+form.emit('submit', {preventDefault(){}});
+assert.equal(news.scrolled, undefined, 'Committing a candidate must not jump to the results');
+input.value = 'community';
+input.emit('compositionend');
+assert.deepEqual(visible(), ['18', '8']);
+assert.equal(params().get('q'), 'community');
+input.emit('keydown', {key:'Escape', isComposing:false});
+assert.equal(input.value, '');
+assert.equal(visible().length, 5);
+// Some input methods mark only the individual event as composing.
+input.value = 'candidate';
+input.emit('input', {isComposing:true});
+assert.equal(visible().length, 5);
+input.emit('keydown', {key:'Escape', keyCode:229});
+assert.equal(input.value, 'candidate');
+""")
+
+
 def test_language_replacement_disposes_stale_search_listeners_and_rebinds():
     run_js("""
 search('Open');
