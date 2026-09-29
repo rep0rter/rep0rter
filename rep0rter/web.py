@@ -344,12 +344,14 @@ def create_app(cfg: Config | None = None) -> Flask:
 
     @app.post('/auth/logout')
     def logout():
+        language = ui_language()
+        target = reader_return(request.form['return_to']) if 'return_to' in request.form else url_for('submit', lang=language)
         if not cfg.google_login_enabled:
-            return redirect(url_for('submit'), code=303)
+            return redirect(target, code=303)
         check_csrf()
         revoke_session()
         session.clear()
-        return redirect(url_for('submit'), code=303)
+        return redirect(target, code=303)
 
     @app.post('/submit')
     def publish():
