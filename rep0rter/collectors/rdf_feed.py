@@ -20,10 +20,11 @@ def parse(root, feed_url):
     events = []
     for item in root.findall(RSS + 'item'):
         item_base = urljoin(base, item.get(BASE, ''))
-        link = (item.findtext(RSS + 'link') or '').strip()
+        link_element = item.find(RSS + 'link')
+        link = (link_element.text or '').strip() if link_element is not None else ''
         if not link:
             raise ValueError('RSS 1.0 item requires an article link')
-        url = urljoin(item_base, link)
+        url = urljoin(urljoin(item_base, link_element.get(BASE, '')), link)
         external = item.get(RDF + 'about') or url
         if item.get(RDF + 'about'):
             external = urljoin(item_base, external)
