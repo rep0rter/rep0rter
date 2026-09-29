@@ -132,6 +132,7 @@ def ensure_audit(store):
       validation_errors TEXT NOT NULL, evidence_ids TEXT NOT NULL,
       evidence_snapshot TEXT NOT NULL, output TEXT NOT NULL, needs_review INTEGER NOT NULL
     );
+    CREATE INDEX IF NOT EXISTS writer_event_attempt ON writer_audits(event_id,id);
     """)
 
 
