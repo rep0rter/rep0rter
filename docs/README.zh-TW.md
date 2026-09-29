@@ -110,24 +110,20 @@ Docker 已包含 Chromium 與 Noto CJK 字型。本機若使用其他字型，�
 
 ## 部署
 
-`compose.yaml` 包含 `worker` 每小時採集、`maintenance` 本機備份與健康檢查，以及 `web` 用 Caddy 提供
-`data/site/` 的靜態檔在 `127.0.0.1:18090`。公開網址由 Cloudflare tunnel
-轉到這個 port。
-
-Singa 已啟用自動部署：推送到 `main` 並通過 GitHub 測試後，由主機定時器更新。
-修改正式環境 `.env` 時，請依[部署文件](deployment.md#apply-host-environment-changes)
-使用部署控制器的 `--redeploy`，與自動部署共用鎖定、備份及回復流程。
-不要直接執行 `docker compose up`，以免在自動部署期間重建容器。
-
-以下指令僅用於尚未安裝自動部署的新主機：
+正式網站使用原生 Cloudflare Workers，資料保存在 Durable Object SQLite，採集、寫稿、
+圖卡與發布由 GitHub Actions 每小時執行。不要啟用 Containers 或 Worker 原生發布排程。
+完整流程見 [Cloudflare 部署文件](cloudflare.md)。將修正合併至 `main`，等該 commit 的
+**Offline tests** 通過，再從乾淨 checkout 執行：
 
 ```sh
-cp .env.example .env && $EDITOR .env
-docker compose up -d --build
-docker compose logs -f worker
+python3 cloudflare/deploy.py --production
 ```
 
-資料（SQLite 與產出的網站）都在 `./data/`，可以用 `REP0RTER_DATA_HOST_DIR` 改位置。
+部署後須確認公開頁面、`/healthz` 的版本與正式報導 Actions 成功完成。
+本機 `.env` 與 `./data/` 不是正式 Worker 的設定與資料。
+
+舊 Singa 的服務與部署 timer 必須維持停止；只有明確要求復原到 Singa 時，才依
+[復原部署文件](deployment.md) 使用控制器。不要直接用 Compose 指令操作正式服務。
 
 ## 資料來源細節：Slack 存檔
 

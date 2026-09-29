@@ -93,6 +93,21 @@ with sync_playwright() as p:
  page.reload();page.wait_for_function("document.documentElement.lang==='zh-TW'");page.wait_for_timeout(750)
  assert abs(page.evaluate('scrollY')-y)<2,(y,page.evaluate('scrollY'))
  results.append({'delayed_language_oauth_return':'pass','scrollY':y})
+ # Signing out from the reader restores the same position after the redirect.
+ page.route('**/auth/sign-in?*', lambda route: route.fulfill(content_type='text/html', body='''
+  <section data-auth-card><h1 id="login-title">Signed in</h1>
+  <form action="/auth/logout" method="post" data-logout-form>
+  <button type="submit">Sign out</button></form></section>'''))
+ page.locator('[data-sign-in]').click();page.locator('[data-logout-form]').wait_for()
+ logout_y=page.evaluate('scrollY')
+ page.evaluate("document.querySelector('[data-logout-form]').addEventListener('submit', event => event.preventDefault())")
+ page.locator('[data-logout-form] button').click()
+ saved=page.evaluate("JSON.parse(sessionStorage.getItem('rep0rter-login-return'))")
+ assert saved['url']==page.url and abs(saved['y']-logout_y)<2,saved
+ page.unroute('**/auth/sign-in?*')
+ page.reload();page.wait_for_function("document.documentElement.lang==='zh-TW'");page.wait_for_timeout(750)
+ assert abs(page.evaluate('scrollY')-logout_y)<2,(logout_y,page.evaluate('scrollY'))
+ results.append({'reader_logout_restores_scroll':'pass','scrollY':logout_y})
  # Reduced motion and blocked local/session storage remain usable.
  ctx.close();ctx=browser.new_context(reduced_motion='reduce');page=ctx.new_page()
  page.add_init_script("Object.defineProperty(window,'localStorage',{get(){throw new Error('blocked')}});Object.defineProperty(window,'sessionStorage',{get(){throw new Error('blocked')}})")

@@ -21,7 +21,7 @@ from .i18n import LANGUAGES, LANGUAGE_PROMPT_NAMES, detect_language
 from .slack_text import excerpt, to_plain
 from .editorial import Decision, ensure_audit, evaluate, legacy_score, record_decision
 from .writer_contract import (SYSTEM_PROMPT, TRANSLATION_STYLE, TZ, absolute_text, text_errors, text_limits,
-                              write, record_write)
+                              evidence_bundle, write, record_write)
 from .store import Container, Event, Post, Store
 
 log = logging.getLogger(__name__)
@@ -84,7 +84,8 @@ def select_candidates(store: Store, cfg: Config, now: float | None = None, *, li
             continue
         cand = Candidate(event=e, container=container, score=score, reasons=decision.reasons,
                          plain_text=to_plain(e.text, user_names), user_names=user_names, selection_event_id=e.id)
-        replies = store.conn.execute("SELECT * FROM events WHERE parent_id=? ORDER BY ts DESC LIMIT 100", (e.id,)).fetchall()
+        replies = store.conn.execute("SELECT * FROM events WHERE parent_id=? AND ts<=? ORDER BY ts DESC LIMIT 100",
+                                     (e.id, now + 300)).fetchall()
         cand.thread_events = [r for r in (store._row_to_event(row) for row in replies) if _allowed(store, r)]
         cand.thread_excerpts = [f"{r.author_name}: {excerpt(to_plain(r.text, user_names), 120)}" for r in cand.thread_events[:12]]
         picked.append(cand)
@@ -245,6 +246,30 @@ def _record_final_selection(store,cfg,expanded,selected,now):
             record_decision(store,c.event,c.container,cfg,now,decision,True,mode=getattr(cfg,'editorial_mode','shadow'))
 
 
+def _prioritize_writer_candidates(store: Store, candidates: list[Candidate], now: float) -> list[Candidate]:
+    """Try new evidence first, then rotate unchanged held copy oldest attempt first.
+
+    A held high-scoring story must not consume every run's writer budget. Keep
+    score order among new inputs and retain retries without relaxing review.
+    """
+    ensure_audit(store)
+
+    def context(bundle):
+        return {**bundle, "metadata": {key: value for key, value in bundle.get("metadata", {}).items()
+                                       if key != "publication_time"}}
+
+    def priority(candidate):
+        row = store.conn.execute("""SELECT written_at,evidence_snapshot,needs_review FROM writer_audits
+            WHERE event_id=? ORDER BY id DESC LIMIT 1""", (candidate.event.id,)).fetchone()
+        if row and row["needs_review"]:
+            previous = json.loads(row["evidence_snapshot"])
+            if context(previous) == context(evidence_bundle(candidate, now)):
+                return (1, row["written_at"])
+        return (0, 0)
+
+    return sorted(candidates, key=priority)
+
+
 def draft_posts(store: Store, cfg: Config, use_llm: bool = True) -> list[tuple[Candidate, Post]]:
     """Select and write candidates; persist decision/evidence audits, never posts or delivery."""
     llm = LLM(cfg) if (use_llm and cfg.llm_enabled) else None
@@ -254,7 +279,7 @@ def draft_posts(store: Store, cfg: Config, use_llm: bool = True) -> list[tuple[C
     drafts: list[tuple[Candidate, Post]] = []
     from .stories import expand_candidates
     expanded=expand_candidates(store,cfg,select_candidates(store, cfg, now, limit_all=True),now)
-    candidates=expanded[:cfg.max_items_per_run]
+    candidates=_prioritize_writer_candidates(store,expanded,now)[:cfg.max_items_per_run]
     _record_final_selection(store,cfg,expanded,candidates,now)
     for c in candidates:
         if not _allowed(store,c.event) or any(not _allowed(store,e) for e in [*c.evidence_events,*c.thread_events]):

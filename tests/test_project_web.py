@@ -297,6 +297,38 @@ def test_authenticated_card_offers_account_actions_and_logout(web, monkeypatch):
     assert not soup.select_one('form[action="/auth/google"]')
 
 
+def test_reader_logout_returns_to_article_and_revokes_session(web, monkeypatch):
+    client, _ = login(web, monkeypatch)
+    target = '/posts/42/index.ko.html?q=civic#news'
+    response = client.get('/auth/sign-in', query_string={'fragment': '1', 'lang': 'ko', 'return_to': target})
+    data = fields(response)
+    assert data['return_to'] == target
+    assert data['ui_language'] == 'ko'
+    response = client.post('/auth/logout', data=data)
+    assert response.status_code == 303
+    assert response.location == target
+    with client.session_transaction() as state:
+        assert 'login_token' not in state
+    with Store(web[1].db_path) as store:
+        assert store.conn.execute('SELECT COUNT(*) FROM project_sessions').fetchone()[0] == 0
+
+
+@pytest.mark.parametrize('target', ['https://evil.test/', '//evil.test/', '/auth/google', '/posts/../auth/index.html'])
+def test_reader_logout_rejects_unsafe_return(web, monkeypatch, target):
+    client, _ = login(web, monkeypatch)
+    data = fields(client.get('/auth/sign-in'))
+    assert client.post('/auth/logout', data={**data, 'return_to': target}).location == '/'
+
+
+@pytest.mark.parametrize('language', ['en', 'zh-TW', 'ja', 'ko'])
+def test_account_logout_preserves_interface_language(web, monkeypatch, language):
+    client, _ = login(web, monkeypatch)
+    data = fields(client.get('/projects', query_string={'lang': language}))
+    response = client.post('/auth/logout', data=data, follow_redirects=True)
+    assert response.status_code == 200
+    assert BeautifulSoup(response.text, 'html.parser').html['lang'] == language
+
+
 def test_cancelled_login_retains_language_and_reader_return(web):
     client = web[0].test_client()
     data = fields(client.get('/auth/sign-in?lang=ZH&return_to=/index.html?q=test'))

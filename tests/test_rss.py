@@ -231,6 +231,49 @@ def test_bounded_feeds_leave_unused_budget_for_slack_backlog(tmp_path, monkeypat
         assert json.loads(store.get_kv('collector_health'))['healthy']
 
 
+def test_feed_budget_rotates_actual_attempts_and_keeps_deferred_work_visible(tmp_path, monkeypatch):
+    feeds = [f'https://example.test/feed-{n}.xml' for n in range(3)]
+    with Store(tmp_path / 'db') as store:
+        requested = []
+        for round_number in range(4):
+            now = NOW + round_number*3600
+            monkeypatch.setattr(rss.time, 'time', lambda: now)
+            transport = Mock(headers={})
+            transport.get.return_value = response()
+            metrics = Metrics()
+            session = BudgetSession(transport, metrics, limit=1, interval=0)
+            rss.collect(store, feeds, session, metrics)
+            requested.append(transport.get.call_args.args[0])
+            assert transport.get.call_count == metrics.requests == 1
+            if round_number == 0:
+                assert read_state(store, 'rss-feed:'+feeds[0])['last_success'] == NOW
+                for deferred in feeds[1:]:
+                    state = read_state(store, 'rss-feed:'+deferred)
+                    assert 'last_attempt' not in state and 'last_success' not in state
+                    assert 'budget exhausted' in state['error']
+                    assert 'rss-feed:'+deferred in json.loads(store.get_kv('collector_errors'))
+        assert requested == feeds + feeds[:1]
+        assert store.event_count() == 3
+
+
+def test_failed_feed_attempt_also_rotates_behind_unattempted_feeds(tmp_path, monkeypatch):
+    feeds = [FEED, 'https://example.test/second.xml']
+    with Store(tmp_path / 'db') as store:
+        first = Mock(headers={})
+        first.get.side_effect = RuntimeError('source unavailable')
+        metrics = Metrics()
+        rss.collect(store, feeds, BudgetSession(first, metrics, limit=1, interval=0), metrics)
+        assert read_state(store, CID)['last_attempt'] == NOW
+        assert 'last_attempt' not in read_state(store, 'rss-feed:'+feeds[1])
+        monkeypatch.setattr(rss.time, 'time', lambda: NOW+3600)
+        second = Mock(headers={})
+        second.get.return_value = response()
+        metrics = Metrics()
+        rss.collect(store, feeds, BudgetSession(second, metrics, limit=1, interval=0), metrics)
+        assert second.get.call_args.args[0] == feeds[1]
+        assert read_state(store, 'rss-feed:'+feeds[1])['last_success'] == NOW+3600
+
+
 def test_future_feed_item_waits_for_its_original_publication_time(tmp_path, monkeypatch):
     session = Mock()
     session.get.return_value = response(ITEM.replace('18 Sep', '20 Sep'))

@@ -104,6 +104,23 @@ def anchor_id(event):
     return event.meta.get('canonical_object_id') or event.id
 
 
+def _external_url_identity(event):
+    """Compare declared article identities without changing stored story IDs.
+
+    Remove known campaign parameters only. Business query parameters, paths and
+    fragments can identify different articles and must retain their meaning.
+    """
+    value = event.meta.get('canonical_object_id')
+    if not isinstance(value, str) or canonical_url(value) is None:
+        return None
+    parsed = urlsplit(value)
+    # Stable key sorting keeps repeated values in their original order: some
+    # endpoints use the first/last occurrence to identify the article.
+    query = urlencode([(key, value) for key, value in sorted(parse_qsl(parsed.query, keep_blank_values=True), key=lambda item: item[0])
+                       if not key.lower().startswith('utm_') and key.lower() not in TRACKING])
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, query, parsed.fragment))
+
+
 def _assign(store,event,now):
     prior=store.conn.execute('SELECT story_id FROM story_events WHERE event_id=?',(event.id,)).fetchone()
     if prior:
@@ -129,6 +146,22 @@ def _assign(store,event,now):
     anchor=anchor_id(event)
     original=store.conn.execute('SELECT story_id FROM story_events WHERE event_id=?',(anchor,)).fetchone()
     story=original['story_id'] if original else hashlib.sha256(('event:'+anchor).encode()).hexdigest()[:24]
+    identity = _external_url_identity(event) if anchor == event.meta.get('canonical_object_id') else None
+    if not original and identity:
+        parsed = urlsplit(identity)
+        prefix = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, '', ''))
+        pattern = prefix.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
+        # Search existing memberships, including older published stories. A new
+        # normalized hash would orphan the history of an imported tracking URL.
+        for row in store.conn.execute('''SELECT e.*,se.story_id FROM story_events se JOIN events e ON e.id=se.event_id
+            WHERE json_extract(e.meta,'$.canonical_object_id') LIKE ? ESCAPE '\\'
+            ORDER BY se.observed_at,e.id''', (pattern,)):
+            other = store._row_to_event(row)
+            if (_external_url_identity(other) == identity and event_allowed(store, other)
+                    and not automated(other)):
+                story = row['story_id']
+                original = row
+                break
     if not original and anchor==event.id:
         historical=store.conn.execute('''SELECT sp.story_id,e.* FROM story_posts sp
             JOIN posts p ON p.id=sp.post_id JOIN events e ON e.id=p.event_id
@@ -270,7 +303,8 @@ def expand_candidates(store,cfg,picked,now):
         result.append(c);seen.add(story)
     # Published threads can acquire one material revision even though their root is no longer eligible.
     for row in store.conn.execute('''SELECT e.* FROM events e JOIN posts p ON p.event_id=e.parent_id
-        WHERE e.kind='thread_reply' AND e.ts>=? ORDER BY e.ts ASC''',(now-cfg.max_item_age_hours*3600,)).fetchall():
+        WHERE e.kind='thread_reply' AND e.ts BETWEEN ? AND ? ORDER BY e.ts ASC''',
+        (now-cfg.max_item_age_hours*3600,now+300)).fetchall():
         reply=store._row_to_event(row)
         if not event_allowed(store,reply) or automated(reply) or not UPDATE.search(reply.text): continue
         root=store.get_event(reply.parent_id)
@@ -279,11 +313,19 @@ def expand_candidates(store,cfg,picked,now):
         if story in seen: continue
         history=store.conn.execute('SELECT * FROM story_posts WHERE story_id=? ORDER BY revision DESC',(story,)).fetchall()
         covered={e for p in history for e in json.loads(p['covered_ids'])}
-        reply_rows=store.conn.execute('SELECT * FROM events WHERE parent_id=? ORDER BY ts DESC LIMIT 1000',(root.id,)).fetchall()
-        fresh=sorted((r for r in (store._row_to_event(row) for row in reply_rows) if r.id not in covered and event_allowed(store,r) and not automated(r) and material_reply(r,root)),key=lambda r:(r.ts,r.id))
+        prior_fingerprints = {row['event_id']: row['fingerprint'] for row in store.conn.execute(
+            'SELECT event_id,fingerprint FROM story_events WHERE story_id=?', (story,))}
+        reply_rows=store.conn.execute('SELECT * FROM events WHERE parent_id=? AND ts<=? ORDER BY ts DESC LIMIT 1000',
+                                     (root.id,now+300)).fetchall()
+        # A covered reply may itself be edited with a cancellation or correction.
+        # Coverage tracks IDs, so compare the last published text as well.
+        fresh=sorted((r for r in (store._row_to_event(row) for row in reply_rows)
+                      if (r.id not in covered or prior_fingerprints.get(r.id) != fingerprint(r))
+                      and event_allowed(store,r) and not automated(r) and material_reply(r,root)),key=lambda r:(r.ts,r.id))
         if not fresh or not history: continue
         content='\n'.join(normalized(r) for r in fresh)
         digest=hashlib.sha256((fingerprint(root)+'\n'+content).encode()).hexdigest()
+        if any(p['fingerprint'] == digest for p in history): continue
         revision=max(p['revision'] for p in history)+1
         newest=max(fresh,key=lambda e:e.ts)
         refs=[{'event_id':e.id,'container_id':e.container_id,'author_id':e.author_id,'public':True} for e in [root,*fresh]]

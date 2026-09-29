@@ -92,14 +92,15 @@ def scan(session, channel_id, lower, *, max_pages=30, start_before=None):
 
 
 def refresh_root(session, channel_id, root_ts, public_ids):
-    """One bounded point lookup; never silently substitute a nearby message."""
+    """Bounded JSON/HTML lookup; never silently substitute a nearby message."""
     payload = api._get(session, api.BASE_URL + '/index/getmessage', channel=channel_id,
                        before=str(Decimal(root_ts).to_integral_value(rounding=ROUND_FLOOR) + 1), count=100).json()
     if not isinstance(payload, dict) or not isinstance(payload.get('messages'), list):
         raise RuntimeError('invalid root refresh response')
     matches = [r for r in payload['messages'] if isinstance(r, dict) and str(r.get('ts')) == root_ts]
     if not matches:
-        return None
+        raw = api.root_from_html(session, channel_id, root_ts)
+        return api.to_event(raw, channel_id, public_ids)[0] if raw is not None else None
     raw = matches[0]
     for other in matches[1:]:
         raw = api._merge_duplicate(raw, other)
@@ -264,9 +265,10 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
     older = store.conn.execute("SELECT e.id FROM events e WHERE e.source='slack' AND e.kind='message' AND e.ts<? AND NOT EXISTS(SELECT 1 FROM event_tombstones t WHERE t.event_id=e.id) AND json_extract(e.meta,'$.deleted_at') IS NULL ORDER BY e.last_seen LIMIT 2", (now - 48*3600,)).fetchall()
     due_ids = pending | {r[0] for r in missing} | {r[0] for r in tracked} | {r[0] for r in older}
     root_attempts = 0
-    for root_id in sorted(due_ids, key=lambda root: (root not in pending, queue.get(root, {}).get('attempted_at', 0), queue.get(root, {}).get('requested_at', 0), root)):
+    for root_id in sorted(due_ids, key=lambda root: (queue.get(root, {}).get('policy_excluded', False), root not in pending, queue.get(root, {}).get('attempted_at', 0), queue.get(root, {}).get('requested_at', 0), root)):
         last = queue.get(root_id, {})
-        if now - last.get('attempted_at', 0) < REFRESH_INTERVAL:
+        interval = 7 * 86400 if last.get('policy_excluded') else REFRESH_INTERVAL
+        if now - last.get('attempted_at', 0) < interval:
             continue
         if store.conn.execute('SELECT 1 FROM event_tombstones WHERE event_id=?', (root_id,)).fetchone():
             continue
@@ -281,9 +283,14 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         try:
             root_attempts += 1
             root = refresh_root(session, channel_id, root_ts, public_ids)
-            queue[root_id] = dict(last, attempted_at=now, resolved=root is not None)
+            queue[root_id] = dict(last, attempted_at=now, resolved=root is not None, policy_excluded=False)
             if root is None:
                 queue[root_id]['error'] = 'root refresh did not return exact parent; upstream completeness unknown'
+            elif not _allowed(store, event=root):
+                # An observed bot/opt-out root is intentionally unavailable,
+                # not evidence of an upstream collection gap. Store no content.
+                queue[root_id].update(policy_excluded=True, reply_pending=False)
+                queue[root_id].pop('error', None)
             if root and _allowed(store, event=root):
                 queue[root_id].pop('error', None)
                 queue[root_id]['reply_pending'] = False
@@ -298,7 +305,7 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         except BudgetExceeded:
             break
         except Exception as exc:
-            queue[root_id] = dict(last, attempted_at=now, resolved=False, error=str(exc))
+            queue[root_id] = dict(last, attempted_at=now, resolved=False, policy_excluded=False, error=str(exc))
             reasons[root_id] = str(exc)
             transport_failures += 1
             failures += 1
@@ -313,6 +320,8 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
     missing_ids = {r[0] for r in missing}
     for root_id in due_ids:
         root_state = queue.get(root_id, {})
+        if root_state.get('policy_excluded'):
+            continue
         error = root_state.get('error')
         if not error and root_state.get('reply_pending'):
             error = 'new reply awaiting root refresh'

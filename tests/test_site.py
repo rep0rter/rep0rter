@@ -6,6 +6,7 @@ import json
 import re
 import time
 from dataclasses import replace
+from datetime import datetime
 from urllib.parse import unquote, urljoin, urlsplit
 from xml.etree import ElementTree
 
@@ -820,6 +821,7 @@ def test_facet_metadata_stays_in_removable_articles_and_selects_start_empty(publ
             continue
         filters = doc.select_one('[data-filters]')
         assert filters.has_attr('hidden')
+        assert doc.select_one('#news')['tabindex'] == '-1'
         assert {node['data-filter'] for node in filters.select('[data-filter]')} == {
             'period', 'topic', 'author', 'source', 'sort', 'from', 'to',
         }
@@ -828,6 +830,92 @@ def test_facet_metadata_stays_in_removable_articles_and_selects_start_empty(publ
             options = filters.select(f'[data-filter="{facet}"] option')
             assert len(options) == 1
             assert options[0]['value'] == ''
+
+
+def test_search_finds_all_published_editions_and_participation_without_source_bodies(published_site):
+    store, cfg, _, entries, _ = published_site
+    post, event = entries[-1]
+    participation = 'Join the accessibility mapping sprint'
+    store.upsert_events([replace(event, meta={'take_part': participation,
+                                             'internal_note': 'unpublished-private-note'})])
+    site.build(store, cfg)
+
+    indexes = []
+    for page, _ in EDITIONS.values():
+        doc = html(cfg.site_dir / page)
+        article = doc.find('article', id=str(post.id))
+        index = article['data-search']
+        indexes.append(index)
+        for translation in post.translations.values():
+            assert translation['headline'] in index
+            assert translation['summary'] in index
+        assert participation in index
+        assert event.text not in index
+        assert 'unpublished-private-note' not in index
+        assert not article.select('script, img[onerror]')
+    assert len(set(indexes)) == 1
+
+
+def test_emergency_withdrawal_removes_every_language_from_search_index(published_site):
+    from rep0rter.policy import add_rule, redact
+
+    store, cfg, _, entries, _ = published_site
+    post, event = entries[-1]
+    site.build(store, cfg)
+    add_rule(store, 'event', event.id)
+    redact(store, [event.id])
+
+    for path in cfg.site_dir.rglob('*.html'):
+        indexes = [node['data-search'] for node in html(path).select('[data-search]')]
+        for translation in post.translations.values():
+            assert all(translation['headline'] not in index for index in indexes), path
+            assert all(translation['summary'] not in index for index in indexes), path
+
+
+def test_batch_timestamps_keep_latest_preview_feed_and_home_window_in_same_order(published_site):
+    store, cfg, _, entries, _ = published_site
+    with store.conn:
+        store.conn.execute('UPDATE posts SET published_at=?', (1700000100,))
+    newest = entries[-1][0]
+    site.build(store, cfg, limit=1)
+
+    for page, feed in EDITIONS.values():
+        doc = html(cfg.site_dir / page)
+        assert doc.select_one('[data-preview-post-id]')['data-preview-post-id'] == str(newest.id)
+        assert [article['data-post-id'] for article in doc.select('article')] == [str(newest.id)]
+        assert ElementTree.parse(cfg.site_dir / feed).findtext('channel/item/guid') == str(newest.id)
+
+
+@pytest.mark.parametrize('metadata,stamp,expected', [
+    ({'date_precision': 'day', 'feed_format': 'code4japan-json'},
+     '2026-09-18T00:00:00+09:00', '2026-09-18'),
+    ({'date_precision': 'day', 'source_date': '2026-09-18', 'date_timezone': 'unspecified'},
+     '2026-09-18T00:00:00+00:00', '2026-09-18'),
+    ({}, '2026-09-18T09:30:00+09:00', '2026-09-18 08:30'),
+])
+def test_source_timelines_preserve_day_precision_and_original_calendar_date(published_site, metadata, stamp, expected):
+    store, cfg, _, entries, _ = published_site
+    post, event = entries[-1]
+    with store.conn:
+        store.conn.execute('UPDATE events SET ts=?, meta=? WHERE id=?',
+                           (datetime.fromisoformat(stamp).timestamp(), json.dumps(metadata), event.id))
+        store.conn.execute('UPDATE events SET ts=? WHERE id=?',
+                           (datetime.fromisoformat('2026-09-17T23:30:00+08:00').timestamp(), entries[0][1].id))
+    site.build(store, cfg)
+
+    for page, _ in EDITIONS.values():
+        home = html(cfg.site_dir / page)
+        article = home.find('article', id=str(post.id))
+        source = html(cfg.site_dir / article.select_one('.channel')['href'])
+        detail = html(cfg.site_dir / 'posts' / str(post.id) / page)
+        for doc in (home, source, detail):
+            shown = doc.find('article', id=str(post.id)).select_one('.meta time')
+            assert shown.get_text() == expected
+            assert shown['datetime'] == (expected if ' ' not in expected else expected.replace(' ', 'T') + ':00+08:00')
+        timeline_article = source.find('article', id=str(post.id))
+        assert timeline_article['data-date'] == '2026-09-18'
+        assert timeline_article.find_parent('section', class_='day').select_one('time')['datetime'] == '2026-09-18'
+        assert [heading.get_text() for heading in source.select('.day-heading time')] == ['2026-09-18', '2026-09-17']
 
 
 def test_source_examples_are_removed_from_every_public_output_after_rebuild(published_site):

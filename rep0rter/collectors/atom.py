@@ -41,8 +41,8 @@ def _article_url(entry, base):
     links.sort(key=lambda link: link.get('type', '').split(';', 1)[0].strip()
                not in ('', 'text/html', 'application/xhtml+xml'))
     for link in links:
-        target = urljoin(urljoin(base, link.get(XML_BASE, '')), link.get('href').strip())
         try:
+            target = urljoin(urljoin(base, link.get(XML_BASE, '')), link.get('href').strip())
             return public_url(target)
         except ValueError:
             continue

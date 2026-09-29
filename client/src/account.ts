@@ -159,7 +159,7 @@
     });
     dialog.addEventListener('close', cleanup);
     dialog.addEventListener('submit', event => {
-      if (!(event.target as Element).matches('[data-login-form]')) return;
+      if (!(event.target as Element).matches('[data-login-form], [data-logout-form]')) return;
       try { sessionStorage.setItem(pendingKey, JSON.stringify({ url: location.href, y: scrollY, at: Date.now() })); }
       catch { /* Authentication works with storage blocked. */ }
     });

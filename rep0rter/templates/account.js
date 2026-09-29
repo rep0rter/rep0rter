@@ -198,7 +198,7 @@
         });
         dialog.addEventListener('close', cleanup);
         dialog.addEventListener('submit', event => {
-            if (!event.target.matches('[data-login-form]'))
+            if (!event.target.matches('[data-login-form], [data-logout-form]'))
                 return;
             try {
                 sessionStorage.setItem(pendingKey, JSON.stringify({ url: location.href, y: scrollY, at: Date.now() }));

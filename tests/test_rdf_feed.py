@@ -37,6 +37,21 @@ def test_rdf_date_identity_body_and_dedup(tmp_path):
         assert read_state(store, 'rss-feed:' + FEED)['error'] == ''
 
 
+@pytest.mark.parametrize(('link_base', 'expected'), [
+    ('local/', 'https://example.test/articles/local/one'),
+    ('https://articles.example.test/', 'https://articles.example.test/one'),
+])
+def test_rdf_link_base_is_resolved_without_changing_item_identity(link_base, expected):
+    body = XML.replace(b'<item rdf:about="one">',
+                       b'<item rdf:about="one" xml:base="../articles/">')
+    body = body.replace(b'<link>one</link>',
+                        f'<link xml:base="{link_base}">one</link>'.encode())
+    _, (event,) = rss.parse_feed(body, FEED)
+    assert event.url == expected
+    assert event.meta['canonical_object_id'] == expected
+    assert event.meta['external_id'] == 'https://example.test/articles/one'
+
+
 @pytest.mark.parametrize('body', [
     XML.replace(b'2026-09-18T09:00:00+09:00', b'2026-09-18T09:00:00'),
     XML.replace(b'<link>one</link>', b'<link>javascript:alert(1)</link>'),

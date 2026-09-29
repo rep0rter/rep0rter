@@ -65,7 +65,7 @@
     if (!articles.length) return;
     const days = [...document.querySelectorAll<HTMLElement>('.day')].map((day, order) => {
       const stories = articles.filter(article => day.contains ? day.contains(article.element) : [...day.querySelectorAll('article')].includes(article.element));
-      return { day, order, stories, grid: day.querySelector('.story-grid'), timestamp: Math.max(0, ...stories.map(article => article.timestamp)) };
+      return { day, order, stories, date: stories[0]?.date || '', grid: day.querySelector('.story-grid'), timestamp: Math.max(0, ...stories.map(article => article.timestamp)) };
     });
     let previousSort: string | null = null;
     const dateFormatter = new Intl.DateTimeFormat('en', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -188,7 +188,10 @@
         day.querySelector('.day-count')!.textContent = String(visible);
       });
       if (previousSort !== state.sort) {
-        [...days].sort((a, b) => direction * (a.timestamp - b.timestamp) || a.order - b.order)
+        // Date-only sources keep their published calendar date, even when the
+        // timestamp anchor falls on the previous day in the reader's timezone.
+        [...days].sort((a, b) => direction * ((a.date && b.date ? a.date.localeCompare(b.date) : 0) ||
+          a.timestamp - b.timestamp) || a.order - b.order)
           .forEach(({ day }) => { if (day.parentElement) day.parentElement.append(day); });
         previousSort = state.sort;
       }
@@ -203,8 +206,9 @@
       empty.hidden = count !== 0;
       if (persist) writeURL(state);
     };
-    const clearQuery = () => { input.value = ''; update(); input.focus(); };
-    const reset = () => { input.value = ''; setState(defaults); update(); input.focus(); };
+    let composing = false;
+    const clearQuery = () => { composing = false; input.value = ''; update(); input.focus(); };
+    const reset = () => { composing = false; input.value = ''; setState(defaults); update(); input.focus(); };
     form.hidden = false;
     if (filters) filters.hidden = false;
     readURL();
@@ -213,11 +217,22 @@
     update(false);
     listen(form, 'submit', event => {
       event.preventDefault();
+      if (composing) return;
       update();
-      document.querySelector('#news')?.scrollIntoView({ block: 'start', behavior: 'auto' });
+      const results = document.querySelector<HTMLElement>('#news');
+      // Continue keyboard reading at the results, and release mobile keyboards.
+      results?.focus({ preventScroll: true });
+      results?.scrollIntoView({ block: 'start', behavior: 'auto' });
     });
-    listen(input, 'input', () => update());
-    listen(input, 'keydown', event => { if (event.key === 'Escape') clearQuery(); });
+    // Keep the current results stable while an input method builds a candidate.
+    // Escape and Enter belong to the IME until that candidate is committed.
+    listen(input, 'compositionstart', () => { composing = true; });
+    listen(input, 'compositionend', () => { composing = false; update(); });
+    listen(input, 'input', event => { if (!composing && !(event as InputEvent).isComposing) update(); });
+    listen(input, 'keydown', event => {
+      if (composing || event.isComposing || event.keyCode === 229) return;
+      if (event.key === 'Escape') clearQuery();
+    });
     listen(clear, 'click', clearQuery);
     Object.values(fields).forEach(field => listen(field, 'change', () => update()));
     listen(document.querySelector('[data-filters-reset]'), 'click', reset);

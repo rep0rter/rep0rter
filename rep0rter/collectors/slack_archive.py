@@ -268,6 +268,54 @@ def _merge_duplicate(left: dict, right: dict) -> dict:
     return result
 
 
+def root_from_html(session, channel_id: str, root_ts: str) -> dict | None:
+    """Bounded exact lookup when the JSON endpoint filters a root's subtype.
+
+    The public month page embeds the original Slack JSON, including bot and
+    deletion markers. Never infer a message from nearby text or rounded IDs.
+    """
+    month = datetime.fromtimestamp(float(_timestamp(root_ts)), ARCHIVE_TZ).strftime('%Y-%m')
+    path = f'/index/channel/{channel_id}/{month}'
+    soup = BeautifulSoup(_get(session, BASE_URL + path).text, 'html.parser')
+    feed, nav = soup.select_one('section[role="feed"]'), soup.select_one('nav[role="pagination"]')
+    if feed is None or nav is None:
+        return None
+    active = nav.select('a.nav-link.active')
+    if len(active) != 1 or active[0].get('href') != path:
+        return None
+    matches = []
+    for node in feed.select('.message[id]'):
+        if node.find_parent(class_='message') is not None:
+            continue
+        metadata = node.select_one('.message-time[title]')
+        if metadata is None or metadata.find_parent(class_='message') is not node:
+            continue
+        try:
+            raw = json.loads(metadata['title'])
+            if not isinstance(raw, dict) or str(raw.get('ts')) != root_ts:
+                continue
+            valid_ids = {'ts-' + root_ts, 'ts-' + format(_timestamp(root_ts), '.14g')}
+            if node.get('id') not in valid_ids or (raw.get('thread_ts') and str(raw['thread_ts']) != root_ts):
+                continue
+            author = node.select_one('.user-name[title]')
+            if author is not None and author.find_parent(class_='message') is node:
+                try:
+                    user = json.loads(author['title'])
+                except (ValueError, TypeError):
+                    user = None
+                if isinstance(user, dict) and user.get('id') == raw.get('user'):
+                    raw['user'] = user
+            matches.append(raw)
+        except (ValueError, TypeError, RuntimeError):
+            continue
+    if not matches:
+        return None
+    raw = matches[0]
+    for other in matches[1:]:
+        raw = _merge_duplicate(raw, other)
+    return raw
+
+
 def iter_messages(session: requests.Session, channel_id: str, since: datetime) -> Iterator[dict]:
     """Yield raw messages for a channel, newest first, until older than ``since``."""
     before: str | None = None

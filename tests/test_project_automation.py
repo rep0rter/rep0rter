@@ -126,6 +126,44 @@ def test_oversized_item_does_not_starve_later_news(managed, monkeypatch):
     assert 'Description' in store.conn.execute('SELECT last_error FROM managed_projects').fetchone()[0]
 
 
+@pytest.mark.parametrize('broken', [None, 'invalid', {'id': None}, {'published_at': 'invalid'},
+                                  {'body': {'private': 'data'}}, {'html_url': 123}, {'name': ['invalid']}])
+def test_malformed_release_does_not_starve_valid_news(managed, monkeypatch, broken):
+    store, project_id, values, now = managed
+    malformed = dict(release(1, now + 1), **broken) if isinstance(broken, dict) else broken
+    monkeypatch.setattr(project_sources, 'fetch', lambda url: json.dumps([malformed, release(2, now + 2)]).encode())
+    assert automation.run_due(store, now=now + 3) == 1
+    assert store.recent_posts()[0][0].summary.endswith('/releases/2')
+    assert store.conn.execute('SELECT last_error FROM managed_projects').fetchone()[0] == (
+        'Skipped 1 malformed source entries. Valid updates were still checked.')
+
+
+def test_draft_prerelease_and_unpublished_entries_are_not_reported_as_broken(managed, monkeypatch):
+    store, project_id, values, now = managed
+    rows = [dict(release(1, now + 1), draft=True), dict(release(2, now + 1), prerelease=True),
+            dict(release(3, now + 1), published_at=None), release(4, now + 2)]
+    monkeypatch.setattr(project_sources, 'fetch', lambda url: json.dumps(rows).encode())
+    assert automation.run_due(store, now=now + 3) == 1
+    assert store.conn.execute('SELECT last_error FROM managed_projects').fetchone()[0] == ''
+
+
+def test_malformed_rss_entries_are_visible_while_valid_updates_continue(managed, monkeypatch):
+    from datetime import datetime, timezone
+    from email.utils import format_datetime
+    store, project_id, values, now = managed
+    automation.save(store, 'owner', dict(values, source_kind='rss', source_url='https://example.test/feed.xml'), project_id)
+    date = format_datetime(datetime.fromtimestamp(now + 1, timezone.utc))
+    xml = f'''<rss version="2.0"><channel>
+        <item><link>https://example.test/broken</link><pubDate>invalid</pubDate></item>
+        <item><title>Valid update</title><description>New public data.</description>
+        <link>https://example.test/valid</link><pubDate>{date}</pubDate></item>
+        </channel></rss>'''
+    monkeypatch.setattr(project_sources, 'fetch', lambda url: xml.encode())
+    assert automation.run_due(store, now=now + 2) == 1
+    assert store.recent_posts()[0][0].headline == 'Civic Map: Valid update'
+    assert 'Skipped 1 malformed source entries' in store.conn.execute('SELECT last_error FROM managed_projects').fetchone()[0]
+
+
 def test_post_transaction_rolls_back_source_when_post_insert_fails(managed):
     import sqlite3
     store, project_id, values, now = managed

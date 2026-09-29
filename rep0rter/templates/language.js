@@ -180,14 +180,17 @@
                 rememberLanguage(locale);
             if (history)
                 window.history.replaceState(window.history.state, '', publicURL(location.href, locale));
-            closeMenu(!initial);
+            // Hash navigation also emits popstate in Firefox. Only a deliberate
+            // language choice should move focus back to the language control.
+            closeMenu(!initial && history);
             notice();
             document.documentElement.removeAttribute('aria-busy');
             return;
         }
-        closeMenu(!initial);
+        closeMenu(!initial && history);
         const request = new AbortController();
         controller = request;
+        const timeout = setTimeout(() => request.abort(), 8000);
         notice(messages[language]?.[0] || messages.en[0]);
         document.documentElement.setAttribute('aria-busy', 'true');
         try {
@@ -224,7 +227,7 @@
                 updateLinks();
                 emit('rep0rter:language-applied', { language: locale, animate: false });
                 restore(position);
-                if (!initial)
+                if (!initial && history)
                     document.querySelector('.language-trigger')?.focus({ preventScroll: true });
                 notice();
             }
@@ -239,7 +242,9 @@
             });
         }
         catch (error) {
-            if (token !== revision || (error instanceof Error && error.name === 'AbortError'))
+            // Superseded navigation is silent; an abort of the current request is
+            // the network timeout and must restore a usable, retryable reading page.
+            if (token !== revision)
                 return;
             document.documentElement.removeAttribute('aria-busy');
             notice(messages[language]?.[1] || messages.en[1]);
@@ -247,6 +252,7 @@
                 window.history.replaceState(window.history.state, '', publicURL(location.href, language));
         }
         finally {
+            clearTimeout(timeout);
             if (token === revision)
                 controller = null;
         }
@@ -295,7 +301,17 @@
         const requested = parseLanguage(new URL(location.href).searchParams.get('lang')) || language;
         change(requested, { history: false });
     });
-    window.addEventListener('pagehide', () => { revision += 1; controller?.abort(); });
+    window.addEventListener('pagehide', () => {
+        revision += 1;
+        controller?.abort();
+        controller = null;
+        document.documentElement.removeAttribute('aria-busy');
+        notice();
+    });
+    // A suspended fetch cannot finish after returning through the back/forward
+    // cache. Reconcile any explicit edition still waiting in the restored URL.
+    window.addEventListener('pageshow', event => { if (event.persisted)
+        initialize(); });
     window.Rep0rterLanguage = Object.freeze({ change, publicURL });
     if (document.readyState === 'loading')
         document.addEventListener('DOMContentLoaded', initialize, { once: true });

@@ -108,6 +108,18 @@ def test_self_enclosure_and_unsafe_links_are_not_article_links(link):
         rss.parse_feed(document(entry), FEED)
 
 
+@pytest.mark.parametrize('broken', [
+    '<link href="https://[broken/article"/>',
+    '<link href="one" xml:base="https://[broken/"/>',
+])
+def test_malformed_alternate_does_not_hide_a_valid_article_link(broken):
+    entry = ENTRY.replace('<link href="one" xml:base="local/"/>',
+                          broken + '<link href="one" xml:base="local/"/>')
+    _, (event,) = rss.parse_feed(document(entry), FEED)
+    assert event.url == 'https://example.test/articles/local/one'
+    assert eligible(event)
+
+
 def test_collector_stores_atom_and_deduplicates_without_secondary_requests(tmp_path, monkeypatch):
     monkeypatch.setattr(rss.time, 'time', lambda: iso_date('2026-09-19T12:00:00Z'))
     session = Mock()

@@ -26,6 +26,7 @@ from ..store import Store
 from ..topics import classify_topics, localized_topics
 from .. import hashtags
 from .cards import CardRenderer, identity_image
+from .dates import event_date, event_date_text
 
 log = logging.getLogger(__name__)
 env = Environment(loader=PackageLoader("rep0rter", "templates"),
@@ -121,12 +122,28 @@ def _display_text(post, language):
     return post_text(post, language)
 
 
+def _search_text(post, event, source_label, tags):
+    """Keep published wording searchable when readers change their edition."""
+    parts = [source_label, event.author_name, *tags]
+    for language in LANGUAGES:
+        headline, summary, _ = _display_text(post, language)
+        parts.extend((headline, summary))
+    participation = event.meta.get('take_part')
+    if isinstance(participation, str):
+        parts.append(participation)
+    # Index only wording already shown by the reader, not complete source bodies
+    # or arbitrary metadata. Shared translations/fallbacks need appear only once.
+    return ' '.join(dict.fromkeys(part.strip() for part in parts
+                                   if isinstance(part, str) and part.strip()))
+
+
 def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
     cfg.ensure_dirs()
     # Homepage is bounded; permanent pages survive falling out of that window.
     all_rows = store.recent_posts(limit=-1)
     examples = [row for row in all_rows if 'source_example' in row[0].reasons]
-    rows = [row for row in all_rows if 'source_example' not in row[0].reasons]
+    rows = sorted((row for row in all_rows if 'source_example' not in row[0].reasons),
+                  key=lambda row: (row[0].published_at, row[0].id), reverse=True)
     visible_post_ids = {post.id for post, _, _ in rows}
     # Historical examples must not leak through another report's revision/source links.
     example_urls = {event.url for _, event, _ in examples} - {event.url for _, event, _ in rows}
@@ -151,17 +168,20 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
             filters = _filter_metadata(event, container)
             original = to_plain(event.text, names) if event.source == "slack" else plain_text(event)
             source_path = f"sources/{filters['filter_source']}/"
+            source_label = ('#' if event.source == 'slack' else '') + (container.name if container else event.container_id)
+            story_tags = hashtags.for_story(event, container, original)
             items.append({
                 "post": post, "event": event, "container": container, **filters,
                 "author_avatar": _author_avatar(event, cfg),
                 "channel": container.name if container else event.container_id,
-                "source_label": ('#' if event.source == 'slack' else '') + (container.name if container else event.container_id),
+                "source_label": source_label,
                 "source_url": _safe_url(event.url),
                 "story": story,
                 "content_warning": event.meta.get('content_warning', ''),
                 "published_local": _fmt_local(post.published_at),
                 "published_rfc822": _fmt_rfc822(post.published_at),
-                "event_local": _fmt_local(event.ts),
+                "event_local": event_date_text(event),
+                "event_iso": event_date(event).isoformat(),
                 "day": datetime.fromtimestamp(post.published_at, TAIPEI).strftime("%Y-%m-%d"),
                 "image": image.relative_to(cfg.site_dir).as_posix(), "image_size": image.stat().st_size,
                 "original_image": image.relative_to(cfg.site_dir).as_posix(),
@@ -172,7 +192,8 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
                 "original": original,
                 "topic_ids": classify_topics(post.headline, post.summary, original),
                 "source_path": source_path,
-                "hashtags": hashtags.for_story(event, container, original),
+                "hashtags": story_tags,
+                "search_text": _search_text(post, event, source_label, story_tags),
                 "evidence": [url for url in event.meta.get('evidence', []) if isinstance(url, str) and _safe_url(url)],
             })
     now = datetime.now(timezone.utc).timestamp()
@@ -192,7 +213,8 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
         timeline = bool(prefix and not detail)
         if timeline:
             page_items = [{**item, 'day': item['event_local'][:10]} for item in
-                          sorted(page_items, key=lambda item: (item['event'].ts, item['post'].id), reverse=True)]
+                          sorted(page_items, key=lambda item: (item['event_local'][:10], item['event'].ts,
+                                                              item['post'].id), reverse=True)]
         days = {}
         for item in page_items:
             days.setdefault(item["day"], []).append(item)

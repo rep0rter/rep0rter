@@ -12,7 +12,7 @@ SCRIPT = Path(__file__).resolve().parents[1] / "rep0rter/templates/reading.js"
 pytestmark = pytest.mark.skipif(not NODE, reason="Node.js required for browser script regressions")
 
 
-def run_js(checks, query="", duplicate_names=False):
+def run_js(checks, query="", duplicate_names=False, metadata=None):
     harness = r"""
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
@@ -47,8 +47,10 @@ const articles = definitions.map(([id,date,author,source,topic,label,search]) =>
   postId:id,date,timestamp:String(Date.parse(date+'T12:00:00Z')/1000),author,authorLabel:author==='a'?'Alice':'Bob',
   source,sourceLabel:source==='slack'?'Slack':'Mastodon',topics:JSON.stringify([{id:topic,label}]),search,
 }}));
+const metadata = METADATA;
+for (const article of articles) Object.assign(article.dataset, metadata[article.dataset.postId] || {});
 const container = element();
-const days = [...new Set(definitions.map(row=>row[1]))].map(date => {
+const days = [...new Set(articles.map(article=>article.dataset.date))].map(date => {
   const stories=articles.filter(article=>article.dataset.date===date);
   const grid=element({children:[...stories]}), count=element();
   const day=element({date,grid,count,parentElement:container,contains(article){return stories.includes(article);},
@@ -56,7 +58,7 @@ const days = [...new Set(definitions.map(row=>row[1]))].map(date => {
   });
   container.append(day); return day;
 });
-const news=element({scrollIntoView(){this.scrolled=true;}});
+const news=element({focus(options){this.focused=true;assert.equal(options.preventScroll,true);},scrollIntoView(){this.scrolled=true;}});
 const single={'[data-search-form]':form,'[data-search-clear]':clear,'#search-status':status,'[data-no-results]':empty,
  '[data-filters]':filters,'[data-filter-count]':badge,'[data-filter-error]':error,'[data-search-reset]':reset,'[data-filters-reset]':allReset,'#news':news};
 const document = element({documentElement:{lang:'en',dataset:{}}, createElement(){return element();},
@@ -70,7 +72,7 @@ function choose(name,value){controls[name].value=value;controls[name].emit('chan
 function search(value){input.value=value;input.emit('input');}
 function visible(){return articles.filter(article=>!article.hidden).map(article=>article.dataset.postId);}
 function params(){return new URL(window.location.href).searchParams;}
-""".replace("QUERY", json.dumps(query)).replace("SCRIPT", json.dumps(SCRIPT.read_text()))
+""".replace("QUERY", json.dumps(query)).replace("METADATA", json.dumps(metadata or {})).replace("SCRIPT", json.dumps(SCRIPT.read_text()))
     if duplicate_names:
         harness = harness.replace("author==='a'?'Alice':'Bob'", "'Alex'")
     result = subprocess.run([NODE, "-"], input=harness + checks, capture_output=True, text=True)
@@ -89,7 +91,7 @@ choose('author','b');assert.deepEqual(visible(),[]);assert.equal(empty.hidden,fa
 reset.emit('click');assert.equal(visible().length,5);assert.equal(input.focused,true);
 assert.equal(status.hidden,true);assert.equal(badge.hidden,true);assert.equal(params().toString(),'');
 assert.equal(document.documentElement.dataset.searchActive,'false');
-form.emit('submit',{preventDefault(){}});assert.equal(news.scrolled,true);
+form.emit('submit',{preventDefault(){}});assert.equal(news.scrolled,true);assert.equal(news.focused,true);
 """)
 
 
@@ -131,6 +133,22 @@ search('open');assert.equal(params().has('author'),false);assert.equal(params().
 """, "?author=withdrawn-person&topic=withdrawn-topic&source=unknown&period=bad&sort=bad&from=2026-02-30")
 
 
+def test_day_groups_sort_by_source_calendar_dates_before_timestamp_fallback():
+    # A date-only Sep 19 item anchored at midnight Japan time has an earlier
+    # instant than a Sep 18 item published at 23:30 Taipei time.
+    run_js("""
+assert.deepEqual(container.children.map(day=>day.date), ['2026-09-19','2026-09-18','2026-09-12','2026-08-20']);
+choose('sort','oldest');
+assert.deepEqual(container.children.map(day=>day.date), ['2026-08-20','2026-09-12','2026-09-18','2026-09-19']);
+choose('sort','newest');
+assert.deepEqual(container.children.map(day=>day.date), ['2026-09-19','2026-09-18','2026-09-12','2026-08-20']);
+""", metadata={
+        '19': {'timestamp': '1789743600'},
+        '18': {'timestamp': '1789743600'},
+        '13': {'date': '2026-09-18', 'timestamp': '1789745400'},
+    })
+
+
 def test_accounts_with_matching_display_names_are_distinguishable():
     run_js("""
 assert.deepEqual(controls.author.children.map(option=>option.textContent),['Alex · Mastodon / Slack','Alex · Slack']);
@@ -146,6 +164,36 @@ search('open');choose('topic','civic');clear.emit('click');
 assert.deepEqual(counts(),initial);
 choose('sort','oldest');assert.notDeepEqual(counts(),initial);
 const afterSort=counts();search('data');assert.deepEqual(counts(),afterSort);
+""")
+
+
+def test_ime_composition_keeps_results_and_url_stable_until_text_is_committed():
+    run_js("""
+search('open');
+const before = visible();
+input.emit('compositionstart');
+input.value = 'unfinished composition';
+input.emit('input', {isComposing: true});
+assert.deepEqual(visible(), before);
+assert.equal(params().get('q'), 'open');
+input.emit('keydown', {key:'Escape', isComposing:true});
+assert.equal(input.value, 'unfinished composition', 'Escape belongs to the input method');
+form.emit('submit', {preventDefault(){}});
+assert.equal(news.scrolled, undefined, 'Committing a candidate must not jump to the results');
+assert.equal(news.focused, undefined, 'Committing a candidate must keep focus in the input');
+input.value = 'community';
+input.emit('compositionend');
+assert.deepEqual(visible(), ['18', '8']);
+assert.equal(params().get('q'), 'community');
+input.emit('keydown', {key:'Escape', isComposing:false});
+assert.equal(input.value, '');
+assert.equal(visible().length, 5);
+// Some input methods mark only the individual event as composing.
+input.value = 'candidate';
+input.emit('input', {isComposing:true});
+assert.equal(visible().length, 5);
+input.emit('keydown', {key:'Escape', keyCode:229});
+assert.equal(input.value, 'candidate');
 """)
 
 

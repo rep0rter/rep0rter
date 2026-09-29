@@ -309,6 +309,47 @@ def test_automation_reply_and_excluded_reply_never_create_revision(tmp_path):
         assert stories.expand_candidates(store,cfg,[],NOW+1)==[]
 
 
+def test_edited_published_reply_produces_one_material_correction(tmp_path):
+    cfg, store = setup(tmp_path)
+    with store:
+        root = event()
+        store.upsert_events([root])
+        publish(cfg, store, stories.expand_candidates(store, cfg, candidates(root), NOW)[0])
+        reply = replace(event('deadline', '更正：報名截止延期至9/23'),
+                        kind='thread_reply', parent_id=root.id, ts=NOW + 1)
+        store.upsert_events([reply])
+        publish(cfg, store, stories.expand_candidates(store, cfg, [], NOW + 2)[0])
+        edited = replace(reply, text='更正：工作坊取消，所有報名將退款')
+        store.upsert_events([edited])
+        updates = stories.expand_candidates(store, cfg, [], NOW + 3)
+        assert len(updates) == 1
+        assert updates[0].event.meta['story_revision'] == 3
+        assert updates[0].evidence_events[-1].text == edited.text
+        publish(cfg, store, updates[0])
+        assert stories.expand_candidates(store, cfg, [], NOW + 4) == []
+        # Reobserving an older source snapshot cannot duplicate a prior revision.
+        store.upsert_events([reply])
+        assert stories.expand_candidates(store, cfg, [], NOW + 5) == []
+
+
+def test_future_reply_is_not_published_or_used_as_update_evidence(tmp_path):
+    cfg, store = setup(tmp_path)
+    with store:
+        root = event()
+        store.upsert_events([root])
+        publish(cfg, store, stories.expand_candidates(store, cfg, candidates(root), NOW)[0])
+        future = replace(event('future', '更正：工作坊取消'),
+                         kind='thread_reply', parent_id=root.id, ts=NOW + 3600)
+        store.upsert_events([future])
+        assert stories.expand_candidates(store, cfg, [], NOW + 1) == []
+        current = replace(event('current', '新增共筆 https://example.test/notes/current'),
+                          kind='thread_reply', parent_id=root.id, ts=NOW + 2)
+        store.upsert_events([current])
+        updates = stories.expand_candidates(store, cfg, [], NOW + 3)
+        assert len(updates) == 1
+        assert [source.id for source in updates[0].evidence_events] == [root.id, current.id]
+
+
 def test_candidate_source_reservation_rolls_back_atomically_on_failure(tmp_path,monkeypatch):
     cfg,store=setup(tmp_path)
     with store:
@@ -338,6 +379,70 @@ def test_canonical_object_id_keeps_real_source_as_story_anchor(tmp_path):
         root=replace(root,text=TEXT+' 新增參與者共筆 https://example.test/notes/1')
         store.upsert_events([root])
         assert len(stories.expand_candidates(store,cfg,[],NOW+1))==1
+
+
+def feed_event(key, url, text=TEXT):
+    return Event(key, 'rss', 'article', 'rss-feed:https://example.test/'+key, NOW,
+                 text=text, url=url, meta={'canonical_object_id': url, 'visibility': 'public',
+                                         'content_format': 'plain', 'eligible': True})
+
+
+def test_feed_tracking_urls_share_story_and_preserve_all_source_events(tmp_path):
+    cfg, store = setup(tmp_path)
+    with store:
+        originals = [feed_event('rss:first', 'https://example.test/article?utm_source=feed&id=42&fbclid=123'),
+                     feed_event('rss:second', 'https://example.test/article?id=42', 'Different feed excerpt')]
+        store.upsert_events(originals)
+        picked = stories.expand_candidates(store, cfg, candidates(*originals), NOW)
+        assert len(picked) == 1
+        assert store.event_count() == 2
+        assert store.conn.execute('SELECT COUNT(DISTINCT story_id) FROM story_events').fetchone()[0] == 1
+        assert store.get_event(originals[0].id).url == originals[0].url
+
+
+def test_feed_tracking_cleanup_reuses_legacy_published_history(tmp_path):
+    import hashlib
+    cfg, store = setup(tmp_path)
+    with store:
+        root = feed_event('rss:original', 'https://example.test/article?id=42&utm_source=feed')
+        store.upsert_events([root])
+        picked = stories.expand_candidates(store, cfg, candidates(root), NOW)
+        post = publish(cfg, store, picked[0])
+        old_story = picked[0].event.meta['story_id']
+        assert old_story == hashlib.sha256(('event:'+root.url).encode()).hexdigest()[:24]
+        copy = replace(feed_event('rss:copy', 'https://example.test/article?id=42'), ts=NOW+30*86400)
+        store.upsert_events([copy])
+        assert stories.expand_candidates(store, cfg, candidates(copy), NOW+30*86400) == []
+        assert store.conn.execute('SELECT story_id FROM story_events WHERE event_id=?', (copy.id,)).fetchone()[0] == old_story
+        assert store.post_count() == 1
+
+
+def test_feed_identity_keeps_business_queries_and_fragments_separate(tmp_path):
+    cfg, store = setup(tmp_path)
+    with store:
+        roots = [feed_event('rss:'+str(index), url) for index, url in enumerate([
+            'https://example.test/article?id=41&utm_source=feed',
+            'https://example.test/article?id=42&utm_source=feed',
+            'https://example.test/article?id=42#different-article',
+        ])]
+        store.upsert_events(roots)
+        assert len(stories.expand_candidates(store, cfg, candidates(*roots), NOW)) == 3
+
+
+def test_feed_identity_preserves_repeated_business_parameter_order(tmp_path):
+    cfg, store = setup(tmp_path)
+    with store:
+        roots = [feed_event('rss:'+str(index), url) for index, url in enumerate([
+            'https://example.test/article?id=41&id=42&utm_source=feed&lang=en',
+            'https://example.test/article?lang=en&id=41&id=42&utm_source=other',
+            'https://example.test/article?id=42&id=41&lang=en',
+        ])]
+        store.upsert_events(roots)
+        assert len(stories.expand_candidates(store, cfg, candidates(*roots), NOW)) == 2
+        memberships = [store.conn.execute('SELECT story_id FROM story_events WHERE event_id=?',
+                                          (root.id,)).fetchone()[0] for root in roots]
+        assert memberships[0] == memberships[1]
+        assert memberships[0] != memberships[2]
 
 
 def test_thanks_for_registration_with_link_is_not_material_revision(tmp_path):

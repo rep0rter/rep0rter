@@ -12,6 +12,12 @@ identify actual content. Bare URLs, Slack links and Markdown links participate.
 Homepages, Telegram account pages and GitHub repository landing pages do not
 identify an announcement. URLs do not dominate text similarity.
 
+Declared canonical article URLs also match after removing known tracking
+parameters, so feeds linking the same article with different campaigns share a
+story. This explicit identity comparison preserves fragments and content query
+parameters. It attaches to existing history, including older imports, without
+changing stored anchors, story IDs, original source URLs, or published posts.
+
 Different event dates and release versions remain separate stories even when
 they share a registration or latest-release page. An explicit dated correction
 can join its previous announcement. Similarity is conservative; arbitrary
