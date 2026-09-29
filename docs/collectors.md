@@ -18,6 +18,8 @@ GitHub 使用公開無認證 REST API：先確認 repository `private=false`，�
 
 `REP0RTER_FEEDS` 是逗號分隔的公開 RSS 2.0、RSS 1.0、Atom 1.0、JSON Feed 1/1.1 與 Notion URL 允許清單（另支援下述 ODF 與 Code for Japan 入口）；舊 `REP0RTER_RSS_FEEDS` 仍可使用，兩者合併後去重。兩者皆空值時停用。
 每輪每個 feed 只抓一次，沿用共用 request budget、錯誤隔離、Retry-After 退避及退出政策。
+若本輪額度少於 feed 數量，按最後實際嘗試時間輪流優先採集；尚未發出請求的來源保留原嘗試時間，
+下一輪優先補抓，避免設定清單後段永久取不到內容。未完成的 budget debt 仍列入來源錯誤。
 目前加入 Code for Korea 的兩個獨立來源：[新聞公告](https://codefor.kr/boards/news.xml)及[公民科技專案典藏](https://codefor.kr/boards/civic-tech-projects.xml)。兩者無須認證，保留各自的 feed 標題、摘要、原文連結及含時區的 `pubDate`。
 專案典藏是專案介紹清單，`pubDate` 是典藏條目的日期，不能據此推論專案剛推出。加入來源不會自動匯入整個歷史典藏，也不會把舊專案當成新發布。
 事件以 feed URL + GUID 去重；缺 GUID 時使用文章連結。優先讀取 `content:encoded` 並標記 `content_scope=feed_content`；缺少有效內容時讀取 description、標記 `feed_excerpt`。兩者皆轉純文字，不宣稱 feed 必然包含全文，也不自動抓取文章頁。Medium 的 `dc:creator` 保留為作者；更新日期不取代原始 `pubDate`。

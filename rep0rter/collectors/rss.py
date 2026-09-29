@@ -10,7 +10,7 @@ from xml.etree import ElementTree as ET
 
 from ..sources import normalize_text
 from ..store import Container, Event
-from .state import check_response, persist, read_state
+from .state import BudgetExceeded, check_response, persist, read_state
 
 ODF_PROJECTS = 'https://www.odf.or.kr/archive-project'
 ODF_RSS = 'https://www.odf.or.kr/rss'
@@ -114,7 +114,12 @@ def collect(store, feeds, session, metrics, days=2):
     from .registry import record_source_error
 
     total = 0
-    for feed_url in dict.fromkeys(feeds):
+    # A source's share may be smaller than its allowlist. Rotate actual
+    # attempts so trailing feeds are not permanently starved by configuration
+    # order, while stable sorting retains that order for unattempted ties.
+    feeds = sorted(dict.fromkeys(feeds),
+                   key=lambda url: read_state(store, 'rss-feed:' + url).get('last_attempt', 0))
+    for feed_url in feeds:
         cid = 'rss-feed:' + feed_url
         if not container_allowed(store, cid):
             continue
@@ -123,6 +128,7 @@ def collect(store, feeds, session, metrics, days=2):
         if now < state.get('retry_at', 0):
             record_source_error(store, cid, 'waiting for upstream rate limit reset')
             continue
+        requests_before = metrics.requests
         try:
             response = fetch_feed(session, feed_url)
             check_response(response)
@@ -148,7 +154,8 @@ def collect(store, feeds, session, metrics, days=2):
             total += len(events)
             # A rolling feed dropping an item does not prove that it was deleted.
         except Exception as exc:
-            persist(store, cid, dict(state, last_attempt=now, error=str(exc),
+            attempt = {} if isinstance(exc, BudgetExceeded) and metrics.requests == requests_before else {'last_attempt': now}
+            persist(store, cid, dict(state, **attempt, error=str(exc),
                                     retry_at=getattr(exc, 'retry_at', 0)), [], metrics, now)
             record_source_error(store, cid, exc)
     return total
