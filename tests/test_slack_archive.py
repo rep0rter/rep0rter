@@ -201,3 +201,31 @@ def test_root_html_keeps_bot_and_deletion_policy_evidence(monkeypatch):
         monkeypatch.setattr(archive, '_get', Mock(return_value=Mock(text=root_month_html([raw]))))
         found = archive.root_from_html(Mock(), 'C', ts)
         assert found['subtype'] == subtype and found['bot_id'] == 'BOT' and found['app_id'] == 'APP'
+
+
+def test_permalink_mapping_preserves_mixed_exact_and_rounded_anchors(monkeypatch):
+    exact, rounded = '1790520905.589959', '1790682542.850799'
+    html = root_month_html([{'ts': exact}, {'ts': rounded}]).replace(
+        'id="ts-' + rounded + '"', 'id="ts-1790682542.8508"')
+    get = Mock(return_value=Mock(text=html))
+    monkeypatch.setattr(archive, '_get', get)
+    fragments = archive.verified_month_fragments(Mock(), 'C', '2026-09')
+    assert fragments == {'slack:C:' + exact: 'ts-' + exact,
+                         'slack:C:' + rounded: 'ts-1790682542.8508'}
+    assert archive.permalink('C', rounded, fragments['slack:C:' + rounded]).endswith('#ts-1790682542.8508')
+    assert archive.permalink('C', rounded).endswith('#ts-' + rounded)
+    assert get.call_count == 1
+
+
+@pytest.mark.parametrize('html', [
+    root_month_html([{'ts': '1790682542.850799'}], channel='OTHER'),
+    root_month_html([{'ts': '1790682542.850799'}], month='2026-08'),
+    root_month_html([{'ts': '1790682542.850799', 'channel': 'PRIVATE'}]),
+    root_month_html([{'ts': '1790682542.850799'}]).replace('id="ts-1790682542.850799"', 'id="ts-1790682543"'),
+    root_month_html([{'ts': '1790682542.850799'}, {'ts': '1790682542.850798'}], rounded=True),
+    '<div id="ts-1790682542.850799"></div>' + root_month_html([{'ts': '1790682542.850799'}]),
+    '<section role="feed"><div class="message" id="ts-1790682542.8508"></div></section>',
+])
+def test_permalink_mapping_rejects_unverified_or_ambiguous_anchors(monkeypatch, html):
+    monkeypatch.setattr(archive, '_get', Mock(return_value=Mock(text=html)))
+    assert archive.verified_month_fragments(Mock(), 'C', '2026-09') == {}
