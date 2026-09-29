@@ -171,12 +171,14 @@
     if (locale === language) {
       if (!initial && history) rememberLanguage(locale);
       if (history) window.history.replaceState(window.history.state, '', publicURL(location.href, locale));
-      closeMenu(!initial);
+      // Hash navigation also emits popstate in Firefox. Only a deliberate
+      // language choice should move focus back to the language control.
+      closeMenu(!initial && history);
       notice();
       document.documentElement.removeAttribute('aria-busy');
       return;
     }
-    closeMenu(!initial);
+    closeMenu(!initial && history);
     const request = new AbortController();
     controller = request;
     const timeout = setTimeout(() => request.abort(), 8000);
@@ -210,7 +212,7 @@
         updateLinks();
         emit('rep0rter:language-applied', { language: locale, animate: false });
         restore(position);
-        if (!initial) document.querySelector<HTMLElement>('.language-trigger')?.focus({ preventScroll: true });
+        if (!initial && history) document.querySelector<HTMLElement>('.language-trigger')?.focus({ preventScroll: true });
         notice();
       } finally {
         delete root.dataset.languageUpdating;

@@ -167,6 +167,19 @@ for (const options of [{target: '_blank'}, {download: true}]) {
   assert.equal(source.calls.length, 0);
 }
 ''',
+    'hash_and_history_navigation_never_steal_focus_for_language_reconciliation': r'''
+for (const locale of ['EN', 'JA']) {
+  const source = page();
+  source.location.search = '?lang=' + locale;
+  source.location.hash = '#main';
+  const before = source.location.href;
+  source.window.emit('popstate');
+  assert.equal(source.trigger.focused, undefined, 'Native anchor/history focus belongs to the browser');
+  assert.equal(source.location.href, before);
+  assert.equal(source.calls.length, locale === 'JA' ? 1 : 0);
+  assert.equal(source.menu.open, false);
+}
+''',
     'failed_or_invalid_translation_preserves_page_filters_and_offers_retry': r'''
 for (const failure of ['network', 'http', 'invalid-html']) {
   const source = page();
