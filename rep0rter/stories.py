@@ -104,6 +104,21 @@ def anchor_id(event):
     return event.meta.get('canonical_object_id') or event.id
 
 
+def _external_url_identity(event):
+    """Compare declared article identities without changing stored story IDs.
+
+    Remove known campaign parameters only. Business query parameters, paths and
+    fragments can identify different articles and must retain their meaning.
+    """
+    value = event.meta.get('canonical_object_id')
+    if not isinstance(value, str) or canonical_url(value) is None:
+        return None
+    parsed = urlsplit(value)
+    query = urlencode([(key, value) for key, value in sorted(parse_qsl(parsed.query, keep_blank_values=True))
+                       if not key.lower().startswith('utm_') and key.lower() not in TRACKING])
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, query, parsed.fragment))
+
+
 def _assign(store,event,now):
     prior=store.conn.execute('SELECT story_id FROM story_events WHERE event_id=?',(event.id,)).fetchone()
     if prior:
@@ -129,6 +144,22 @@ def _assign(store,event,now):
     anchor=anchor_id(event)
     original=store.conn.execute('SELECT story_id FROM story_events WHERE event_id=?',(anchor,)).fetchone()
     story=original['story_id'] if original else hashlib.sha256(('event:'+anchor).encode()).hexdigest()[:24]
+    identity = _external_url_identity(event) if anchor == event.meta.get('canonical_object_id') else None
+    if not original and identity:
+        parsed = urlsplit(identity)
+        prefix = urlunsplit((parsed.scheme, parsed.netloc, parsed.path, '', ''))
+        pattern = prefix.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
+        # Search existing memberships, including older published stories. A new
+        # normalized hash would orphan the history of an imported tracking URL.
+        for row in store.conn.execute('''SELECT e.*,se.story_id FROM story_events se JOIN events e ON e.id=se.event_id
+            WHERE json_extract(e.meta,'$.canonical_object_id') LIKE ? ESCAPE '\\'
+            ORDER BY se.observed_at,e.id''', (pattern,)):
+            other = store._row_to_event(row)
+            if (_external_url_identity(other) == identity and event_allowed(store, other)
+                    and not automated(other)):
+                story = row['story_id']
+                original = row
+                break
     if not original and anchor==event.id:
         historical=store.conn.execute('''SELECT sp.story_id,e.* FROM story_posts sp
             JOIN posts p ON p.id=sp.post_id JOIN events e ON e.id=p.event_id

@@ -340,6 +340,54 @@ def test_canonical_object_id_keeps_real_source_as_story_anchor(tmp_path):
         assert len(stories.expand_candidates(store,cfg,[],NOW+1))==1
 
 
+def feed_event(key, url, text=TEXT):
+    return Event(key, 'rss', 'article', 'rss-feed:https://example.test/'+key, NOW,
+                 text=text, url=url, meta={'canonical_object_id': url, 'visibility': 'public',
+                                         'content_format': 'plain', 'eligible': True})
+
+
+def test_feed_tracking_urls_share_story_and_preserve_all_source_events(tmp_path):
+    cfg, store = setup(tmp_path)
+    with store:
+        originals = [feed_event('rss:first', 'https://example.test/article?utm_source=feed&id=42&fbclid=123'),
+                     feed_event('rss:second', 'https://example.test/article?id=42', 'Different feed excerpt')]
+        store.upsert_events(originals)
+        picked = stories.expand_candidates(store, cfg, candidates(*originals), NOW)
+        assert len(picked) == 1
+        assert store.event_count() == 2
+        assert store.conn.execute('SELECT COUNT(DISTINCT story_id) FROM story_events').fetchone()[0] == 1
+        assert store.get_event(originals[0].id).url == originals[0].url
+
+
+def test_feed_tracking_cleanup_reuses_legacy_published_history(tmp_path):
+    import hashlib
+    cfg, store = setup(tmp_path)
+    with store:
+        root = feed_event('rss:original', 'https://example.test/article?id=42&utm_source=feed')
+        store.upsert_events([root])
+        picked = stories.expand_candidates(store, cfg, candidates(root), NOW)
+        post = publish(cfg, store, picked[0])
+        old_story = picked[0].event.meta['story_id']
+        assert old_story == hashlib.sha256(('event:'+root.url).encode()).hexdigest()[:24]
+        copy = replace(feed_event('rss:copy', 'https://example.test/article?id=42'), ts=NOW+30*86400)
+        store.upsert_events([copy])
+        assert stories.expand_candidates(store, cfg, candidates(copy), NOW+30*86400) == []
+        assert store.conn.execute('SELECT story_id FROM story_events WHERE event_id=?', (copy.id,)).fetchone()[0] == old_story
+        assert store.post_count() == 1
+
+
+def test_feed_identity_keeps_business_queries_and_fragments_separate(tmp_path):
+    cfg, store = setup(tmp_path)
+    with store:
+        roots = [feed_event('rss:'+str(index), url) for index, url in enumerate([
+            'https://example.test/article?id=41&utm_source=feed',
+            'https://example.test/article?id=42&utm_source=feed',
+            'https://example.test/article?id=42#different-article',
+        ])]
+        store.upsert_events(roots)
+        assert len(stories.expand_candidates(store, cfg, candidates(*roots), NOW)) == 3
+
+
 def test_thanks_for_registration_with_link_is_not_material_revision(tmp_path):
     cfg,store=setup(tmp_path)
     with store:
