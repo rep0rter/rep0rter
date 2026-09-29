@@ -830,6 +830,60 @@ def test_facet_metadata_stays_in_removable_articles_and_selects_start_empty(publ
             assert options[0]['value'] == ''
 
 
+def test_search_finds_all_published_editions_and_participation_without_source_bodies(published_site):
+    store, cfg, _, entries, _ = published_site
+    post, event = entries[-1]
+    participation = 'Join the accessibility mapping sprint'
+    store.upsert_events([replace(event, meta={'take_part': participation,
+                                             'internal_note': 'unpublished-private-note'})])
+    site.build(store, cfg)
+
+    indexes = []
+    for page, _ in EDITIONS.values():
+        doc = html(cfg.site_dir / page)
+        article = doc.find('article', id=str(post.id))
+        index = article['data-search']
+        indexes.append(index)
+        for translation in post.translations.values():
+            assert translation['headline'] in index
+            assert translation['summary'] in index
+        assert participation in index
+        assert event.text not in index
+        assert 'unpublished-private-note' not in index
+        assert not article.select('script, img[onerror]')
+    assert len(set(indexes)) == 1
+
+
+def test_emergency_withdrawal_removes_every_language_from_search_index(published_site):
+    from rep0rter.policy import add_rule, redact
+
+    store, cfg, _, entries, _ = published_site
+    post, event = entries[-1]
+    site.build(store, cfg)
+    add_rule(store, 'event', event.id)
+    redact(store, [event.id])
+
+    for path in cfg.site_dir.rglob('*.html'):
+        indexes = [node['data-search'] for node in html(path).select('[data-search]')]
+        for translation in post.translations.values():
+            assert all(translation['headline'] not in index for index in indexes), path
+            assert all(translation['summary'] not in index for index in indexes), path
+
+
+def test_batch_timestamps_keep_latest_preview_feed_and_home_window_in_same_order(published_site):
+    store, cfg, _, entries, _ = published_site
+    with store.conn:
+        store.conn.execute('UPDATE posts SET published_at=?', (1700000100,))
+    newest = entries[-1][0]
+    site.build(store, cfg, limit=1)
+
+    for page, feed in EDITIONS.values():
+        doc = html(cfg.site_dir / page)
+        assert doc.select_one('[data-preview-post-id]')['data-preview-post-id'] == str(newest.id)
+        assert [article['data-post-id'] for article in doc.select('article')] == [str(newest.id)]
+        assert ElementTree.parse(cfg.site_dir / feed).findtext('channel/item/guid') == str(newest.id)
+
+
 def test_source_examples_are_removed_from_every_public_output_after_rebuild(published_site):
     store, cfg, _, entries, rendered_ids = published_site
     removed, event = entries[-1]

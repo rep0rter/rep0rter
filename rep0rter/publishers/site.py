@@ -121,12 +121,28 @@ def _display_text(post, language):
     return post_text(post, language)
 
 
+def _search_text(post, event, source_label, tags):
+    """Keep published wording searchable when readers change their edition."""
+    parts = [source_label, event.author_name, *tags]
+    for language in LANGUAGES:
+        headline, summary, _ = _display_text(post, language)
+        parts.extend((headline, summary))
+    participation = event.meta.get('take_part')
+    if isinstance(participation, str):
+        parts.append(participation)
+    # Index only wording already shown by the reader, not complete source bodies
+    # or arbitrary metadata. Shared translations/fallbacks need appear only once.
+    return ' '.join(dict.fromkeys(part.strip() for part in parts
+                                   if isinstance(part, str) and part.strip()))
+
+
 def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
     cfg.ensure_dirs()
     # Homepage is bounded; permanent pages survive falling out of that window.
     all_rows = store.recent_posts(limit=-1)
     examples = [row for row in all_rows if 'source_example' in row[0].reasons]
-    rows = [row for row in all_rows if 'source_example' not in row[0].reasons]
+    rows = sorted((row for row in all_rows if 'source_example' not in row[0].reasons),
+                  key=lambda row: (row[0].published_at, row[0].id), reverse=True)
     visible_post_ids = {post.id for post, _, _ in rows}
     # Historical examples must not leak through another report's revision/source links.
     example_urls = {event.url for _, event, _ in examples} - {event.url for _, event, _ in rows}
@@ -151,11 +167,13 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
             filters = _filter_metadata(event, container)
             original = to_plain(event.text, names) if event.source == "slack" else plain_text(event)
             source_path = f"sources/{filters['filter_source']}/"
+            source_label = ('#' if event.source == 'slack' else '') + (container.name if container else event.container_id)
+            story_tags = hashtags.for_story(event, container, original)
             items.append({
                 "post": post, "event": event, "container": container, **filters,
                 "author_avatar": _author_avatar(event, cfg),
                 "channel": container.name if container else event.container_id,
-                "source_label": ('#' if event.source == 'slack' else '') + (container.name if container else event.container_id),
+                "source_label": source_label,
                 "source_url": _safe_url(event.url),
                 "story": story,
                 "content_warning": event.meta.get('content_warning', ''),
@@ -172,7 +190,8 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
                 "original": original,
                 "topic_ids": classify_topics(post.headline, post.summary, original),
                 "source_path": source_path,
-                "hashtags": hashtags.for_story(event, container, original),
+                "hashtags": story_tags,
+                "search_text": _search_text(post, event, source_label, story_tags),
                 "evidence": [url for url in event.meta.get('evidence', []) if isinstance(url, str) and _safe_url(url)],
             })
     now = datetime.now(timezone.utc).timestamp()
