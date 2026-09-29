@@ -114,7 +114,9 @@ def _external_url_identity(event):
     if not isinstance(value, str) or canonical_url(value) is None:
         return None
     parsed = urlsplit(value)
-    query = urlencode([(key, value) for key, value in sorted(parse_qsl(parsed.query, keep_blank_values=True))
+    # Stable key sorting keeps repeated values in their original order: some
+    # endpoints use the first/last occurrence to identify the article.
+    query = urlencode([(key, value) for key, value in sorted(parse_qsl(parsed.query, keep_blank_values=True), key=lambda item: item[0])
                        if not key.lower().startswith('utm_') and key.lower() not in TRACKING])
     return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, query, parsed.fragment))
 

@@ -388,6 +388,22 @@ def test_feed_identity_keeps_business_queries_and_fragments_separate(tmp_path):
         assert len(stories.expand_candidates(store, cfg, candidates(*roots), NOW)) == 3
 
 
+def test_feed_identity_preserves_repeated_business_parameter_order(tmp_path):
+    cfg, store = setup(tmp_path)
+    with store:
+        roots = [feed_event('rss:'+str(index), url) for index, url in enumerate([
+            'https://example.test/article?id=41&id=42&utm_source=feed&lang=en',
+            'https://example.test/article?lang=en&id=41&id=42&utm_source=other',
+            'https://example.test/article?id=42&id=41&lang=en',
+        ])]
+        store.upsert_events(roots)
+        assert len(stories.expand_candidates(store, cfg, candidates(*roots), NOW)) == 2
+        memberships = [store.conn.execute('SELECT story_id FROM story_events WHERE event_id=?',
+                                          (root.id,)).fetchone()[0] for root in roots]
+        assert memberships[0] == memberships[1]
+        assert memberships[0] != memberships[2]
+
+
 def test_thanks_for_registration_with_link_is_not_material_revision(tmp_path):
     cfg,store=setup(tmp_path)
     with store:
