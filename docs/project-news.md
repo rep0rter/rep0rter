@@ -12,7 +12,9 @@ are labeled as owner submissions. They do not create Telegram delivery jobs.
    accounts that will test login.
 2. Register this exact authorized redirect URI for the production site:
    `https://rep0rter.observe.tw/auth/google/callback`.
-3. Set these values in the git-ignored `.env` file:
+3. Set these values in the production engine's private `REP0RTER_CONFIG` JSON
+   secret and the corresponding GitHub Actions secret. For local development,
+   use the git-ignored `.env` file:
 
    ```dotenv
    REP0RTER_SITE_URL=https://rep0rter.observe.tw
@@ -23,16 +25,12 @@ are labeled as owner submissions. They do not create Telegram delivery jobs.
 
    Generate the session secret with
    `python -c 'import secrets; print(secrets.token_urlsafe(48))'`.
-   Keep it consistent across accounts-service processes and restarts.
-4. On Singa, apply the environment through the controller's
-   [`--redeploy` command](deployment.md#apply-host-environment-changes), which
-   recreates services and rebuilds the site under the deployment lock.
-   Only on a new host without automatic deployment, run
-   `docker compose up -d --build` followed by
-   `docker compose exec worker python -m rep0rter build-site`.
-   The `accounts` service handles `/auth/*`, `/projects`, and `/submit`
-   behind Caddy. The worker handles scheduled project updates as part of its
-   existing hourly cycle.
+   Keep it consistent across Worker versions and restarts.
+4. Follow the [native Cloudflare deployment and verification procedure](cloudflare.md).
+   The engine handles `/auth/*`, `/projects`, `/submit`, and `/write`; GitHub
+   Actions processes scheduled project updates. Native Worker cron stays disabled.
+   The former Singa services and deployment timer must remain stopped; its
+   controller is used only for an explicitly requested recovery.
 5. Visit `/projects`, sign in, preview a template, and save the project settings.
 
 See Google's [OpenID Connect setup](https://developers.google.com/identity/openid-connect/openid-connect)
@@ -65,13 +63,10 @@ register the same callback above. Separate consent-screen branding requires a
 separate Cloud project. Download and securely save the new client credentials
 when creating them; Google may not show the client secret again later.
 
-After changing production environment settings on Singa, reload them through
-the controller so services and the site are updated under the deployment lock:
-
-```sh
-python3 ~/.local/share/rep0rter-deploy/deploy.py \
-  --config ~/.local/share/rep0rter-deploy/config.json --redeploy
-```
+Local `.env` changes do not update production. Apply production credential changes
+to the Cloudflare engine and GitHub configuration secrets, preserving unrelated
+settings, then verify the login flow and reporting cycle as described in
+[Cloudflare operations](cloudflare.md). Never print or commit the secret JSON.
 
 Changing a registered Google callback alone does not require restarting the app.
 Allow time for the Console change to propagate, then try signing in again.
@@ -93,8 +88,8 @@ project before disabling credentials if you also want to stop publication.
   they cannot execute code or Jinja expressions.
 - Preview using a sample update. Preview does not save settings or publish.
 - Choose hourly, six-hourly or daily checks, confirm authorization, and enable
-  automatic publishing. These are minimum intervals, processed when the worker
-  next runs; keep the worker interval at one hour or less.
+  automatic publishing. These are minimum intervals, processed when the reporting
+  workflow next runs; GitHub's hourly schedule can be delayed.
 - Uncheck automatic publishing and save to pause. Editing settings or pausing
   during a source fetch prevents that fetched update from using stale settings.
 - Use **Write a one-off post** for a manual announcement.
@@ -165,7 +160,7 @@ python -m rep0rter serve --port 8000
 
 Open `http://localhost:8000/projects`. The local server also serves the generated
 feed. Run `python -m rep0rter loop --interval 3600` separately for automation.
-Production uses Gunicorn through Compose, not Flask's development server.
+Production uses native Cloudflare Workers; this Flask server is for local development.
 
 Offline tests validate signed Google ID tokens with local test keys, request
 forgery defenses, account isolation, source fetching and duplicate-free
@@ -204,4 +199,4 @@ same transactional, account-bound retry protection as project submissions.
 They do not send Telegram messages. Exclusions and emergency withdrawal scrub
 stories, tag discovery and timeline headings from cached generations; rebuilding
 removes empty tag pages. No database migration or extra service is required.
-Caddy sends `/write` to the existing accounts service.
+The Cloudflare frontend forwards `/write` to the engine.
