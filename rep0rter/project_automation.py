@@ -102,29 +102,48 @@ def preview(values):
 
 
 def source_items(project):
+    """Return usable updates and the number of malformed source entries."""
+    items, malformed = [], 0
     if project['source_kind'] == 'github':
         repo = project['source_url']
         rows = json.loads(project_sources.fetch('https://api.github.com/repos/' + repo + '/releases?per_page=30'))
         if not isinstance(rows, list):
             raise ValueError('Invalid GitHub releases response.')
-        return [{'id': str(row['id']), 'title': row.get('name') or row.get('tag_name') or 'New release',
-                 'summary': normalize_text(row.get('body') or '', 'markdown'), 'url': row['html_url'],
-                 'ts': timestamp(row['published_at'])} for row in rows
-                if not row.get('draft') and not row.get('prerelease') and row.get('published_at')]
+        for row in rows:
+            if not isinstance(row, dict):
+                malformed += 1
+                continue
+            if row.get('draft') or row.get('prerelease') or not row.get('published_at'):
+                continue
+            try:
+                identifier = row['id']
+                title = row.get('name') or row.get('tag_name') or 'New release'
+                body = row.get('body') or ''
+                url, published_at = row['html_url'], row['published_at']
+                if (isinstance(identifier, bool) or not isinstance(identifier, (str, int))
+                        or not str(identifier).strip()
+                        or not all(isinstance(value, str) for value in (title, body, url, published_at))):
+                    raise ValueError('Invalid release fields.')
+                items.append({'id': str(identifier), 'title': title,
+                              'summary': normalize_text(body, 'markdown'), 'url': url,
+                              'ts': timestamp(published_at)})
+            except (KeyError, ValueError, TypeError, OverflowError):
+                malformed += 1
+        return items, malformed
     root = ElementTree.fromstring(project_sources.fetch(project['source_url']))
     channel = root.find('channel')
     if root.tag != 'rss' or root.get('version') != '2.0' or channel is None:
         raise ValueError('Source must be an RSS 2.0 feed.')
-    items = []
     for raw in channel.findall('item')[:100]:
         try:
             event = to_event(raw, project['source_url'], project['title'])
         except (ValueError, TypeError):
+            malformed += 1
             continue
         items.append({'id': event.id, 'title': normalize_text(raw.findtext('title') or '', 'html'),
                       'summary': normalize_text(raw.findtext('description') or '', 'html'),
                       'url': event.url, 'ts': event.ts})
-    return items
+    return items, malformed
 
 
 def run_due(store, *, now=None):
@@ -145,7 +164,10 @@ def run_due(store, *, now=None):
                                    (now + project['interval_hours'] * 3600, now, project['id'], project['updated_at']))
             error = ''
             try:
-                items = sorted(source_items(project), key=lambda item: item['ts'])
+                items, malformed = source_items(project)
+                if malformed:
+                    error = f'Skipped {malformed} malformed source entries. Valid updates were still checked.'
+                items.sort(key=lambda item: item['ts'])
                 for item in items:
                     if not project['enabled_at'] <= item['ts'] <= now:
                         continue
