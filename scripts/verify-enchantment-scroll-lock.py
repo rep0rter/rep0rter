@@ -52,6 +52,7 @@ def main():
         def load_preview(current):
             current.goto(args.url, wait_until='networkidle')
             current.wait_for_function('!!window.Rep0rterEnchantment && !!window.Rep0rterScrollLock')
+            current.wait_for_function("!document.documentElement.hasAttribute('data-brand-entering')")
             current.wait_for_timeout(1100)
 
         def fixture():
@@ -134,6 +135,29 @@ def main():
         modal = page.evaluate("const dialog=document.createElement('dialog');dialog.textContent='Modal';document.body.append(dialog);dialog.showModal();Rep0rterEnchantment.playAll();({locked:Rep0rterScrollLock.isLocked(),cells:document.querySelectorAll('.enchantment-cell').length})")
         check(not modal['locked'] and modal['cells'] == 0, 'Modal should suppress background text animation without leaking lock')
         results.append('original visible glyphs/graphemes, accessible source/selection, rapid replay, removal, modal and cleanup')
+        page.close()
+
+        page = fixture()
+        archive = page.evaluate("""() => {
+          const archive = document.createElement('section');
+          archive.style.marginTop = '3000px';
+          archive.innerHTML = '<article class="story-card"><h3>Archived title</h3><p>Archived content</p></article>'.repeat(200);
+          document.body.append(archive);
+          const computed = window.getComputedStyle;
+          let measured = 0;
+          window.getComputedStyle = (element, ...args) => {
+            if (archive.contains(element)) measured += 1;
+            return computed.call(window, element, ...args);
+          };
+          Rep0rterEnchantment.playAll();
+          const letters = [...document.querySelectorAll('.enchantment-letter')].map(element => element.textContent).join('');
+          Rep0rterEnchantment.cancel();
+          window.getComputedStyle = computed;
+          return {measured, letters};
+        }""")
+        check(archive['measured'] == 0, f'Offscreen cards should be pruned before measuring their text: {archive}')
+        check('Archived' not in archive['letters'] and 'Visible' in archive['letters'], 'Pruning must retain visible text only')
+        results.append('long archive skips offscreen card text measurements while preserving visible glyphs')
         page.close()
 
         mobile = browser.new_context(viewport={'width':390, 'height':844}, is_mobile=True, has_touch=True, reduced_motion='no-preference')

@@ -44,6 +44,9 @@
   function play(element: HTMLElement = document.body, reveal: Reveal | null = null): () => void {
     cancel();
     if (!(element instanceof HTMLElement) || !allowed() || selected() || !element.isConnected) return () => {};
+    // A native modal paints in a separate top layer. Avoid preparing hundreds
+    // of background glyphs that cannot be displayed in that coordinate space.
+    if (document.querySelector('dialog:modal')) return () => {};
     const current = revision;
     // Grapheme boundaries are locale independent; an empty document lang is valid.
     const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
@@ -74,8 +77,16 @@
       const headerRect = header?.getBoundingClientRect();
       const styles = new WeakMap();
       const accepted = new WeakMap();
-      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
         acceptNode(node: Node) {
+          if (node instanceof Element) {
+            if (node.matches(excluded)) return NodeFilter.FILTER_REJECT;
+            // Report cards keep their text inside their own bounds. Reject an
+            // offscreen card once instead of measuring every descendant in a
+            // long archive; other elements can have visible overflowing children.
+            if (node.matches('.story-card') && !visibleRect(node.getBoundingClientRect())) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_SKIP;
+          }
           const parent = node.parentElement;
           if (!(node as Text).data.trim() || !parent) return NodeFilter.FILTER_REJECT;
           if (!accepted.has(parent)) {
@@ -150,13 +161,6 @@
         }
       }
       if (!cells.length) { stop(); return stop; }
-      // A transformed modal owns a separate top layer and coordinate space.
-      // Keep it fully readable rather than painting glyphs behind the dialog.
-      const modal = document.querySelector('dialog:modal');
-      if (modal) {
-        stop();
-        return stop;
-      }
       releaseScroll = window.Rep0rterScrollLock?.acquire() || (() => {});
       document.body.append(layer);
       const corrections = cells.map(({ text, rect }) => {
