@@ -47,6 +47,29 @@ def test_same_round_original_share_copy_and_tracking_url_are_one_story(tmp_path)
         assert stories.expand_candidates(store,cfg,candidates(share,copy),NOW+1)==[]
 
 
+def test_ordered_query_values_keep_announcements_separate_but_tracking_copies_merge(tmp_path):
+    cfg, store = setup(tmp_path)
+    first_url = 'https://example.test/workshop?step=a&step=b&group=1'
+    reversed_url = 'https://example.test/workshop?step=b&step=a&group=1'
+    tracking_url = 'https://example.test/workshop?utm_source=chat&group=1&step=a&step=b'
+    assert stories.canonical_url(first_url) != stories.canonical_url(reversed_url)
+    assert stories.canonical_url(first_url) == stories.canonical_url(tracking_url)
+    text = '公民科技資料探索工作坊開放參與 '
+    with store:
+        first = event('first', text + first_url)
+        reversed_steps = event('reversed', text + reversed_url)
+        copy = event('copy', text + tracking_url)
+        store.upsert_events([first, reversed_steps, copy])
+        picked = stories.expand_candidates(store, cfg, candidates(first, reversed_steps, copy), NOW)
+        assert len(picked) == 2
+        for candidate in picked:
+            publish(cfg, store, candidate)
+        memberships = dict(store.conn.execute('SELECT event_id,story_id FROM story_events'))
+        assert memberships[first.id] == memberships[copy.id]
+        assert memberships[first.id] != memberships[reversed_steps.id]
+        assert stories.expand_candidates(store, cfg, candidates(copy, reversed_steps), NOW + 1) == []
+
+
 def test_across_round_copy_and_attributed_share_are_not_revisions(tmp_path):
     cfg,store=setup(tmp_path)
     with store:

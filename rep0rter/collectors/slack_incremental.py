@@ -379,13 +379,24 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
     tracked = store.conn.execute("SELECT e.id FROM events e WHERE e.source='slack' AND e.kind='message' AND e.ts>=? AND NOT EXISTS(SELECT 1 FROM event_tombstones t WHERE t.event_id=e.id) AND json_extract(e.meta,'$.deleted_at') IS NULL ORDER BY e.last_seen LIMIT 100", (now - 48*3600,)).fetchall()
     older = store.conn.execute("SELECT e.id FROM events e WHERE e.source='slack' AND e.kind='message' AND e.ts<? AND NOT EXISTS(SELECT 1 FROM event_tombstones t WHERE t.event_id=e.id) AND json_extract(e.meta,'$.deleted_at') IS NULL ORDER BY e.last_seen LIMIT 2", (now - 48*3600,)).fetchall()
     due_ids = pending | {r[0] for r in missing} | {r[0] for r in tracked} | {r[0] for r in older}
+    missing_ids = {r[0] for r in missing}
     root_attempts = 0
-    for root_id in sorted(due_ids, key=lambda root: (queue.get(root, {}).get('policy_excluded', False), root not in pending, queue.get(root, {}).get('attempted_at', 0), queue.get(root, {}).get('requested_at', 0), root)):
+    urgent_attempts = 0
+    root_backoff = 0
+    root_stop = 'none'
+    # Missing context and failed lookups must precede routine counter refreshes.
+    # Otherwise never-attempted maintenance roots (attempted_at=0) can consume
+    # all four slots before a known gap is revisited, including upgrade retries.
+    for root_id in sorted(due_ids, key=lambda root: (queue.get(root, {}).get('policy_excluded', False), root not in pending,
+            root not in missing_ids and not queue.get(root, {}).get('error'),
+            queue.get(root, {}).get('attempted_at', 0), queue.get(root, {}).get('requested_at', 0), root)):
         last = queue.get(root_id, {})
         interval = 7 * 86400 if last.get('policy_excluded') else REFRESH_INTERVAL
         upgraded_lookup = (last.get('lookup_version', 1) < ROOT_LOOKUP_VERSION
                            and not last.get('resolved') and bool(last.get('error')))
         if not upgraded_lookup and now - last.get('attempted_at', 0) < interval:
+            if not last.get('policy_excluded') and (root_id in missing_ids or last.get('error')):
+                root_backoff += 1
             continue
         if store.conn.execute('SELECT 1 FROM event_tombstones WHERE event_id=?', (root_id,)).fetchone():
             continue
@@ -396,9 +407,11 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         if channel_id not in public_ids or not _allowed(store, container_id='slack:' + channel_id):
             continue
         if root_attempts >= 4 or not session.remaining:
+            root_stop = 'slots' if root_attempts >= 4 else 'budget'
             break
         try:
             root_attempts += 1
+            urgent_attempts += int(root_id in pending or root_id in missing_ids or bool(last.get('error')))
             root = refresh_root(session, channel_id, root_ts, public_ids)
             if root is not None:
                 apply_verified_permalink(root, fragments)
@@ -426,6 +439,7 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
             # In particular, JSON can spend the last request before HTML is
             # reached. Keep the old strategy version until a lookup completes,
             # so budget debt does not consume its one upgrade retry.
+            root_stop = 'budget'
             break
         except Exception as exc:
             queue[root_id] = dict(last, attempted_at=now, resolved=False, policy_excluded=False,
@@ -441,7 +455,6 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
             reasons.setdefault(cid, state['error'])
     # Missing roots, deferred reply refreshes and failed lookups remain gaps
     # during the six-hour backoff or while bounded refresh slots are exhausted.
-    missing_ids = {r[0] for r in missing}
     for root_id in due_ids:
         root_state = queue.get(root_id, {})
         if root_state.get('policy_excluded'):
@@ -462,6 +475,11 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         if root and (root.meta.get('deleted_at') or root.meta.get('content_status') == 'deleted' or not _allowed(store, event=root)):
             continue
         reasons.setdefault(root_id, error)
+    unresolved_roots = sum(root_id in reasons for root_id in due_ids)
+    if unresolved_roots:
+        log.warning('Slack root refresh summary: root_attempts=%d urgent_attempts=%d pending_unknown=%d backoff=%d deferred_budget=%s deferred_cap=%s budget_remaining=%d',
+                    root_attempts, urgent_attempts, unresolved_roots, root_backoff,
+                    root_stop == 'budget', root_stop == 'slots', session.remaining)
     failures = max(failures, len(reasons))
     queue = {k:v for k,v in queue.items() if k in due_ids or now-v.get('attempted_at',0)<7*86400}
     with store.conn:

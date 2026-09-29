@@ -34,7 +34,8 @@ def canonical_url(url):
         if p.scheme not in ('http','https') or not p.hostname or p.username or p.password: return None
         host=p.hostname.lower()
         if p.port and p.port not in (80,443): host+=':'+str(p.port)
-        query=urlencode([(k,v) for k,v in sorted(parse_qsl(p.query,keep_blank_values=True)) if not k.lower().startswith('utm_') and k.lower() not in TRACKING])
+        # Repeated query values can be order-sensitive; only reorder keys.
+        query=urlencode([(k,v) for k,v in sorted(parse_qsl(p.query,keep_blank_values=True), key=lambda item: item[0]) if not k.lower().startswith('utm_') and k.lower() not in TRACKING])
         path=p.path.rstrip('/') or '/'
         # Homepages/account landing pages do not identify an announcement.
         if path=='/' or (host in ('t.me','telegram.me') and path.count('/')==1): return None
