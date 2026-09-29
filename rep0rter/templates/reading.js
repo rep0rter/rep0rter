@@ -230,7 +230,10 @@
             if (composing)
                 return;
             update();
-            document.querySelector('#news')?.scrollIntoView({ block: 'start', behavior: 'auto' });
+            const results = document.querySelector('#news');
+            // Continue keyboard reading at the results, and release mobile keyboards.
+            results?.focus({ preventScroll: true });
+            results?.scrollIntoView({ block: 'start', behavior: 'auto' });
         });
         // Keep the current results stable while an input method builds a candidate.
         // Escape and Enter belong to the IME until that candidate is committed.

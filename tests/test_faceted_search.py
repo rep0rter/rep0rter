@@ -58,7 +58,7 @@ const days = [...new Set(articles.map(article=>article.dataset.date))].map(date 
   });
   container.append(day); return day;
 });
-const news=element({scrollIntoView(){this.scrolled=true;}});
+const news=element({focus(options){this.focused=true;assert.equal(options.preventScroll,true);},scrollIntoView(){this.scrolled=true;}});
 const single={'[data-search-form]':form,'[data-search-clear]':clear,'#search-status':status,'[data-no-results]':empty,
  '[data-filters]':filters,'[data-filter-count]':badge,'[data-filter-error]':error,'[data-search-reset]':reset,'[data-filters-reset]':allReset,'#news':news};
 const document = element({documentElement:{lang:'en',dataset:{}}, createElement(){return element();},
@@ -91,7 +91,7 @@ choose('author','b');assert.deepEqual(visible(),[]);assert.equal(empty.hidden,fa
 reset.emit('click');assert.equal(visible().length,5);assert.equal(input.focused,true);
 assert.equal(status.hidden,true);assert.equal(badge.hidden,true);assert.equal(params().toString(),'');
 assert.equal(document.documentElement.dataset.searchActive,'false');
-form.emit('submit',{preventDefault(){}});assert.equal(news.scrolled,true);
+form.emit('submit',{preventDefault(){}});assert.equal(news.scrolled,true);assert.equal(news.focused,true);
 """)
 
 
@@ -180,6 +180,7 @@ input.emit('keydown', {key:'Escape', isComposing:true});
 assert.equal(input.value, 'unfinished composition', 'Escape belongs to the input method');
 form.emit('submit', {preventDefault(){}});
 assert.equal(news.scrolled, undefined, 'Committing a candidate must not jump to the results');
+assert.equal(news.focused, undefined, 'Committing a candidate must keep focus in the input');
 input.value = 'community';
 input.emit('compositionend');
 assert.deepEqual(visible(), ['18', '8']);

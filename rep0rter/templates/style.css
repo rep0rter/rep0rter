@@ -165,6 +165,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 /* Reading layout keeps the same chronological DOM order at every size. */
 .reading-layout { display: grid; grid-template-columns: minmax(0, 1fr) 264px; align-items: start; gap: 36px; }
 .feed-column { min-width: 0; scroll-margin-top: 28px; }
+.feed-column:focus-visible { outline: 3px solid var(--focus); outline-offset: 8px; }
 .section-heading { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; }
 .section-heading h2 { margin-top: 5px; font-size: 29px; font-weight: 700; }
 .search-bar { position: relative; margin-bottom: 28px; }

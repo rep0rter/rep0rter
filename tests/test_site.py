@@ -821,6 +821,7 @@ def test_facet_metadata_stays_in_removable_articles_and_selects_start_empty(publ
             continue
         filters = doc.select_one('[data-filters]')
         assert filters.has_attr('hidden')
+        assert doc.select_one('#news')['tabindex'] == '-1'
         assert {node['data-filter'] for node in filters.select('[data-filter]')} == {
             'period', 'topic', 'author', 'source', 'sort', 'from', 'to',
         }

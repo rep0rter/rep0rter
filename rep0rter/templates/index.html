@@ -96,7 +96,7 @@
   </section>
   {% endif %}
   <div class="reading-layout{% if detail %} reading-layout--detail{% endif %}">
-    <div class="feed-column" id="news">
+    <div class="feed-column" id="news" tabindex="-1">
       {% if not detail %}
       <div class="section-heading"><div><p class="eyebrow">{{ copy.feed_eyebrow }}</p><h2>{{ copy.browse_by_date }}</h2></div></div>
       <details class="search-filters" data-filters hidden>
