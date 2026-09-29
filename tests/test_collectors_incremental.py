@@ -935,3 +935,25 @@ def test_strategy_upgrade_still_refreshes_at_most_four_roots_per_round(tmp_path,
         inc.collect(store, session=Mock(headers={}))
         assert refresh.call_count == 5
         assert not read_state(store, 'slack:health')['healthy']
+
+
+def test_missing_root_upgrade_precedes_unattempted_routine_refreshes(tmp_path, monkeypatch):
+    now = 1000000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda session: [_scheduled_channel('C', now)])
+    attempted = []
+    def refresh(session, channel, ts, public_ids):
+        attempted.append(ts)
+        return None
+    monkeypatch.setattr(inc, 'refresh_root', refresh)
+    with Store(tmp_path/'db') as store:
+        root_id = _seed_legacy_root_retry(store, now, {
+            'attempted_at': now-60, 'resolved': False, 'error': 'old JSON-only lookup failed'})
+        for stamp in range(990000, 990004):
+            persist(store, 'fixture', {}, [Event('slack:C:'+str(stamp), 'slack', 'message',
+                    'slack:C', stamp, text='Routine root without a context gap')], Metrics(), now-100)
+        inc.collect(store, session=Mock(headers={}))
+        assert attempted[0] == '500000'
+        assert len(attempted) == 4
+        assert read_state(store, 'slack:root_refresh')[root_id]['lookup_version'] == inc.ROOT_LOOKUP_VERSION
+        assert not read_state(store, 'slack:health')['healthy']
