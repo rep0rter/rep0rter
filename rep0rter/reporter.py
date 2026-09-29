@@ -84,7 +84,8 @@ def select_candidates(store: Store, cfg: Config, now: float | None = None, *, li
             continue
         cand = Candidate(event=e, container=container, score=score, reasons=decision.reasons,
                          plain_text=to_plain(e.text, user_names), user_names=user_names, selection_event_id=e.id)
-        replies = store.conn.execute("SELECT * FROM events WHERE parent_id=? ORDER BY ts DESC LIMIT 100", (e.id,)).fetchall()
+        replies = store.conn.execute("SELECT * FROM events WHERE parent_id=? AND ts<=? ORDER BY ts DESC LIMIT 100",
+                                     (e.id, now + 300)).fetchall()
         cand.thread_events = [r for r in (store._row_to_event(row) for row in replies) if _allowed(store, r)]
         cand.thread_excerpts = [f"{r.author_name}: {excerpt(to_plain(r.text, user_names), 120)}" for r in cand.thread_events[:12]]
         picked.append(cand)

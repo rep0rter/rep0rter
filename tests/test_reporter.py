@@ -70,6 +70,23 @@ def test_upsert_keeps_max_engagement(tmp_path):
         assert store.get_event("slack:C1:20").reply_count == 3
 
 
+def test_future_replies_are_excluded_from_candidate_writing_context(tmp_path):
+    cfg = _cfg(tmp_path)
+    now = time.time()
+    with Store(cfg.db_path) as store:
+        root = Event('root', 'slack', 'message', 'slack:C', now,
+                     text='黑客松報名開放中，歡迎一起來參與 https://example.test')
+        current = Event('current', 'slack', 'thread_reply', 'slack:C', now,
+                        text='新增報名截止日期為9/23', parent_id=root.id)
+        future = Event('future', 'slack', 'thread_reply', 'slack:C', now + 3600,
+                       text='更正：活動取消', parent_id=root.id)
+        store.upsert_events([root, current, future])
+        picked = select_candidates(store, cfg, now)
+        assert len(picked) == 1
+        assert [reply.id for reply in picked[0].thread_events] == [current.id]
+        assert all('取消' not in text for text in picked[0].thread_excerpts)
+
+
 def test_unverified_or_missing_source_text_cannot_be_reported_from_replies(tmp_path):
     cfg = _cfg(tmp_path)
     now = time.time()

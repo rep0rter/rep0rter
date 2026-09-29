@@ -309,6 +309,47 @@ def test_automation_reply_and_excluded_reply_never_create_revision(tmp_path):
         assert stories.expand_candidates(store,cfg,[],NOW+1)==[]
 
 
+def test_edited_published_reply_produces_one_material_correction(tmp_path):
+    cfg, store = setup(tmp_path)
+    with store:
+        root = event()
+        store.upsert_events([root])
+        publish(cfg, store, stories.expand_candidates(store, cfg, candidates(root), NOW)[0])
+        reply = replace(event('deadline', '更正：報名截止延期至9/23'),
+                        kind='thread_reply', parent_id=root.id, ts=NOW + 1)
+        store.upsert_events([reply])
+        publish(cfg, store, stories.expand_candidates(store, cfg, [], NOW + 2)[0])
+        edited = replace(reply, text='更正：工作坊取消，所有報名將退款')
+        store.upsert_events([edited])
+        updates = stories.expand_candidates(store, cfg, [], NOW + 3)
+        assert len(updates) == 1
+        assert updates[0].event.meta['story_revision'] == 3
+        assert updates[0].evidence_events[-1].text == edited.text
+        publish(cfg, store, updates[0])
+        assert stories.expand_candidates(store, cfg, [], NOW + 4) == []
+        # Reobserving an older source snapshot cannot duplicate a prior revision.
+        store.upsert_events([reply])
+        assert stories.expand_candidates(store, cfg, [], NOW + 5) == []
+
+
+def test_future_reply_is_not_published_or_used_as_update_evidence(tmp_path):
+    cfg, store = setup(tmp_path)
+    with store:
+        root = event()
+        store.upsert_events([root])
+        publish(cfg, store, stories.expand_candidates(store, cfg, candidates(root), NOW)[0])
+        future = replace(event('future', '更正：工作坊取消'),
+                         kind='thread_reply', parent_id=root.id, ts=NOW + 3600)
+        store.upsert_events([future])
+        assert stories.expand_candidates(store, cfg, [], NOW + 1) == []
+        current = replace(event('current', '新增共筆 https://example.test/notes/current'),
+                          kind='thread_reply', parent_id=root.id, ts=NOW + 2)
+        store.upsert_events([current])
+        updates = stories.expand_candidates(store, cfg, [], NOW + 3)
+        assert len(updates) == 1
+        assert [source.id for source in updates[0].evidence_events] == [root.id, current.id]
+
+
 def test_candidate_source_reservation_rolls_back_atomically_on_failure(tmp_path,monkeypatch):
     cfg,store=setup(tmp_path)
     with store:

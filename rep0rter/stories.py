@@ -303,7 +303,8 @@ def expand_candidates(store,cfg,picked,now):
         result.append(c);seen.add(story)
     # Published threads can acquire one material revision even though their root is no longer eligible.
     for row in store.conn.execute('''SELECT e.* FROM events e JOIN posts p ON p.event_id=e.parent_id
-        WHERE e.kind='thread_reply' AND e.ts>=? ORDER BY e.ts ASC''',(now-cfg.max_item_age_hours*3600,)).fetchall():
+        WHERE e.kind='thread_reply' AND e.ts BETWEEN ? AND ? ORDER BY e.ts ASC''',
+        (now-cfg.max_item_age_hours*3600,now+300)).fetchall():
         reply=store._row_to_event(row)
         if not event_allowed(store,reply) or automated(reply) or not UPDATE.search(reply.text): continue
         root=store.get_event(reply.parent_id)
@@ -312,11 +313,19 @@ def expand_candidates(store,cfg,picked,now):
         if story in seen: continue
         history=store.conn.execute('SELECT * FROM story_posts WHERE story_id=? ORDER BY revision DESC',(story,)).fetchall()
         covered={e for p in history for e in json.loads(p['covered_ids'])}
-        reply_rows=store.conn.execute('SELECT * FROM events WHERE parent_id=? ORDER BY ts DESC LIMIT 1000',(root.id,)).fetchall()
-        fresh=sorted((r for r in (store._row_to_event(row) for row in reply_rows) if r.id not in covered and event_allowed(store,r) and not automated(r) and material_reply(r,root)),key=lambda r:(r.ts,r.id))
+        prior_fingerprints = {row['event_id']: row['fingerprint'] for row in store.conn.execute(
+            'SELECT event_id,fingerprint FROM story_events WHERE story_id=?', (story,))}
+        reply_rows=store.conn.execute('SELECT * FROM events WHERE parent_id=? AND ts<=? ORDER BY ts DESC LIMIT 1000',
+                                     (root.id,now+300)).fetchall()
+        # A covered reply may itself be edited with a cancellation or correction.
+        # Coverage tracks IDs, so compare the last published text as well.
+        fresh=sorted((r for r in (store._row_to_event(row) for row in reply_rows)
+                      if (r.id not in covered or prior_fingerprints.get(r.id) != fingerprint(r))
+                      and event_allowed(store,r) and not automated(r) and material_reply(r,root)),key=lambda r:(r.ts,r.id))
         if not fresh or not history: continue
         content='\n'.join(normalized(r) for r in fresh)
         digest=hashlib.sha256((fingerprint(root)+'\n'+content).encode()).hexdigest()
+        if any(p['fingerprint'] == digest for p in history): continue
         revision=max(p['revision'] for p in history)+1
         newest=max(fresh,key=lambda e:e.ts)
         refs=[{'event_id':e.id,'container_id':e.container_id,'author_id':e.author_id,'public':True} for e in [root,*fresh]]
