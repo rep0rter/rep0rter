@@ -27,6 +27,7 @@ def main():
                 page = context.new_page()
                 page.on('pageerror', lambda error: errors.append(str(error)))
                 page.goto(args.url, wait_until='networkidle')
+                page.wait_for_function("!document.documentElement.hasAttribute('data-brand-entering')")
                 button = page.locator('[data-image-view]').first
                 button.scroll_into_view_if_needed()
                 page.wait_for_timeout(100)
@@ -81,7 +82,7 @@ def main():
                 assert stage.evaluate("e=>getComputedStyle(e).touchAction") == 'pan-y pinch-zoom'
                 assert stage.evaluate("e=>e.dispatchEvent(new Event('touchmove',{bubbles:true,cancelable:true}))"), 'touch gesture cancelled'
                 stage.dispatch_event('pointercancel', {'pointerType': 'touch', 'pointerId': 2})
-                page.wait_for_timeout(650)
+                page.wait_for_function("Math.abs(Number(document.querySelector('[data-viewer-card]').style.getPropertyValue('--card-light'))) < .001")
                 assert abs(float(page.locator('[data-viewer-card]').evaluate("e=>e.style.getPropertyValue('--card-light')"))) < .001
                 # Live theme changes update viewer material as well as page chrome.
                 page.evaluate("document.documentElement.dataset.theme = 'dark'" if theme == 'light' else "document.documentElement.dataset.theme = 'light'")
@@ -95,7 +96,7 @@ def main():
                 page.locator('[data-viewer-caption]').evaluate("e=>e.textContent='Long caption 測試 '.repeat(150)")
                 page.locator('#image-viewer').hover()
                 page.mouse.wheel(0, 500)
-                page.wait_for_timeout(200)
+                page.wait_for_function("document.querySelector('#image-viewer').scrollTop > 0")
                 assert page.locator('#image-viewer').evaluate('e=>e.scrollTop > 0'), 'modal cannot scroll'
                 assert page.evaluate('scrollY') == before['y']
                 results.append(f'{width}x{height} {theme}: geometry, focus, close/reopen, scroll, touch, theme OK')
