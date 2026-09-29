@@ -989,6 +989,7 @@ def test_legacy_notification_noise_disappears_from_all_editions_on_rebuild(publi
     site.build(store, cfg)
     assert event.id not in rendered_ids
     assert not (cfg.site_dir / 'posts' / str(removed.id)).exists()
+    assert '2 events · 1 stories' in html(cfg.site_dir / 'index.html').get_text()
     for path in cfg.site_dir.rglob('*'):
         if path.suffix in {'.html', '.xml'}:
             assert event.url not in path.read_text()
