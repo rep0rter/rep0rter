@@ -274,7 +274,7 @@ def deliver_pending(cfg: Config, store: Store) -> dict[str, str]:
             thread_id = _normalize_thread_id(publish_post(cfg, job['target'], json.loads(job['payload'])['text']))
         except threads.ThreadsRejected as exc:
             outbox.failed(job, str(exc), retry_after=(exc.retry_after or 60) if exc.status == 429 else None)
-            log.warning('Threads job %s explicitly rejected (%s)', job['id'], exc.status)
+            log.warning('Threads job %s explicitly rejected: %s', job['id'], exc)
             if exc.status in (401, 403, 429):
                 break
             continue

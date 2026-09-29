@@ -17,6 +17,16 @@ REP0RTER_THREADS_BATCH_SIZE=10
 
 The token needs `threads_basic` and `threads_content_publish`. Before sending, the worker reads `/me` and requires its ID to match `REP0RTER_THREADS_USER_ID`. It publishes text with `auto_publish_text=true`, then reads the remote post and saves its ID and permalink. The public article URL is the site's saved `posts/<id>/<zh-TW page>` URL. Posts are shortened to 500 UTF-16 units including that URL.
 
+Use the manual **Threads authentication** Actions workflow to check `/me` with the
+configured secret without opening the reporting database or publishing a post.
+It reports only a fixed error category and numeric API codes. A successful check
+verifies the account identity, not content-publishing permission or delivery.
+Authentication rejection during regular reporting also produces an Actions
+warning with these safe details; successful website publication alone is not
+evidence of successful Threads delivery. Never paste tokens into chat or logs.
+Update `REP0RTER_THREADS_ACCESS_TOKEN` through repository Actions secrets when
+reauthorization is needed, then rerun the read-only check.
+
 On each enabled `report`, `run`, or `loop` cycle, the worker scans saved eligible articles for missing Threads jobs. Existing jobs and posts with a recorded Threads delivery are skipped. Each cycle claims at most the configured batch size; more work waits for the next cycle. This includes older articles. **Enabling this feature will begin publishing the backlog**, so review the queue and batch setting first.
 
 Commands:

@@ -14,10 +14,38 @@ MAX_LEN = 500
 
 
 class ThreadsRejected(RuntimeError):
-    def __init__(self, status: int, retry_after: int | None = None):
-        super().__init__(f"Threads rejected delivery (HTTP {status})")
+    def __init__(self, status: int, retry_after: int | None = None, *, code=None, subcode=None,
+                 reason='request_rejected'):
+        self.code = code if type(code) is int and 0 <= code < 2**31 else None
+        self.subcode = subcode if type(subcode) is int and 0 <= subcode < 2**31 else None
+        self.reason = reason if reason in {'token_expired', 'token_invalid', 'permission_denied',
+                                          'rate_limited', 'request_rejected'} else 'request_rejected'
+        super().__init__(f"Threads rejected delivery (HTTP {status}; {self.reason}; "
+                         f"code={self.code}; subcode={self.subcode})")
         self.status = status
         self.retry_after = retry_after
+
+
+def _rejection(response):
+    """Retain only fixed categories and numeric codes, never API error text."""
+    try:
+        body = response.json()
+        error = body.get('error', {}) if isinstance(body, dict) else {}
+        error = error if isinstance(error, dict) else {}
+    except ValueError:
+        error = {}
+    code, subcode = error.get('code'), error.get('error_subcode')
+    message = error.get('message', '')
+    reason = 'request_rejected'
+    if code == 190:
+        reason = 'token_expired' if subcode == 463 or (isinstance(message, str) and 'expired' in message.lower()) else 'token_invalid'
+    elif response.status_code == 429 or code in (4, 17, 32, 613):
+        reason = 'rate_limited'
+    elif response.status_code == 403 or code in (10, 200):
+        reason = 'permission_denied'
+    retry = response.headers.get('Retry-After')
+    return ThreadsRejected(response.status_code, int(retry) if retry and retry.isdigit() else None,
+                           code=code, subcode=subcode, reason=reason)
 
 
 def _units(text: str) -> int:
@@ -64,8 +92,7 @@ def _request(method: str, url: str, token: str, **kwargs) -> dict:
     if response.status_code >= 500 or 300 <= response.status_code < 400:
         raise RuntimeError('Threads returned an uncertain server response')
     if response.status_code >= 400:
-        retry = response.headers.get("Retry-After")
-        raise ThreadsRejected(response.status_code, int(retry) if retry and retry.isdigit() else None)
+        raise _rejection(response)
     try:
         data = response.json()
     except ValueError:

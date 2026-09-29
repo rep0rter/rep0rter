@@ -63,10 +63,18 @@ def cmd_report(cfg: Config, args) -> int:
 
 def _deliver_threads(cfg: Config, store: Store) -> dict[str, str]:
     """Run the optional Threads step without letting it abort Telegram retractions."""
+    from .publishers.threads import ThreadsRejected
     try:
         if cfg.threads_enabled:
             threads_delivery.enqueue_missing(cfg, store)
         return threads_delivery.deliver_pending(cfg, store)
+    except ThreadsRejected as exc:
+        # This exception contains only bounded classifications and numeric codes.
+        log.error('Threads delivery blocked: %s; continuing the reporting cycle', exc)
+        import os
+        if os.environ.get('GITHUB_ACTIONS') == 'true':
+            print(f'::warning title=Threads delivery blocked::{exc}', flush=True)
+        return {}
     except Exception as exc:
         log.error('Threads delivery step failed (%s); continuing the reporting cycle', type(exc).__name__)
         return {}
