@@ -70,7 +70,7 @@ python3 cloudflare/deploy.py --production
 ```
 
 This checks remote main and the exact commit's CI, prepares a source-only bundle,
-and deploys the engine and frontend. Verify `/healthz` reports that commit, then
+and deploys the backwards-compatible frontend before the engine. Verify `/healthz` reports that commit, then
 run and verify the Production reporting workflow. Green CI alone is not a
 production deployment. Future automatic code deployments need a separately
 provisioned Cloudflare deployment API token; the reporting token cannot upload
@@ -110,9 +110,15 @@ code recovery; durable data is independent of Worker versions.
 
 ## Capacity and recovery
 
-The in-memory database copy is capped at 32 MiB, individual files at 1.9 MB,
-and a public-site transfer at 24 MiB. Profile storage and memory before raising
-these limits. Native Browser Run calls honor transient rate limits and explicitly
+The in-memory database copy is capped at 32 MiB and individual files at 1.9 MB.
+Publication archives may expand to at most 64 MiB. The frontend receives a manifest,
+reuses unchanged stored files, and stages changed files in RPC batches of at most
+2 MiB. Only a complete generation switches the public site; interrupted transfers
+leave the previous generation available. A subsequent publication replaces the
+abandoned staging area and fences its older token. This avoids the former 24 MiB
+whole-site RPC ceiling without buffering the entire site in Worker memory.
+Profile storage and memory before raising these limits.
+Native Browser Run calls honor transient rate limits and explicitly
 fail if the daily browser quota is exhausted.
 
 Durable Object SQLite point-in-time recovery replaces the old host's daily

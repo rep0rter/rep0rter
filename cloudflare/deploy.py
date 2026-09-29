@@ -33,11 +33,13 @@ def main():
     subprocess.run([sys.executable, str(root / 'cloudflare/prepare.py')], check=True)
     if output('git', 'ls-remote', 'origin', 'refs/heads/main').split()[0] != sha:
         parser.error('Main changed while preparing; update and try again.')
-    config = 'wrangler-production.jsonc' if args.production else 'wrangler.jsonc'
-    subprocess.run(['pywrangler', 'deploy', '--config', config], cwd=root / 'cloudflare', check=True)
+    # Install the backwards-compatible receiver before the engine starts using
+    # a new publication protocol. The old engine can still call publishSite.
     web_config = 'wrangler-web-production.jsonc' if args.production else 'wrangler-web.jsonc'
     subprocess.run(['npm', 'exec', '--yes', '--package=wrangler@4.135.0', '--', 'wrangler', 'deploy', '--config', web_config],
                    cwd=root / 'cloudflare', check=True)
+    config = 'wrangler-production.jsonc' if args.production else 'wrangler.jsonc'
+    subprocess.run(['pywrangler', 'deploy', '--config', config], cwd=root / 'cloudflare', check=True)
     print('Deployed source commit:', sha)
     print('Verify public health and the reporting cycle before considering deployment complete.')
 

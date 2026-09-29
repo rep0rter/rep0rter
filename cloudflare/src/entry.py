@@ -12,6 +12,7 @@ import re
 import shutil
 import sqlite3
 import time
+import uuid
 from urllib.parse import unquote, urljoin, urlsplit
 import zipfile
 
@@ -190,16 +191,26 @@ class Runtime:
         site = getattr(self.env, 'SITE', None)
         if site is None:
             return
-        files = []
-        total = 0
-        for item in rows(self.sql.exec("SELECT path FROM files WHERE path LIKE 'site/%'")):
-            row = rows(self.sql.exec('SELECT data,digest FROM files WHERE path=?', item['path']))[0]
+        manifest = [{'path': item['path'][5:], 'digest': item['digest'], 'size': item['size']}
+                    for item in rows(self.sql.exec("SELECT path,digest,length(data) AS size FROM files WHERE path LIKE 'site/%'"))]
+        publication = uuid.uuid4().hex
+        missing = run_sync(site.beginPublication(publication, manifest))
+        if hasattr(missing, 'to_py'):
+            missing = missing.to_py()
+        batch, size = [], 0
+        for path in missing:
+            row = rows(self.sql.exec('SELECT data,digest FROM files WHERE path=?', 'site/' + path))[0]
             data = buffer_bytes(row['data'])
-            total += len(data)
-            if total > 24 * 1024 * 1024:
-                raise ValueError('Public site exceeds the RPC transfer budget')
-            files.append({'path': item['path'][5:], 'data': data, 'digest': row['digest']})
-        run_sync(site.publishSite(files, self.health()))
+            if batch and size + len(data) > 2 * 1024 * 1024:
+                run_sync(site.stagePublication(publication, batch))
+                batch, size = [], 0
+                gc.collect()
+            batch.append({'path': path, 'data': data, 'digest': row['digest']})
+            size += len(data)
+        if batch:
+            run_sync(site.stagePublication(publication, batch))
+        del batch
+        run_sync(site.commitPublication(publication, self.health()))
         gc.collect()
 
     def render_card(self, html):
