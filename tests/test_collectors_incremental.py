@@ -654,3 +654,106 @@ def test_root_html_fallback_obeys_shared_request_budget(monkeypatch):
     with pytest.raises(BudgetExceeded):
         inc.refresh_root(budget, 'C', '1789785807.859239', {'C'})
     assert session.get.call_count == 1 and metrics.requests == 1
+
+
+def _seed_legacy_root_retry(store, now, queue_state, root_ts='500000'):
+    from rep0rter.collectors.state import write_state
+    root_id = 'slack:C:' + root_ts
+    child = Event('slack:C:reply-'+root_ts, 'slack', 'thread_reply', 'slack:C', now-100,
+                  text='Human reply', parent_id=root_id, meta={'context_incomplete': True})
+    persist(store, 'fixture', {}, [child], Metrics(), now-100)
+    with store.conn:
+        write_state(store, 'slack:C', {'last_complete_ts': str(now-100), 'last_posted': now,
+            'total_messages': 10, 'last_refresh': now, 'last_reconciliation': now})
+        queue = read_state(store, 'slack:root_refresh')
+        queue[root_id] = dict(queue_state)
+        write_state(store, 'slack:root_refresh', queue)
+    return root_id
+
+
+@pytest.mark.parametrize('outcome', [None, RuntimeError('upstream unavailable')])
+def test_legacy_failed_root_gets_one_strategy_upgrade_retry_then_normal_backoff(tmp_path, monkeypatch, outcome):
+    now = 1000000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda session: [_scheduled_channel('C', 1000000)])
+    refresh = Mock(side_effect=[outcome])
+    monkeypatch.setattr(inc, 'refresh_root', refresh)
+    with Store(tmp_path/'db') as store:
+        root_id = _seed_legacy_root_retry(store, now, {
+            'attempted_at': now-60, 'resolved': False, 'error': 'old JSON-only lookup failed'})
+        inc.collect(store, session=Mock(headers={}))
+        refresh.assert_called_once()
+        state = read_state(store, 'slack:root_refresh')[root_id]
+        assert state['lookup_version'] == inc.ROOT_LOOKUP_VERSION
+        assert state['attempted_at'] == now and not state['resolved']
+        assert not read_state(store, 'slack:health')['healthy']
+        now += 60
+        inc.collect(store, session=Mock(headers={}))
+        refresh.assert_called_once()
+        assert not read_state(store, 'slack:health')['healthy']
+
+
+@pytest.mark.parametrize('budget', [0, 1])
+def test_lookup_upgrade_is_not_consumed_by_no_budget_or_partial_json_lookup(tmp_path, monkeypatch, budget):
+    now = 1000000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    monkeypatch.setattr(inc.api, 'sleep', lambda seconds: None)
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda session: [_scheduled_channel('C', now)])
+    transport = Mock(headers={})
+    transport.get.return_value = Mock(content=b'{"messages":[]}', json=lambda: {'messages': []})
+    with Store(tmp_path/'db') as store:
+        old = {'attempted_at': now-60, 'resolved': False, 'error': 'old JSON-only lookup failed'}
+        root_id = _seed_legacy_root_retry(store, now, old)
+        metrics = Metrics()
+        inc.collect(store, session=BudgetSession(transport, metrics, limit=budget, interval=0))
+        assert metrics.requests == transport.get.call_count == budget
+        assert read_state(store, 'slack:root_refresh')[root_id] == old
+        assert not read_state(store, 'slack:health')['healthy']
+        transport.get.return_value = Mock(content=b'root', json=lambda: {
+            'messages': [{'ts': '500000', 'text': 'Recovered exact root'}]})
+        metrics = Metrics()
+        inc.collect(store, session=BudgetSession(transport, metrics, limit=1, interval=0))
+        assert metrics.requests == 1
+        assert store.get_event(root_id).text == 'Recovered exact root'
+        assert read_state(store, 'slack:root_refresh')[root_id]['lookup_version'] == inc.ROOT_LOOKUP_VERSION
+        assert read_state(store, 'slack:health')['healthy']
+
+
+@pytest.mark.parametrize('queue_state', [
+    {'resolved': True},
+    {'resolved': False},
+    {'resolved': False, 'error': 'already used the new lookup', 'lookup_version': inc.ROOT_LOOKUP_VERSION},
+])
+def test_lookup_upgrade_does_not_force_resolved_unattempted_or_current_strategy_roots(tmp_path, monkeypatch, queue_state):
+    now = 1000000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda session: [_scheduled_channel('C', now)])
+    refresh = Mock()
+    monkeypatch.setattr(inc, 'refresh_root', refresh)
+    with Store(tmp_path/'db') as store:
+        root_id = _seed_legacy_root_retry(store, now, dict(queue_state, attempted_at=now-60))
+        if queue_state.get('resolved'):
+            persist(store, 'fixture', {}, [Event(root_id, 'slack', 'message', 'slack:C',
+                    500000, text='Already recovered')], Metrics(), now)
+        inc.collect(store, session=Mock(headers={}))
+        refresh.assert_not_called()
+        assert read_state(store, 'slack:root_refresh')[root_id].get('lookup_version') == queue_state.get('lookup_version')
+
+
+def test_strategy_upgrade_still_refreshes_at_most_four_roots_per_round(tmp_path, monkeypatch):
+    now = 1000000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda session: [_scheduled_channel('C', now)])
+    refresh = Mock(return_value=None)
+    monkeypatch.setattr(inc, 'refresh_root', refresh)
+    with Store(tmp_path/'db') as store:
+        roots = [_seed_legacy_root_retry(store, now, {
+            'attempted_at': now-60, 'resolved': False, 'error': 'old JSON-only lookup failed'}, str(500000+i))
+            for i in range(5)]
+        inc.collect(store, session=Mock(headers={}))
+        assert refresh.call_count == 4
+        queue = read_state(store, 'slack:root_refresh')
+        assert sum(queue[root].get('lookup_version') == inc.ROOT_LOOKUP_VERSION for root in roots) == 4
+        inc.collect(store, session=Mock(headers={}))
+        assert refresh.call_count == 5
+        assert not read_state(store, 'slack:health')['healthy']
