@@ -17,6 +17,8 @@ log = logging.getLogger(__name__)
 OVERLAP = 7200
 REFRESH_INTERVAL = 21600
 MAX_REPLY_REFRESH_QUEUE = 100
+# Version 1 only queried JSON; version 2 verifies filtered roots in month HTML.
+ROOT_LOOKUP_VERSION = 2
 
 
 def _budget_debt(state):
@@ -268,7 +270,9 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
     for root_id in sorted(due_ids, key=lambda root: (queue.get(root, {}).get('policy_excluded', False), root not in pending, queue.get(root, {}).get('attempted_at', 0), queue.get(root, {}).get('requested_at', 0), root)):
         last = queue.get(root_id, {})
         interval = 7 * 86400 if last.get('policy_excluded') else REFRESH_INTERVAL
-        if now - last.get('attempted_at', 0) < interval:
+        upgraded_lookup = (last.get('lookup_version', 1) < ROOT_LOOKUP_VERSION
+                           and not last.get('resolved') and bool(last.get('error')))
+        if not upgraded_lookup and now - last.get('attempted_at', 0) < interval:
             continue
         if store.conn.execute('SELECT 1 FROM event_tombstones WHERE event_id=?', (root_id,)).fetchone():
             continue
@@ -283,7 +287,8 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         try:
             root_attempts += 1
             root = refresh_root(session, channel_id, root_ts, public_ids)
-            queue[root_id] = dict(last, attempted_at=now, resolved=root is not None, policy_excluded=False)
+            queue[root_id] = dict(last, attempted_at=now, resolved=root is not None,
+                                 policy_excluded=False, lookup_version=ROOT_LOOKUP_VERSION)
             if root is None:
                 queue[root_id]['error'] = 'root refresh did not return exact parent; upstream completeness unknown'
             elif not _allowed(store, event=root):
@@ -303,9 +308,13 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
                         meta['context_incomplete'] = False
                         store.conn.execute('UPDATE events SET meta=? WHERE id=?', (json.dumps(meta), reply_row['id']))
         except BudgetExceeded:
+            # In particular, JSON can spend the last request before HTML is
+            # reached. Keep the old strategy version until a lookup completes,
+            # so budget debt does not consume its one upgrade retry.
             break
         except Exception as exc:
-            queue[root_id] = dict(last, attempted_at=now, resolved=False, policy_excluded=False, error=str(exc))
+            queue[root_id] = dict(last, attempted_at=now, resolved=False, policy_excluded=False,
+                                 lookup_version=ROOT_LOOKUP_VERSION, error=str(exc))
             reasons[root_id] = str(exc)
             transport_failures += 1
             failures += 1
