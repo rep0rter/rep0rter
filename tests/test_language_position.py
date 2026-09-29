@@ -25,6 +25,8 @@ class Element {
 function page(options = {}) {
   const location = new URL(options.url || 'https://example.test/index.html?q=moon&topic=space#story-days');
   const calls = [], writes = [];
+  const timers = new Map();
+  let timerId = 0;
   const root = new Element({lang: options.language || 'en'});
   const trigger = new Element();
   const menu = new Element({open: true, querySelector: () => trigger});
@@ -64,6 +66,8 @@ function page(options = {}) {
   });
   class DOMParser {parseFromString() {return {documentElement: {lang: 'wrong'}, querySelector() {return null;}};}}
   vm.runInNewContext(SOURCE, {window, document, location, URL, Element, AbortController, fetch, DOMParser, localStorage,
+    setTimeout(callback) {timers.set(++timerId, callback); return timerId;},
+    clearTimeout(id) {timers.delete(id);},
     navigator: {languages: options.languages || ['en-US'], language: 'en-US'},
     CustomEvent: class {constructor(type, options) {this.type = type;this.detail = options.detail;}}
   });
@@ -72,7 +76,7 @@ function page(options = {}) {
     document.emit('click', {target: link, button: 0, preventDefault() {prevented = true;}, ...event});
     return prevented;
   };
-  return {window, document, root, link, links, location, calls, writes, menu, trigger, body, click, stored, status: () => status};
+  return {window, document, root, link, links, location, calls, writes, menu, trigger, body, click, stored, timers, status: () => status};
 }
 const flush = () => new Promise(resolve => setImmediate(resolve));
 (async () => { CASE })().catch(error => {console.error(error);process.exitCode = 1;});
@@ -200,6 +204,24 @@ source.calls[1].reject(Object.assign(Error('aborted'), {name: 'AbortError'}));
 await second;
 assert.equal(source.status().hidden, true);
 assert.equal(source.root.lang, 'en');
+''',
+    'unresponsive_language_request_times_out_and_keeps_current_reading_page': r'''
+const source = page();
+const before = source.location.href;
+source.click();
+const pending = source.calls[0];
+pending.init.signal.addEventListener('abort', () => pending.reject(Object.assign(Error('timed out'), {name:'AbortError'})));
+assert.equal(source.timers.size, 1, 'The edition request needs a bounded wait');
+for (const timeout of [...source.timers.values()]) timeout();
+await flush();
+assert.equal(pending.init.signal.aborted, true);
+assert.equal(source.timers.size, 0);
+assert.equal(source.root.attributes['aria-busy'], undefined);
+assert.equal(source.body.unchanged, true);
+assert.equal(source.location.href, before);
+assert.match(source.status().textContent, /current page is unchanged/);
+source.click();
+assert.equal(source.calls.length, 2, 'The same edition remains retryable');
 ''',
     'initial_query_locale_fetches_quietly_and_failure_reverts_only_locale': r'''
 const source = page({url: 'https://example.test/index.html?lang=KO&q=stars&author=alice#report'});

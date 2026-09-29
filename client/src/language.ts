@@ -179,6 +179,7 @@
     closeMenu(!initial);
     const request = new AbortController();
     controller = request;
+    const timeout = setTimeout(() => request.abort(), 8000);
     notice(messages[language as Locale]?.[0] || messages.en[0]);
     document.documentElement.setAttribute('aria-busy', 'true');
     try {
@@ -220,11 +221,14 @@
         if (token === revision) emit('rep0rter:language-settled', { language: locale, animate: !initial });
       });
     } catch (error) {
-      if (token !== revision || (error instanceof Error && error.name === 'AbortError')) return;
+      // Superseded navigation is silent; an abort of the current request is
+      // the network timeout and must restore a usable, retryable reading page.
+      if (token !== revision) return;
       document.documentElement.removeAttribute('aria-busy');
       notice(messages[language as Locale]?.[1] || messages.en[1]);
       if (initial) window.history.replaceState(window.history.state, '', publicURL(location.href, language));
     } finally {
+      clearTimeout(timeout);
       if (token === revision) controller = null;
     }
   }
