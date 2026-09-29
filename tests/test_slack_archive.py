@@ -154,3 +154,50 @@ def test_avatar_sizes_and_default_flag(size):
     raw['user']['profile']['is_custom_image']=False
     event,_=archive.to_event(raw,'C')
     assert event.meta['avatar_url']=='' and event.meta['avatar_is_custom'] is False
+
+
+def root_month_html(rows, channel='C', month='2026-09', *, rounded=False):
+    from decimal import Decimal
+    from html import escape
+    messages = []
+    for raw in rows:
+        node_ts = format(Decimal(raw['ts']), '.14g') if rounded else raw['ts']
+        messages.append(f'<div class="message" id="ts-{node_ts}">'
+            f'<span class="message-time" title="{escape(json.dumps(raw), quote=True)}"></span>'
+            '<span class="user-name" title="{&quot;id&quot;:&quot;U&quot;,&quot;real_name&quot;:&quot;Author&quot;}"></span></div>')
+    return (f'<nav role="pagination"><a class="nav-link active" href="/index/channel/{channel}/{month}"></a></nav>'
+            '<section role="feed">' + ''.join(messages) + '</section>')
+
+
+def test_root_html_uses_exact_metadata_and_restores_author(monkeypatch):
+    ts = '1789785807.859239'
+    rows = [{'ts': ts, 'user': 'U', 'text': 'Old root'},
+            {'ts': ts, 'user': 'U', 'text': 'Updated root', 'edited': {'ts': '1789786000'}},
+            {'ts': '1789785807.859240', 'text': 'Adjacent'}]
+    get = Mock(return_value=Mock(text=root_month_html(rows, rounded=True)))
+    monkeypatch.setattr(archive, '_get', get)
+    raw = archive.root_from_html(Mock(), 'C', ts)
+    assert raw['ts'] == ts and raw['text'] == 'Updated root'
+    assert raw['user']['real_name'] == 'Author'
+    assert get.call_count == 1
+    assert get.call_args.args[1].endswith('/index/channel/C/2026-09')
+
+
+@pytest.mark.parametrize('channel,month,rows', [
+    ('OTHER', '2026-09', [{'ts': '1789785807.859239'}]),
+    ('C', '2026-08', [{'ts': '1789785807.859239'}]),
+    ('C', '2026-09', [{'ts': '1789785807.859240'}]),
+    ('C', '2026-09', [{'ts': '1789785807.859239', 'thread_ts': '1789785000'}]),
+])
+def test_root_html_rejects_wrong_page_or_nearby_message(monkeypatch, channel, month, rows):
+    monkeypatch.setattr(archive, '_get', Mock(return_value=Mock(text=root_month_html(rows, channel, month))))
+    assert archive.root_from_html(Mock(), 'C', '1789785807.859239') is None
+
+
+def test_root_html_keeps_bot_and_deletion_policy_evidence(monkeypatch):
+    ts = '1789785807.859239'
+    for subtype in ['bot_message', 'message_deleted']:
+        raw = {'ts': ts, 'text': 'Original text', 'subtype': subtype, 'bot_id': 'BOT', 'app_id': 'APP'}
+        monkeypatch.setattr(archive, '_get', Mock(return_value=Mock(text=root_month_html([raw]))))
+        found = archive.root_from_html(Mock(), 'C', ts)
+        assert found['subtype'] == subtype and found['bot_id'] == 'BOT' and found['app_id'] == 'APP'

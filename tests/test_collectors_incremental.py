@@ -74,6 +74,7 @@ def test_budget_counts_failed_requests_and_limits(monkeypatch):
 
 def test_root_lookup_does_not_substitute_adjacent_message(monkeypatch):
     pages(monkeypatch, [[{'ts':'99','text':'other'}]])
+    monkeypatch.setattr(inc.api, 'root_from_html', Mock(return_value=None))
     assert inc.refresh_root(Mock(),'C','100',{'C'}) is None
     pages(monkeypatch, [[{'ts':'100','text':'root'}]])
     assert inc.refresh_root(Mock(),'C','100',{'C'}).id=='slack:C:100'
@@ -481,6 +482,8 @@ def test_missing_exact_root_stays_unhealthy_through_backoff_and_clears_on_recove
     child = Event('slack:C:990000', 'slack', 'thread_reply', 'slack:C', 990000,
                   text='Reply', parent_id='slack:C:500000', meta={'context_incomplete': True})
     get = pages(monkeypatch, [[], [{'ts': '500000', 'text': 'Recovered exact parent'}]])
+    fallback = Mock(return_value=None)
+    monkeypatch.setattr(inc.api, 'root_from_html', fallback)
     with Store(tmp_path/'db') as store:
         with store.conn:
             write_state(store, 'slack:C', {'last_complete_ts': '990000', 'last_posted': now,
@@ -495,6 +498,7 @@ def test_missing_exact_root_stays_unhealthy_through_backoff_and_clears_on_recove
         assert not health['healthy'] and health['available']
         assert 'exact parent' in health['reasons'][child.parent_id]
         assert not read_state(store, 'slack:root_refresh')[child.parent_id]['resolved']
+        fallback.assert_called_once()
         now += 60
         inc.collect(store, session=Mock(headers={}))
         assert get.call_count == 1
@@ -594,3 +598,59 @@ def test_reply_refresh_queue_is_bounded_and_drains_unattempted_first(tmp_path, m
         inc.collect(store, session=BudgetSession(Mock(headers={}), Metrics(), limit=1))
         assert attempts == ['500000', '500001', '500002']
         assert pending() == ['slack:C:500000']
+
+
+def test_filtered_bot_root_is_confirmed_excluded_without_retaining_content(tmp_path, monkeypatch):
+    from rep0rter.collectors.state import write_state
+    now = 1000000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda session: [_scheduled_channel('C', 1000000)])
+    get = pages(monkeypatch, [[], []])
+    fallback = Mock(side_effect=[{'ts': '500000', 'text': 'Excluded bot content',
+                                 'subtype': 'bot_message', 'bot_id': 'BOT', 'app_id': 'APP'}, None])
+    monkeypatch.setattr(inc.api, 'root_from_html', fallback)
+    with Store(tmp_path/'db') as store:
+        with store.conn:
+            write_state(store, 'slack:C', {'last_complete_ts': '990000', 'last_posted': now,
+                'total_messages': 10, 'last_refresh': now, 'last_reconciliation': now})
+            write_state(store, 'slack:root_refresh', {'slack:C:500000': {
+                'attempted_at': now-inc.REFRESH_INTERVAL, 'resolved': False, 'error': 'previous unknown root'}})
+        child = Event('slack:C:990000', 'slack', 'thread_reply', 'slack:C', 990000,
+                      text='Human reply', parent_id='slack:C:500000', meta={'context_incomplete': True})
+        persist(store, 'fixture', {}, [child], Metrics(), now-100)
+        inc.collect(store, session=Mock(headers={}))
+        queue = read_state(store, 'slack:root_refresh')
+        assert queue[child.parent_id]['policy_excluded']
+        assert 'error' not in queue[child.parent_id]
+        assert store.get_event(child.parent_id) is None
+        assert store.get_event(child.id).meta['context_incomplete']
+        assert 'Excluded bot content' not in json.dumps(queue)
+        assert read_state(store, 'slack:health')['healthy']
+        # Confirmed exclusions do not consume refresh slots every six hours.
+        now += inc.REFRESH_INTERVAL
+        with store.conn:
+            state = read_state(store, 'slack:C')
+            state.update(last_refresh=now, last_reconciliation=now)
+            write_state(store, 'slack:C', state)
+        inc.collect(store, session=Mock(headers={}))
+        assert get.call_count == 1 and fallback.call_count == 1
+        # If revalidation can no longer establish the root, restore the gap.
+        now += 7*86400
+        with store.conn:
+            state = read_state(store, 'slack:C')
+            state.update(last_refresh=now, last_reconciliation=now)
+            write_state(store, 'slack:C', state)
+        inc.collect(store, session=Mock(headers={}))
+        assert not read_state(store, 'slack:health')['healthy']
+        assert 'exact parent' in read_state(store, 'slack:health')['reasons'][child.parent_id]
+
+
+def test_root_html_fallback_obeys_shared_request_budget(monkeypatch):
+    monkeypatch.setattr(inc.api, 'sleep', lambda seconds: None)
+    response = Mock(content=b'{"messages":[]}', json=lambda: {'messages': []})
+    session = Mock(headers={}, get=Mock(return_value=response))
+    metrics = Metrics()
+    budget = BudgetSession(session, metrics, limit=1, interval=0)
+    with pytest.raises(BudgetExceeded):
+        inc.refresh_root(budget, 'C', '1789785807.859239', {'C'})
+    assert session.get.call_count == 1 and metrics.requests == 1
