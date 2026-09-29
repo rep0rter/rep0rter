@@ -1,4 +1,7 @@
 import json
+from dataclasses import replace
+
+import pytest
 
 from rep0rter import policy
 from rep0rter.store import Container, Event, Post, Store
@@ -8,6 +11,34 @@ def event(event_id='slack:C:1', author='U1', ts=100, parent=None, meta=None):
     return Event(event_id, 'slack', 'thread_reply' if parent else 'message', 'slack:C', ts,
                  author_id=author, author_name='Renamable name', text='Private original text',
                  parent_id=parent, meta=meta or {})
+
+
+@pytest.mark.parametrize('text', [
+    'Aline has paused their notifications',
+    ('⣿⠿⢿⣦⣀\n' * 400) + '\nAline has *paused their notifications*',
+    '⣿⣿' * 100 + '\nSome Person has resumed their notifications.',
+])
+def test_status_only_notice_is_excluded_before_storage_or_publication(tmp_path, text):
+    from rep0rter.sources import eligible
+    with Store(tmp_path / 'db') as store:
+        notice = replace(event(), text=text, reaction_count=999, reply_count=999)
+        assert not eligible(notice)
+        assert not policy.event_allowed(store, notice)
+        assert store.upsert_events([notice]) == 0
+
+
+@pytest.mark.parametrize('text,source', [
+    ('Braille dataset release: ⣿⠿⢿⣦⣀ https://example.test', 'slack'),
+    ('⠠⠺⠑ ⠇⠁⠥⠝⠉⠓⠑⠙ ⠁ ⠏⠗⠕⠚⠑⠉⠞', 'slack'),
+    ('⠠⠺⠑ ⠇⠁⠥⠝⠉⠓⠑⠙ ⠁ ⠏⠗⠕⠚⠑⠉⠞\nAline has paused their notifications', 'slack'),
+    ('Our new app tells you when Alice has paused their notifications', 'slack'),
+    ('We released notification controls today. Aline has paused their notifications', 'slack'),
+    ('New accessibility workshop https://example.test\nAline has paused their notifications', 'slack'),
+    ('Aline has paused their notifications', 'rss'),
+])
+def test_notice_filter_preserves_substantive_or_other_source_content(text, source):
+    from rep0rter.sources import status_notice_only
+    assert not status_notice_only(replace(event(), text=text, source=source))
 
 
 def test_stable_user_scope_cannot_be_bypassed_by_rename_or_override(tmp_path):
