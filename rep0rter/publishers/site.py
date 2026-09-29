@@ -203,7 +203,7 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
                                and 0 <= now - last_healthy_at <= 9000)
     ctx = {"cfg": cfg, "languages": LANGUAGES, "page_name": page_name,
            "generated_local": _fmt_local(now), "generated_rfc822": _fmt_rfc822(now),
-           "event_count": store.event_count(), "post_count": store.post_count() - len(examples),
+           "event_count": store.event_count(), "post_count": len(rows),
            "branding": _branding(cfg),
            "last_healthy": _fmt_local(last_healthy_at) if last_healthy_at else None,
            "collection_complete": collection_complete}

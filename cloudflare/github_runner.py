@@ -15,6 +15,32 @@ import uuid
 import zipfile
 
 
+# Observability thresholds mirror the existing engine/frontend checks; these
+# values do not change or replace enforcement in those Workers.
+CAPACITY_LIMITS = {
+    'database_bytes': 32 * 1024 * 1024,
+    'zip_bytes': 32 * 1024 * 1024,
+    'expanded_bytes': 64 * 1024 * 1024,
+    'public_asset_bytes': 64 * 1024 * 1024,
+    'public_asset_count': 10000,
+    'largest_file_bytes': 1_900_000,
+}
+
+
+def report_capacity(usage):
+    # Only fixed aggregate names and integers reach logs/Actions annotations.
+    # Never include archive paths, contents, credentials or database records.
+    measurements = {name: int(usage[name]) for name in CAPACITY_LIMITS}
+    print('Capacity evidence: ' + json.dumps({
+        'usage': measurements, 'limits': CAPACITY_LIMITS,
+    }, sort_keys=True), flush=True)
+    for name, limit in CAPACITY_LIMITS.items():
+        used = measurements[name]
+        if used * 5 >= limit * 4:
+            print(f'::warning title=Publication capacity::{name} uses {used} of {limit} '
+                  f'({used / limit:.1%}); at least 80% of the existing limit.', flush=True)
+
+
 class RunnerRuntime:
     def __init__(self, url, token, root, lease):
         self.url, self.token, self.root, self.lease = url.rstrip('/'), token, Path(root), lease
@@ -85,7 +111,18 @@ class RunnerRuntime:
                         if path.is_file():
                             archive.write(path, prefix + '/' + path.relative_to(folder).as_posix())
             archive.write(self.root / 'exclusions.json', 'exclusions.json')
-        self.request('publish', output.getvalue(), 'application/zip')
+            entries = archive.infolist()
+            public = [entry for entry in entries if entry.filename.startswith('site/')]
+        payload = output.getvalue()
+        report_capacity({
+            'database_bytes': sum(map(len, self.pages)),
+            'zip_bytes': len(payload),
+            'expanded_bytes': sum(entry.file_size for entry in entries),
+            'public_asset_bytes': sum(entry.file_size for entry in public),
+            'public_asset_count': len(public),
+            'largest_file_bytes': max(entry.file_size for entry in entries),
+        })
+        self.request('publish', payload, 'application/zip')
 
     def finish(self, success, collection_healthy=False):
         self.request('finish', json.dumps({'success': success, 'collection_healthy': collection_healthy}).encode())

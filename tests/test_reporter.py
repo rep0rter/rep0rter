@@ -60,6 +60,22 @@ def test_select_candidates_skips_posted_and_old(tmp_path):
         assert select_candidates(store, cfg, now) == []
 
 
+def test_legacy_status_notice_cannot_use_shadow_engagement_to_reenter_selection(tmp_path):
+    cfg = _cfg(tmp_path)
+    now = time.time()
+    with Store(cfg.db_path) as store:
+        store.upsert_container(Container('slack:C1', 'slack', 'general', num_members=15000))
+        event = Event('slack:C1:10', 'slack', 'message', 'slack:C1', now - 60,
+                      text='Legacy imported content', reaction_count=999, reply_count=999)
+        store.upsert_events([event])
+        with store.conn:
+            store.conn.execute('UPDATE events SET text=? WHERE id=?',
+                               (('⣿⠿⢿⣦⣀\n' * 400) + 'Aline has *paused their notifications*', event.id))
+        for mode in ('shadow', 'active'):
+            cfg.editorial_mode = mode
+            assert select_candidates(store, cfg, now) == []
+
+
 def test_upsert_keeps_max_engagement(tmp_path):
     cfg = _cfg(tmp_path)
     with Store(cfg.db_path) as store:

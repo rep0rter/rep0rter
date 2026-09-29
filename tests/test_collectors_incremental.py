@@ -8,6 +8,184 @@ from rep0rter.collectors import slack_incremental as inc
 from rep0rter.collectors.state import Metrics, persist, read_state, BudgetSession, BudgetExceeded
 
 
+def published_slack_event(store, channel='C', ts='1790682542.850799', published_at=1):
+    from rep0rter.store import Container, Post
+    event, _ = inc.api.to_event({'ts': ts, 'text': 'Public civic technology meeting'}, channel, {channel})
+    store.upsert_container(Container('slack:' + channel, 'slack', channel))
+    store.upsert_events([event], now=1)
+    post = Post(event.id, published_at, 10, 'A public meeting', 'Participants discussed civic technology.')
+    post.id = store.add_post(post)
+    return event, post
+
+
+def test_permalink_reconciliation_updates_saved_reports_and_survives_collection(tmp_path, monkeypatch):
+    from rep0rter.config import Config
+    from rep0rter.publishers import site
+    from PIL import Image
+    cfg = Config(data_dir=tmp_path)
+    now = 1790698508
+    fragment = 'ts-1790682542.8508'
+    get = Mock(return_value={'slack:C:1790682542.850799': fragment,
+                             'slack:C:1790682541.850799': 'ts-1790682541.8508'})
+    monkeypatch.setattr(inc.api, 'verified_month_fragments', get)
+    with Store(cfg.db_path) as store:
+        event, post = published_slack_event(store)
+        original_url = event.url
+        before = tuple(store.conn.execute('SELECT text,meta,last_seen FROM events WHERE id=?', (event.id,)).fetchone())
+        fragments = inc.reconcile_permalinks(store, BudgetSession(Mock(headers={}), Metrics()), {'C'}, now)
+        assert set(fragments) == {event.id}  # Do not cache unrelated raw month messages.
+        saved = store.get_event(event.id)
+        assert saved.url.endswith('#' + fragment)
+        assert tuple(store.conn.execute('SELECT text,meta,last_seen FROM events WHERE id=?', (event.id,)).fetchone()) == before
+        # A normal JSON overlap/root refresh must not replace the verified link.
+        event, _ = inc.api.to_event({'ts': '1790682542.850799', 'text': saved.text}, 'C', {'C'})
+        inc.apply_verified_permalink(event, fragments)
+        persist(store, 'slack:C', {}, [event], Metrics(), now)
+        assert store.get_event(event.id).url == saved.url
+        inc.reconcile_permalinks(store, BudgetSession(Mock(headers={}), Metrics()), {'C'}, now + 3600)
+        assert get.call_count == 1
+
+        class Cards:
+            def __init__(self, config):
+                self.path = config.site_dir / 'cards' / 'test.png'
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                pass
+            def render(self, *args, **kwargs):
+                self.path.parent.mkdir(parents=True, exist_ok=True)
+                Image.new('RGB', (2, 2)).save(self.path)
+                return self.path
+            render_report = render
+        monkeypatch.setattr(site, 'CardRenderer', Cards)
+        site.build(store, cfg)
+        for suffix in ('', '.zh-TW', '.ja', '.ko'):
+            for path in (cfg.site_dir / f'index{suffix}.html',
+                         cfg.site_dir / 'posts' / str(post.id) / f'index{suffix}.html',
+                         cfg.site_dir / f'feed{suffix}.xml'):
+                text = path.read_text()
+                assert saved.url in text
+                assert original_url not in text
+
+
+def test_permalink_reconciliation_shares_month_and_respects_public_policy(tmp_path, monkeypatch):
+    get = Mock(return_value={'slack:C:1790682542.850799': 'ts-1790682542.8508',
+                             'slack:C:1790671707.830729': 'ts-1790671707.8307'})
+    monkeypatch.setattr(inc.api, 'verified_month_fragments', get)
+    with Store(tmp_path / 'db') as store:
+        first, _ = published_slack_event(store)
+        second, _ = published_slack_event(store, ts='1790671707.830729')
+        private, _ = published_slack_event(store, channel='PRIVATE', published_at=3)
+        inc.reconcile_permalinks(store, BudgetSession(Mock(headers={}), Metrics()), {'C'}, 1790698508)
+        assert get.call_count == 1 and get.call_args.args[1:] == ('C', '2026-09')
+        assert store.get_event(first.id).url.endswith('#ts-1790682542.8508')
+        assert store.get_event(second.id).url.endswith('#ts-1790671707.8307')
+        assert store.get_event(private.id).url == private.url
+
+
+def test_permalink_reconciliation_preserves_budget_and_unverified_fallback(tmp_path, monkeypatch):
+    import requests
+    monkeypatch.setattr(inc.api, 'sleep', lambda _: None)
+    from rep0rter.collectors import state
+    monkeypatch.setattr(state, 'sleep', lambda _: None)
+    with Store(tmp_path / 'db') as store:
+        event, _ = published_slack_event(store)
+        transport = Mock(headers={})
+        transport.get.side_effect = requests.Timeout('offline timeout')
+        budget = BudgetSession(transport, Metrics(), limit=20, interval=0)
+        inc.reconcile_permalinks(store, budget, {'C'}, 1790698508)
+        assert budget.metrics.requests == 2 and budget.remaining == 18
+        assert store.get_event(event.id).url == event.url
+        # A tiny remaining allowance is entirely retained for content collection.
+        small = BudgetSession(transport, Metrics(), limit=7, interval=0)
+        inc.reconcile_permalinks(store, small, {'C'}, 1790698508)
+        assert small.metrics.requests == 0
+
+
+@pytest.mark.parametrize('scope', ['container', 'event'])
+def test_permalink_reconciliation_never_fetches_excluded_public_content(tmp_path, monkeypatch, scope):
+    from rep0rter import policy
+    get = Mock()
+    monkeypatch.setattr(inc.api, 'verified_month_fragments', get)
+    with Store(tmp_path / 'db') as store:
+        event, _ = published_slack_event(store)
+        policy.add_rule(store, scope, event.container_id if scope == 'container' else event.id, now=2)
+        inc.reconcile_permalinks(store, BudgetSession(Mock(headers={}), Metrics()), {'C'}, 1790698508)
+        get.assert_not_called()
+
+
+def test_cached_permalink_cannot_restore_withdrawn_event_url(tmp_path, monkeypatch):
+    from rep0rter import policy
+    from rep0rter.collectors.state import write_state
+    get = Mock()
+    monkeypatch.setattr(inc.api, 'verified_month_fragments', get)
+    with Store(tmp_path / 'db') as store:
+        event, _ = published_slack_event(store)
+        with store.conn:
+            write_state(store, 'slack:permalinks', {'version': inc.PERMALINK_VERSION,
+                'fragments': {event.id: 'ts-1790682542.8508'}, 'failed_at': {}})
+        policy.redact(store, [event.id])
+        assert store.get_event(event.id).url == ''
+        assert inc.reconcile_permalinks(store, BudgetSession(Mock(headers={}), Metrics()), {'C'}, 1790698508) == {}
+        assert store.get_event(event.id).url == ''
+        get.assert_not_called()
+
+
+def test_permalink_timeout_debt_does_not_starve_untried_older_month(tmp_path, monkeypatch):
+    import requests
+    from rep0rter.collectors import state
+    monkeypatch.setattr(inc.api, 'sleep', lambda _: None)
+    monkeypatch.setattr(state, 'sleep', lambda _: None)
+    with Store(tmp_path / 'db') as store:
+        published_slack_event(store, channel='OLD', published_at=1)
+        published_slack_event(store, channel='NEW', published_at=2)
+        transport = Mock(headers={})
+        transport.get.side_effect = requests.Timeout('offline timeout')
+        inc.reconcile_permalinks(store, BudgetSession(transport, Metrics(), limit=8, interval=0),
+                                 {'OLD', 'NEW'}, 1790698508)
+        assert read_state(store, 'slack:permalinks')['failed_at']['NEW/2026-09'] == 1790698508
+        get = Mock(return_value={})
+        monkeypatch.setattr(inc.api, 'verified_month_fragments', get)
+        inc.reconcile_permalinks(store, BudgetSession(Mock(headers={}), Metrics(), limit=8),
+                                 {'OLD', 'NEW'}, 1790698508 + 3600)
+        assert get.call_count == 1 and get.call_args.args[1] == 'OLD'
+
+
+def test_permalink_reconciliation_repairs_two_latest_channels_with_19_requests(tmp_path, monkeypatch):
+    def fragments(session, channel, month):
+        session.metrics.requests += 1
+        return {f'slack:{channel}:1790682542.850799': 'ts-1790682542.8508'}
+    get = Mock(side_effect=fragments)
+    monkeypatch.setattr(inc.api, 'verified_month_fragments', get)
+    with Store(tmp_path / 'db') as store:
+        for i in range(4):
+            published_slack_event(store, channel=f'C{i}', published_at=i)
+        inc.reconcile_permalinks(store, BudgetSession(Mock(headers={}), Metrics(), limit=19),
+                                 {'C0', 'C1', 'C2', 'C3'}, 1790698508)
+        assert [call.args[1] for call in get.call_args_list] == ['C3', 'C2']
+
+
+def test_permalink_reconciliation_handles_synthetic_reports_and_skips_unknown_ids(tmp_path, monkeypatch):
+    from dataclasses import replace
+    from rep0rter.store import Post
+    identity = 'slack:C:1790682542.850799'
+    get = Mock(return_value={identity: 'ts-1790682542.8508'})
+    monkeypatch.setattr(inc.api, 'verified_month_fragments', get)
+    with Store(tmp_path / 'db') as store:
+        source, _ = published_slack_event(store)
+        synthetic = replace(source, id='story-update:example:digest', kind='story_update')
+        legacy = replace(source, id='slack:C:source-example', meta={})
+        unknown = replace(synthetic, id='story-update:unknown:digest', meta={})
+        store.upsert_events([synthetic, legacy, unknown])
+        for index, event in enumerate((synthetic, legacy, unknown), start=2):
+            store.add_post(Post(event.id, index, 10, 'Published report', 'A source update'))
+        inc.reconcile_permalinks(store, BudgetSession(Mock(headers={}), Metrics()), {'C'}, 1790698508)
+        assert store.get_event(synthetic.id).url.endswith('#ts-1790682542.8508')
+        assert store.get_event(legacy.id).url == source.url
+        assert store.get_event(unknown.id).url == source.url
+        assert get.call_count == 1
+
+
 def pages(monkeypatch, values):
     get = Mock(side_effect=[Mock(json=Mock(return_value={'messages': rows})) for rows in values])
     monkeypatch.setattr(inc.api, '_get', get)

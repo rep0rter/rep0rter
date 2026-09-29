@@ -69,6 +69,8 @@ ID 固定為 `notion:<page-uuid>`，不同 URL slug／重複 view 不新增同�
 
 ## 自動化雜訊
 
+Slack 僅有「某人暫停／恢復通知」狀態句（可附大量密集八點字元圖）的貼文不作新聞，避免字元圖與互動數灌高舊版評分。比對限完整狀態句與短顯示名；一般點字文字、含實質公告前文的訊息保留。此規則同時套用已存報導，正常重建時從網站、RSS 與圖卡移除，資料庫歷史仍保留。
+
 依使用者偏好，Slack GitHub integration 與其他 bot/app 訊息、GitHub `type=Bot`、`[bot]`、dependabot／renovate／github-actions，以及 dependencies／CI／chore 等自動維護標籤或標題預設在入庫前排除，不送給 LLM。Slack 原始 `user.is_bot`、`bot_id`、`app_id`、`subtype` 會保留以供一致判斷；舊資料的 GitHub integration 顯示名亦被阻擋。Mastodon bot account 同樣不作新聞。
 
 若編輯確實要納入某筆 bot 發布的實質成果，可用 `REP0RTER_GITHUB_EDITORIAL_OVERRIDES=github:owner/repo:release:123` 指定完整、單筆事件 ID。這只略過自動化來源排除，不會繞過可見性、使用者退出、內容資格或編輯選稿。

@@ -27,6 +27,7 @@ import json
 import logging
 import re
 import time
+from collections import Counter
 from ..runtime import sleep
 from decimal import Decimal, InvalidOperation
 from dataclasses import dataclass
@@ -357,9 +358,53 @@ def channel_url(channel_id: str) -> str:
     return f"{BASE_URL}/index/channel/{channel_id}"
 
 
-def permalink(channel_id: str, ts: str) -> str:
+def verified_month_fragments(session, channel_id: str, month: str) -> dict[str, str]:
+    """Resolve precise Slack identities to observed, unambiguous HTML anchors.
+
+    The archive mixes full timestamps with PHP-rounded IDs. Only the embedded
+    JSON establishes identity; rounding alone cannot establish a working link.
+    """
+    path = f'/index/channel/{channel_id}/{month}'
+    soup = BeautifulSoup(_get(session, BASE_URL + path).text, 'html.parser')
+    feed, nav = soup.select_one('section[role="feed"]'), soup.select_one('nav[role="pagination"]')
+    if feed is None or nav is None:
+        return {}
+    active = nav.select('a.nav-link.active')
+    if len(active) != 1 or active[0].get('href') != path:
+        return {}
+    candidates, owners = {}, {}
+    id_counts = Counter(node['id'] for node in soup.find_all(id=True))
+    for node in feed.select('.message[id]'):
+        metadata = node.select_one('.message-time[title]')
+        if metadata is None or metadata.find_parent(class_='message') is not node:
+            continue
+        try:
+            raw = json.loads(metadata['title'])
+            ts = str(raw['ts'])
+            stamp = _timestamp(ts)
+            fragment = node['id']
+            if (fragment not in {'ts-' + ts, 'ts-' + format(stamp, '.14g')}
+                    or datetime.fromtimestamp(float(stamp), ARCHIVE_TZ).strftime('%Y-%m') != month
+                    or raw.get('channel', channel_id) != channel_id):
+                continue
+            identity = event_id(channel_id, ts)
+            candidates.setdefault(identity, set()).add(fragment)
+            owners.setdefault(fragment, set()).add(identity)
+        except (ValueError, KeyError, TypeError, RuntimeError, OverflowError, OSError):
+            continue
+    result = {}
+    for identity, fragments in candidates.items():
+        unambiguous = [fragment for fragment in fragments
+                       if len(owners[fragment]) == 1 and id_counts[fragment] == 1]
+        if unambiguous:
+            exact = 'ts-' + identity.split(':', 2)[2]
+            result[identity] = exact if exact in unambiguous else sorted(unambiguous)[0]
+    return result
+
+
+def permalink(channel_id: str, ts: str, fragment: str | None = None) -> str:
     month = datetime.fromtimestamp(float(ts), ARCHIVE_TZ).strftime("%Y-%m")
-    return f"{channel_url(channel_id)}/{month}#ts-{ts}"
+    return f"{channel_url(channel_id)}/{month}#{fragment or 'ts-' + ts}"
 
 
 def event_id(channel_id: str, ts: str) -> str:

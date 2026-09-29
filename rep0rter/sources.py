@@ -34,6 +34,27 @@ def plain_text(event):
 AUTOMATION_NAMES = {'github', 'github-actions', 'dependabot', 'renovate', 'slackbot'}
 
 
+def status_notice_only(event):
+    """Exclude Slack notification-status memes, not substantive Braille text."""
+    if event.source != 'slack':
+        return False
+    # Pasted status memes contain large, dense eight-dot graphics. Preserve
+    # ordinary Braille text rather than stripping every Braille sentence.
+    text = plain_text(event)
+    dots = [ord(char) - 0x2800 for char in text if '\u2801' <= char <= '\u28ff']
+    if dots and (len(dots) < 80 or sum(bool(dot & 0xc0) for dot in dots) < .75 * len(dots)):
+        return False
+    text = re.sub(r'[\u2800-\u28ff*_`~]', '', text).strip()
+    notice = re.fullmatch(r'([^.!?;:\n]{1,80}) has (?:paused|resumed) their notifications[.!]?',
+                          text, re.IGNORECASE)
+    if not notice:
+        return False
+    # A short display name, not an announcement ending in the same phrase.
+    words = notice[1].split()
+    return bool(words and all(any(char.isalpha() for char in word) for word in words)
+                and (len(words) == 1 or (len(words) <= 4 and all(word[0].isupper() for word in words))))
+
+
 def automated(event):
     """Default exclusion for integrations and bot actors, before editorial/LLM."""
     if event.meta.get('editorial_override') is True:
@@ -47,5 +68,6 @@ def automated(event):
 def eligible(event):
     visibility = event.meta.get('visibility', 'public' if event.source == 'slack' else 'unknown')
     return (visibility == 'public' and not event.meta.get('deleted_at') and not automated(event) and
+            not status_notice_only(event) and
             event.kind in ELIGIBLE_KINDS.get(event.source, set()) and
             event.meta.get('eligible', event.source == 'slack') and bool(plain_text(event).strip()))

@@ -977,6 +977,31 @@ def test_source_examples_are_removed_from_every_public_output_after_rebuild(publ
     assert store.conn.execute("SELECT 1 FROM posts WHERE id=?", (removed.id,)).fetchone()
 
 
+def test_legacy_notification_noise_disappears_from_all_editions_on_rebuild(published_site):
+    store, cfg, _, entries, rendered_ids = published_site
+    removed, event = entries[-1]
+    kept, _ = entries[0]
+    # Simulate a legacy published notice already persisted before the new gate.
+    with store.conn:
+        store.conn.execute('UPDATE events SET text=? WHERE id=?',
+                           (('⣿⠿⢿⣦⣀\n' * 400) + 'Aline has *paused their notifications*', event.id))
+    rendered_ids.clear()
+    site.build(store, cfg)
+    assert event.id not in rendered_ids
+    assert not (cfg.site_dir / 'posts' / str(removed.id)).exists()
+    assert '2 events · 1 stories' in html(cfg.site_dir / 'index.html').get_text()
+    for path in cfg.site_dir.rglob('*'):
+        if path.suffix in {'.html', '.xml'}:
+            assert event.url not in path.read_text()
+    for page, feed in EDITIONS.values():
+        assert html(cfg.site_dir / page).find('article', id=str(kept.id))
+        assert not html(cfg.site_dir / page).find('article', id=str(removed.id))
+        items = ElementTree.parse(cfg.site_dir / feed).findall('channel/item')
+        assert [item.findtext('guid') for item in items] == [str(kept.id)]
+    assert store.get_event(event.id) is not None
+    assert store.conn.execute('SELECT 1 FROM posts WHERE id=?', (removed.id,)).fetchone()
+
+
 def test_source_examples_do_not_leak_through_story_history(published_site):
     from rep0rter import stories
 

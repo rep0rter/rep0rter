@@ -120,8 +120,8 @@ def _user_id(source, author):
 
 
 def event_allowed(store, event, _visited=None):
-    from .sources import automated
-    if automated(event):
+    from .sources import automated, status_notice_only
+    if automated(event) or status_notice_only(event):
         return False
     visited = set() if _visited is None else _visited
     if event.id in visited:

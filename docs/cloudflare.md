@@ -111,13 +111,29 @@ code recovery; durable data is independent of Worker versions.
 ## Capacity and recovery
 
 The in-memory database copy is capped at 32 MiB and individual files at 1.9 MB.
-Publication archives may expand to at most 64 MiB. The frontend receives a manifest,
+The GitHub runner still uploads a complete ZIP of the site, image cache and
+exclusions ledger: that request is capped at 32 MiB compressed and 64 MiB expanded.
+The public-site manifest is separately capped at 64 MiB and 10,000 files.
+The frontend receives a manifest,
 reuses unchanged stored files, and stages changed files in RPC batches of at most
 2 MiB. Only a complete generation switches the public site; interrupted transfers
 leave the previous generation available. A subsequent publication replaces the
 abandoned staging area and fences its older token. This avoids the former 24 MiB
 whole-site RPC ceiling without buffering the entire site in Worker memory.
 Profile storage and memory before raising these limits.
+
+Every runner publication prints a `Capacity evidence:` JSON record before its
+upload, including when the upload subsequently fails. `usage` records the exact
+checkpointed `database_bytes`, compressed `zip_bytes`, total `expanded_bytes`,
+`public_asset_bytes`, `public_asset_count`, and `largest_file_bytes`; `limits`
+records their existing bounds. The expanded size includes the image cache and
+exclusions ledger, while public asset measurements include only `site/` files.
+At 80% or more of any limit the runner emits a GitHub Actions warning. These logs
+contain only aggregate numbers, not filenames, content, or credentials. Inspect
+the latest Production reporting run's `Capacity evidence:` line to measure actual
+usage; public HTTP sizes cannot establish database or image-cache usage. The
+frontend's batched RPC does not remove the runner's complete-ZIP upload limit.
+
 Native Browser Run calls honor transient rate limits and explicitly
 fail if the daily browser quota is exhausted.
 

@@ -19,6 +19,117 @@ REFRESH_INTERVAL = 21600
 MAX_REPLY_REFRESH_QUEUE = 100
 # Version 1 only queried JSON; version 2 verifies filtered roots in month HTML.
 ROOT_LOOKUP_VERSION = 2
+PERMALINK_VERSION = 1
+
+
+def archive_identity(event):
+    """Return a precise source identity, never infer one from a report ID."""
+    if event.source != 'slack' or not event.container_id.startswith('slack:'):
+        return None
+    identity = event.id
+    if event.kind == 'story_update':
+        identity = event.meta.get('canonical_object_id', '')
+        if not isinstance(identity, str) or not identity.endswith(':' + str(event.meta.get('external_id', ''))):
+            return None
+    prefix = event.container_id + ':'
+    if not identity.startswith(prefix):
+        return None
+    ts = identity[len(prefix):]
+    try:
+        stamp = api._timestamp(ts)
+        datetime.fromtimestamp(float(stamp), api.ARCHIVE_TZ)
+    except (ValueError, TypeError, RuntimeError, OverflowError, OSError):
+        return None
+    return identity
+
+
+def reconcile_permalinks(store, session, public_ids, now):
+    """Repair published source links through bounded, public HTML verification.
+
+    Spend at most four requests and an eighth of the remaining source allowance.
+    Cache exact mappings, share a request across a whole month, and leave source
+    content/observation timestamps untouched when repairing an existing URL.
+    """
+    from ..policy import event_allowed
+    state = read_state(store, 'slack:permalinks')
+    if state.get('version') != PERMALINK_VERSION:
+        state = {'version': PERMALINK_VERSION, 'fragments': {}, 'failed_at': {}}
+    allowed_events, identities = {}, {}
+    for row in store.conn.execute("SELECT id FROM events WHERE source='slack'").fetchall():
+        event = store.get_event(row[0])
+        channel_id = event.container_id.removeprefix('slack:')
+        identity = archive_identity(event)
+        if identity and channel_id in public_ids and event_allowed(store, event) and not automated(event):
+            allowed_events[event.id] = event
+            identities[event.id] = identity
+    # A month may contain thousands of irrelevant messages. Retain only links
+    # for events already stored and still allowed by the current public policy.
+    known_identities = set(identities.values())
+    fragments = state['fragments'] = {key: value for key, value in state['fragments'].items()
+                                      if key in known_identities}
+    failed = state['failed_at'] = {key: value for key, value in state['failed_at'].items()
+                                   if now - value < 86400}
+    allowance = min(4, session.remaining // 8)
+    link_session = BudgetSession(session, Metrics(), limit=allowance, interval=0)
+    pages, pending = set(), []
+    published = store.conn.execute("""SELECT e.id FROM events e JOIN posts p ON p.event_id=e.id
+        WHERE e.source='slack' GROUP BY e.id
+        ORDER BY max(p.published_at) DESC,max(p.id) DESC""").fetchall()
+    for row in published:
+        identity = identities.get(row[0])
+        if identity in fragments:
+            continue
+        event = allowed_events.get(row[0])
+        if event is None:
+            continue
+        _, channel_id, ts = identity.split(':', 2)
+        if channel_id not in public_ids or not _allowed(store, container_id=event.container_id):
+            continue
+        month = datetime.fromtimestamp(float(ts), api.ARCHIVE_TZ).strftime('%Y-%m')
+        key = channel_id + '/' + month
+        if key in pages or now - failed.get(key, 0) < 3600:
+            continue
+        pages.add(key)
+        pending.append((key, channel_id, month, identity))
+    # A failing newest month must not starve unverified older publications.
+    pending.sort(key=lambda item: failed.get(item[0], 0))
+    for key, channel_id, month, event_id in pending[:allowance]:
+        if not session.remaining or not link_session.remaining:
+            break
+        requests_before = link_session.metrics.requests
+        try:
+            found = api.verified_month_fragments(link_session, channel_id, month)
+        except BudgetExceeded:
+            if link_session.metrics.requests > requests_before:
+                failed[key] = now
+            break
+        except Exception as exc:
+            log.warning('Cannot verify Slack source links for %s: %s', key, exc)
+            found = {}
+        fragments.update({key: value for key, value in found.items() if key in known_identities})
+        if event_id not in found:
+            failed[key] = now
+        else:
+            failed.pop(key, None)
+    with store.conn:
+        for event in allowed_events.values():
+            identity = identities[event.id]
+            fragment = fragments.get(identity)
+            if not fragment:
+                continue
+            channel_id = event.container_id.removeprefix('slack:')
+            url = api.permalink(channel_id, identity.split(':', 2)[2], fragment)
+            store.conn.execute('UPDATE events SET url=? WHERE id=? AND url<>?', (url, event.id, url))
+        write_state(store, 'slack:permalinks', state)
+    return fragments
+
+
+def apply_verified_permalink(event, fragments):
+    identity = archive_identity(event)
+    fragment = fragments.get(identity)
+    if fragment:
+        _, channel_id, ts = identity.split(':', 2)
+        event.url = api.permalink(channel_id, ts, fragment)
 
 
 def _budget_debt(state):
@@ -121,6 +232,7 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
     if previous_count and len(channels) < previous_count * .5:
         raise RuntimeError(f'archive public directory suddenly shrank from {previous_count} to {len(channels)}; retaining prior state')
     public_ids = {ch.id for ch in channels}
+    fragments = reconcile_permalinks(store, session, public_ids, now)
     failures, total, transport_failures = 0, 0, 0
     reasons = {}
     selected = []
@@ -180,6 +292,7 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
             events, authors = [], []
             for raw in raws:
                 event, author = api.to_event(raw, channel.id, public_ids)
+                apply_verified_permalink(event, fragments)
                 event.meta.update(bootstrap=bootstrap, recovery=recovery, fetched_at=time.time(), observed_at=now)
                 if event.parent_id:
                     event.meta['context_incomplete'] = store.get_event(event.parent_id) is None
@@ -287,6 +400,8 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         try:
             root_attempts += 1
             root = refresh_root(session, channel_id, root_ts, public_ids)
+            if root is not None:
+                apply_verified_permalink(root, fragments)
             queue[root_id] = dict(last, attempted_at=now, resolved=root is not None,
                                  policy_excluded=False, lookup_version=ROOT_LOOKUP_VERSION)
             if root is None:
