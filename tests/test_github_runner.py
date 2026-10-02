@@ -240,3 +240,24 @@ def test_additional_public_feeds_preserve_configured_sources_and_credentials(mon
     assert os.environ['REP0RTER_FEEDS'] == ('https://example.test/feed,'
         'https://slack-archive-2fl.pages.dev/,https://another.test/rss')
     assert os.environ['TELEGRAM_BOT_TOKEN'] == 'telegram-test'
+
+
+def test_public_cfj_backfill_override_preserves_general_collection_days(monkeypatch):
+    import os
+    monkeypatch.delenv('THREADS_ENABLED', raising=False)
+    monkeypatch.setenv('REP0RTER_CONFIG', json.dumps({
+        'REP0RTER_CFJ_COLLECT_DAYS': '2', 'REP0RTER_COLLECT_DAYS': '2'}))
+    monkeypatch.setenv('REPORT_CFJ_COLLECT_DAYS', '90')
+    monkeypatch.setenv('REP0RTER_CFJ_COLLECT_DAYS', '')
+    monkeypatch.setenv('REP0RTER_COLLECT_DAYS', '')
+    module.install_configuration()
+    assert os.environ['REP0RTER_CFJ_COLLECT_DAYS'] == '90'
+    assert os.environ['REP0RTER_COLLECT_DAYS'] == '2'
+
+
+@pytest.mark.parametrize('days', ['0', '366', 'nonsense'])
+def test_public_cfj_backfill_rejects_invalid_days(monkeypatch, days):
+    monkeypatch.setenv('REP0RTER_CONFIG', '{}')
+    monkeypatch.setenv('REPORT_CFJ_COLLECT_DAYS', days)
+    with pytest.raises(ValueError):
+        module.install_configuration()

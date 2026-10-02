@@ -155,3 +155,14 @@ metadata 明列 `actor_metadata_complete=false` 與 `archive_generated_at`。
 Production reporting workflow 已透過 `REPORT_ADDITIONAL_FEEDS` 加入此 URL，
 runner 載入 private configuration 後合併來源，不修改 GitHub Actions secrets。
 本機仍需加入 `REP0RTER_FEEDS`。部署仍依 `docs/cloudflare.md`。
+
+### 補抓 CfJ 歷史資料
+
+手動執行 Production reporting 的 `report` mode，設定 `cfj_days=90`，即在該輪
+補抓近 90 天的 CfJ 公開訊息。此輸入只改變 CfJ 的時間範圍，其餘來源、每輪／
+每日請求額度與新聞時效判斷沿用原設定。原始 timestamp 不改成採集時間，
+歷史事件不會因補入資料庫自動成為今日新聞。下次排程未帶此輸入時回到設定的
+預設範圍，已保存訊息仍可刷新。允許 1–365 天；尚未完成的窄範圍掃描遇到擴大
+時間範圍時，重新遍歷已略過的 chunk，避免漏掉歷史訊息。
+
+本機可用 `REP0RTER_CFJ_COLLECT_DAYS=90` 指定同一個來源專用設定。

@@ -200,3 +200,34 @@ def test_cloudflare_canonical_redirect_is_counted_and_bounded():
         session.get.side_effect = [Mock(status_code=308, headers={'Location': target}, content=b'')]
         with pytest.raises(ValueError, match='redirected away'):
             cfj._document(session, url)
+
+
+def test_wider_backfill_revisits_chunks_skipped_by_a_partial_recent_scan(tmp_path, monkeypatch):
+    monkeypatch.setattr(cfj.time, 'time', lambda: NOW)
+    pages = {cfj.URL + '/': homepage(),
+             cfj.URL + '/html/CPUBLIC-0.html': page(message(), next_page=1),
+             cfj.URL + '/html/CPUBLIC-1.html': page(message(OLD), next_page=2),
+             cfj.URL + '/html/CPUBLIC-2.html': page()}
+    with Store(tmp_path / 'db') as store:
+        metrics = Metrics()
+        cfj.collect(store, BudgetSession(session_for(pages), metrics, limit=3, interval=0), metrics)
+        assert read_state(store, cfj.PREFIX + 'CPUBLIC')['next_page'] == 2
+        assert store.get_event(cfj.PREFIX + 'CPUBLIC:' + OLD) is None
+        session = session_for(pages)
+        cfj.collect(store, session, Metrics(), days=90)
+        assert [call.args[0] for call in session.get.call_args_list] == list(pages)
+        assert store.get_event(cfj.PREFIX + 'CPUBLIC:' + OLD).ts == float(OLD)
+        assert read_state(store, cfj.PREFIX + 'CPUBLIC')['next_page'] is None
+
+
+def test_registry_limits_backfill_to_cfj_source(tmp_path, monkeypatch):
+    monkeypatch.setenv('REP0RTER_FEEDS', cfj.URL + '/')
+    monkeypatch.setenv('REP0RTER_CFJ_COLLECT_DAYS', '90')
+    collect = Mock(return_value=0)
+    slack = Mock(return_value=0)
+    monkeypatch.setattr(cfj, 'collect', collect)
+    monkeypatch.setattr(registry.slack_incremental, 'collect', slack)
+    with Store(tmp_path / 'db') as store:
+        registry.collect_all(store, days=2, session=Mock(headers={}))
+    assert collect.call_args.args[3] == 90
+    assert slack.call_args.args[1] == 2

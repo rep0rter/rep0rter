@@ -132,6 +132,9 @@ def install_configuration():
     """Overlay public model and Threads settings without replacing shared secrets."""
     model_override = os.environ.get('AI_MODEL')
     additional_feeds = os.environ.get('REPORT_ADDITIONAL_FEEDS', '')
+    cfj_days = os.environ.get('REPORT_CFJ_COLLECT_DAYS', '')
+    if cfj_days and not 1 <= int(cfj_days) <= 365:
+        raise ValueError('CfJ collection days must be between 1 and 365')
     configuration = json.loads(os.environ['REP0RTER_CONFIG'])
     for key, value in configuration.items():
         if key.startswith(('REP0RTER_', 'TELEGRAM_', 'AI_')) and isinstance(value, str):
@@ -142,6 +145,8 @@ def install_configuration():
         feeds = os.environ.get('REP0RTER_FEEDS', '') + ',' + additional_feeds
         os.environ['REP0RTER_FEEDS'] = ','.join(dict.fromkeys(
             url.strip() for url in feeds.split(',') if url.strip()))
+    if cfj_days:
+        os.environ['REP0RTER_CFJ_COLLECT_DAYS'] = str(int(cfj_days))
     if 'THREADS_ENABLED' in os.environ:
         enabled = os.environ['THREADS_ENABLED'].lower() in ('1', 'true', 'yes')
         token = os.environ.get('THREADS_ACCESS_TOKEN', '')
