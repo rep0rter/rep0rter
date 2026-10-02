@@ -131,12 +131,17 @@ class RunnerRuntime:
 def install_configuration():
     """Overlay public model and Threads settings without replacing shared secrets."""
     model_override = os.environ.get('AI_MODEL')
+    additional_feeds = os.environ.get('REPORT_ADDITIONAL_FEEDS', '')
     configuration = json.loads(os.environ['REP0RTER_CONFIG'])
     for key, value in configuration.items():
         if key.startswith(('REP0RTER_', 'TELEGRAM_', 'AI_')) and isinstance(value, str):
             os.environ[key] = value
     if model_override:
         os.environ['AI_MODEL'] = model_override
+    if additional_feeds:
+        feeds = os.environ.get('REP0RTER_FEEDS', '') + ',' + additional_feeds
+        os.environ['REP0RTER_FEEDS'] = ','.join(dict.fromkeys(
+            url.strip() for url in feeds.split(',') if url.strip()))
     if 'THREADS_ENABLED' in os.environ:
         enabled = os.environ['THREADS_ENABLED'].lower() in ('1', 'true', 'yes')
         token = os.environ.get('THREADS_ACCESS_TOKEN', '')

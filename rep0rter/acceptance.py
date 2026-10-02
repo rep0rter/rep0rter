@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from .editorial import evaluation_report
 
 METRIC_FIELDS = ('requests', 'bytes', 'pages', 'new_events', 'updated_events', 'duplicate_payloads')
-SOURCE_FAMILIES = ('slack', 'github', 'rss', 'notion', 'mastodon')
+SOURCE_FAMILIES = ('slack', 'cfj_slack', 'github', 'rss', 'notion', 'mastodon')
 
 
 def source_evidence(observations):

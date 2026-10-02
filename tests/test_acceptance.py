@@ -112,3 +112,17 @@ def test_deployment_preflight_keeps_commit_and_scheduler_guards(monkeypatch):
         module.check('tested', {**health, 'scheduler': 'native-cron'})
     with pytest.raises(RuntimeError, match='not ready'):
         module.check('tested', {**health, 'ready': False})
+
+
+def test_cfj_source_health_is_visible_without_private_source_details(tmp_path):
+    with Store(tmp_path / 'db') as store:
+        source = {'healthy': True, 'available': True, 'history_complete': False,
+                  'events': 0, 'failed_channels': 0, 'metrics': asdict(Metrics(requests=11)),
+                  'reasons': {'private': 'never-log-this'}}
+        store.set_kv('collector_health', json.dumps({'sources': {'cfj_slack': source}}))
+        store.set_kv('collector_metrics:1', json.dumps({'last_attempt_at': 1700000000,
+                                                     'sources': {'cfj_slack': source}}))
+        result = report(store, 1700000001)
+        assert result['collection']['latest_sources']['cfj_slack']['healthy'] is True
+        assert result['collection']['by_source']['cfj_slack']['measured_totals']['requests'] == 11
+        assert 'never-log-this' not in json.dumps(result)

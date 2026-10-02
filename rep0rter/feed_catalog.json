@@ -66,6 +66,17 @@
     "verified_at": "2026-09-19"
   },
   {
+    "id": "code-for-japan-slack",
+    "name": "Code for Japan Slack",
+    "region": "JP",
+    "page_url": "https://slack-archive-2fl.pages.dev/",
+    "url": "https://slack-archive-2fl.pages.dev/",
+    "format": "slack-archive-html",
+    "status": "active",
+    "notes": "Public static channel pages; no Slack OAuth. Archive gaps and omitted raw actor metadata limit coverage.",
+    "verified_at": "2026-10-02"
+  },
+  {
     "id": "parti-coop",
     "name": "Parti Coop",
     "region": "KR",

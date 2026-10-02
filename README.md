@@ -59,7 +59,7 @@ Other commands: `collect`, `report`, `build-site`, `translate`, `outbox`, `statu
 `loop --interval 3600`, `export`.
 
 `REP0RTER_FEEDS` accepts RSS 2.0, RSS 1.0, Atom 1.0, JSON Feed 1/1.1, public Notion
-URLs, and the supported Code for Japan / Open Data Forum index URLs. Notion uses anonymous web JSON requests without an API token;
+URLs, the Code for Japan public Slack archive, and the supported Code for Japan / Open Data Forum index URLs. Add `https://slack-archive-2fl.pages.dev/` to `REP0RTER_FEEDS` to collect CfJ's public static Slack pages without Slack OAuth. Notion uses anonymous web JSON requests without an API token;
 these unofficial endpoints may change. Verified sources across Japan, Korea, Taiwan and global civic-tech organizations
 are recorded in the [source catalog](docs/source-research/README.md). Active monitoring
 sources are included in `.env.example`; historical archives remain available separately.
