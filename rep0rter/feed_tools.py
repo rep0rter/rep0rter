@@ -10,7 +10,7 @@ from urllib.parse import urljoin, urlsplit
 import requests
 from bs4 import BeautifulSoup
 
-from .collectors import notion, rss
+from .collectors import cfj_slack, notion, rss
 from .collectors.state import BudgetSession, Metrics, check_response
 
 CATALOG_PATH = Path(__file__).with_name('feed_catalog.json')
@@ -128,6 +128,13 @@ def probe(url, *, session=None):
         content = response.content
         if len(content) > MAX_BYTES:
             raise ValueError('Response exceeds the 2 MiB probe limit')
+        if cfj_slack.is_archive_url(url):
+            generation, channels = cfj_slack.parse_channels(content)
+            report.update(status='ok', source=cfj_slack.NAME, format='slack-archive-html',
+                          count=len(channels), archive_generated_at=generation,
+                          channels=[{'id': cid, 'name': name} for cid, name in channels.items()],
+                          note='Public channel listing verified; message pages were not fetched')
+            return report, 0
         try:
             name, events = rss.parse_feed(content, url)
         except Exception:

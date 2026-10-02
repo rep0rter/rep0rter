@@ -7,7 +7,7 @@ import time
 from dataclasses import asdict
 from datetime import datetime, timezone
 
-from . import github, mastodon, notion, rss, slack_archive, slack_incremental
+from . import cfj_slack, github, mastodon, notion, rss, slack_archive, slack_incremental
 from .state import BudgetExceeded, BudgetSession, Metrics, read_state
 
 log = logging.getLogger(__name__)
@@ -59,7 +59,8 @@ def collect_all(store, days=2, max_channels=None, config=None, *, session=None):
     feeds = list(dict.fromkeys(_allowlist(os.getenv('REP0RTER_FEEDS', '')) +
                                _allowlist(os.getenv('REP0RTER_RSS_FEEDS', ''))))
     notion_feeds = [url for url in feeds if notion.is_notion_url(url)]
-    rss_feeds = [url for url in feeds if not notion.is_notion_url(url)]
+    cfj_feeds = [url for url in feeds if cfj_slack.is_archive_url(url)]
+    rss_feeds = [url for url in feeds if not notion.is_notion_url(url) and not cfj_slack.is_archive_url(url)]
     if repos:
         jobs.append(('github', lambda: github.collect(store, repos, transport, metrics, days)))
     if accounts:
@@ -68,6 +69,8 @@ def collect_all(store, days=2, max_channels=None, config=None, *, session=None):
         jobs.append(('rss', lambda: rss.collect(store, rss_feeds, transport, metrics, days)))
     if notion_feeds:
         jobs.append(('notion', lambda: notion.collect(store, notion_feeds, transport, metrics, days)))
+    if cfj_feeds:
+        jobs.append(('cfj_slack', lambda: cfj_slack.collect(store, transport, metrics, days)))
     # Complete bounded independent snapshots first. Slack's incremental backlog
     # can use their unspent allowance while retaining the same global budget.
     jobs.append(('slack', lambda: slack_incremental.collect(store, days, max_channels, transport, metrics=metrics)))
@@ -85,7 +88,7 @@ def collect_all(store, days=2, max_channels=None, config=None, *, session=None):
             failures += count
             containers += state.get('containers', 0)
             sources[name] = {'healthy': count == 0, 'available': state.get('available', count == 0),
-                             'history_complete': state.get('history_complete', count == 0),
+                             'history_complete': state.get('history_complete', count == 0 and name != 'cfj_slack'),
                              'events': n, 'failed_channels': count, 'reasons': state.get('reasons', {})}
         except Exception as exc:
             failures += 1

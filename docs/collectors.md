@@ -5,7 +5,7 @@
 ```dotenv
 REP0RTER_GITHUB_REPOS=owner/repository,another/project
 REP0RTER_MASTODON_ACCOUNTS=https://social.example/@civic
-REP0RTER_FEEDS=https://codefor.kr/boards/news.xml,https://codefor.kr/boards/civic-tech-projects.xml,https://code4japan-community.notion.site/Home-9dd9cd85f07942c1bd5f6ef73efdb122,https://civictech.kr/boards/news.xml,https://www.odf.or.kr/archive-project,https://medium.com/feed/codeforkorea,https://coop.campaigns.do/boards/news.xml,https://www.code4japan.org/news,https://note.com/codefortokushima/rss,https://ocf.tw/feed.xml,https://blog.ocf.tw/feeds/posts/default?alt=rss,https://www.mysociety.org/feed/,https://blog.okfn.org/feed/,https://decidim.org/blog/feed.xml,https://democracyclub.org.uk/blog/feed/,https://civictech.guide/
+REP0RTER_FEEDS=https://slack-archive-2fl.pages.dev/,https://codefor.kr/boards/news.xml,https://codefor.kr/boards/civic-tech-projects.xml,https://code4japan-community.notion.site/Home-9dd9cd85f07942c1bd5f6ef73efdb122,https://civictech.kr/boards/news.xml,https://www.odf.or.kr/archive-project,https://medium.com/feed/codeforkorea,https://coop.campaigns.do/boards/news.xml,https://www.code4japan.org/news,https://note.com/codefortokushima/rss,https://ocf.tw/feed.xml,https://blog.ocf.tw/feeds/posts/default?alt=rss,https://www.mysociety.org/feed/,https://blog.okfn.org/feed/,https://decidim.org/blog/feed.xml,https://democracyclub.org.uk/blog/feed/,https://civictech.guide/
 REP0RTER_COLLECT_REQUEST_BUDGET=80
 REP0RTER_COLLECT_DAILY_BUDGET=1500
 ```
@@ -128,3 +128,29 @@ root 可在六小時退避內再嘗試一次；成功、未找到精確主文或
 `tests/test_collectors_incremental.py` 與 `tests/test_public_sources.py` 使用合成 API 回應與離線 transport，覆蓋多於 100 筆、短頁、after/before、晚到與重複、空 subtype／0 回應、resume、交易中斷、reaction 撤回、舊 root 補抓、來源隔離、每日 quota、公開性、CW、boost、跨 instance、退出與刪除。
 
 已核對的小型日韓來源與實際 HTTP 驗證見 [FtO 來源](fto-sources.md)。Slack 頭貼支援 24/32/48/72/192/512/1024/original，明確 is_custom_image=false 時使用名字縮寫，不冒用預設圖案。
+
+## Code for Japan Slack 靜態封存
+
+把 `https://slack-archive-2fl.pages.dev/` 加入 `REP0RTER_FEEDS`，排程入口會使用
+`cfj_slack` 採集器，不把首頁當 RSS。`rep0rter feeds probe` 可驗證公開頻道列表。
+無需 Slack OAuth、token 或原始 JSON 匯出；2026-10-02 實測公開列表包含
+`03_events` 與 `test-archive`（重複 sidebar 連結只計一次）。
+
+採集器只跟隨 Public Channels / Archived Public Channels 列出的靜態訊息頁，
+不讀取 private、DM、全站 search database 或附件。事件保留 Slack timestamp、
+作者 profile 的 ID、可直接開啟的靜態頁 anchor、巢狀回覆關係及 reaction count。
+使用 `slack:cfj:<channel>:<timestamp>` 與 `slack:cfj:<user>`，避免與 g0v 身分碰撞；
+`source_name` 是 Code for Japan Slack。入退頻通知不當作新聞，無法從 HTML 確認
+作者 ID 的訊息不具自動新聞資格。既有 bot、退出與編輯政策仍適用。
+
+每頁與續抓 cursor 在同一 transaction 保存，共用全站請求額度，未完成掃描會
+記錄來源錯誤，不更新 last_success。下輪重讀第一頁並續抓剩餘頁，generation 改變
+則重掃，以免新訊息使 chunk 編號位移。掃描所有 chunk 可找到舊主文的新回覆；
+來源之間的額度公平分配與頻道輪替避免單一長頻道耗盡每輪採集資源。
+頁面消失不推定訊息被刪除；既有項目會重讀更新文字及互動數。
+
+HTML 沒有完整 Slack subtype、bot_id、app_id 或刪除紀錄，且上游封存有缺日；
+成功讀完已公開的頁面不代表完整 Slack 歷史，也無法保證辨識所有 app 代貼。
+metadata 明列 `actor_metadata_complete=false` 與 `archive_generated_at`。
+現有 production configuration 需同步加入此 URL 才會啟用；範例及 catalog 不會
+自行修改 GitHub Actions secrets。部署仍依 `docs/cloudflare.md`。
