@@ -152,5 +152,6 @@ root 可在六小時退避內再嘗試一次；成功、未找到精確主文或
 HTML 沒有完整 Slack subtype、bot_id、app_id 或刪除紀錄，且上游封存有缺日；
 成功讀完已公開的頁面不代表完整 Slack 歷史，也無法保證辨識所有 app 代貼。
 metadata 明列 `actor_metadata_complete=false` 與 `archive_generated_at`。
-現有 production configuration 需同步加入此 URL 才會啟用；範例及 catalog 不會
-自行修改 GitHub Actions secrets。部署仍依 `docs/cloudflare.md`。
+Production reporting workflow 已透過 `REPORT_ADDITIONAL_FEEDS` 加入此 URL，
+runner 載入 private configuration 後合併來源，不修改 GitHub Actions secrets。
+本機仍需加入 `REP0RTER_FEEDS`。部署仍依 `docs/cloudflare.md`。

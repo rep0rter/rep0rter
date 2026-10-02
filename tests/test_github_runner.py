@@ -224,3 +224,19 @@ def test_worker_fences_expired_leases_and_rejects_replayed_mutations(tmp_path, m
     assert asyncio.run(api.handle(owner,Request(data),'/__runner/checkpoint')).status==409
     assert runtime.pages==[b'b'*4096]
     assert asyncio.run(api.handle(owner,Request({'source_commit':'old'}),'/__runner/start')).status==409
+
+
+def test_additional_public_feeds_preserve_configured_sources_and_credentials(monkeypatch):
+    import os
+    monkeypatch.delenv('THREADS_ENABLED', raising=False)
+    monkeypatch.setenv('REP0RTER_FEEDS', '')
+    monkeypatch.setenv('TELEGRAM_BOT_TOKEN', '')
+    monkeypatch.setenv('REP0RTER_CONFIG', json.dumps({
+        'REP0RTER_FEEDS': 'https://example.test/feed,https://slack-archive-2fl.pages.dev/',
+        'TELEGRAM_BOT_TOKEN': 'telegram-test',
+    }))
+    monkeypatch.setenv('REPORT_ADDITIONAL_FEEDS', ' https://slack-archive-2fl.pages.dev/ ,https://another.test/rss')
+    module.install_configuration()
+    assert os.environ['REP0RTER_FEEDS'] == ('https://example.test/feed,'
+        'https://slack-archive-2fl.pages.dev/,https://another.test/rss')
+    assert os.environ['TELEGRAM_BOT_TOKEN'] == 'telegram-test'

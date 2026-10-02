@@ -59,6 +59,11 @@ public generation before attempting a new render. Native account submissions
 can still use Browser Run; the large scheduled workload uses GitHub's Chromium.
 Native Worker cron publication stays disabled to prevent duplicate schedulers.
 
+The reporting workflow adds the public Code for Japan Slack archive through
+`REPORT_ADDITIONAL_FEEDS`. The runner merges these URLs into `REP0RTER_FEEDS`
+after loading the private configuration, preserving its existing sources and
+credentials. This activates CfJ collection without replacing shared secrets.
+
 ## Code deployment
 
 Install Node.js, `uv`, and `uv tool install workers-py==1.17.3`. Authenticate
