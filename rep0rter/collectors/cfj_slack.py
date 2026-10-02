@@ -168,6 +168,8 @@ def collect(store, session, metrics, days=2):
     from ..policy import container_allowed, event_allowed
     from .registry import record_source_error
 
+    if not 1 <= days <= 365:
+        raise ValueError('CfJ collection days must be between 1 and 365')
     generation, channels = parse_channels(_document(session, URL + '/'))
     total = 0
     # Rotate channels so a long archive cannot starve a small one.
@@ -183,6 +185,10 @@ def collect(store, session, metrics, days=2):
         # Keep the lower bound throughout a resumed scan. Read every chunk:
         # a reply to an old root may be recent, regardless of the root's date.
         resume = state.get('next_page') if state.get('generation') == generation else None
+        if resume and now - days * 86400 < state.get('lower', now):
+            # A wider backfill must revisit intermediate chunks that an
+            # unfinished narrow scan already read but did not retain.
+            resume = None
         lower = state.get('lower', now - days * 86400) if resume else min(now - days * 86400, state.get('last_success', now) - 7200)
         page = 0
         try:

@@ -13,6 +13,10 @@ on:
         description: Existing post ID (required only for deliver)
         type: string
         default: ''
+      cfj_days:
+        description: CfJ Slack lookback days for this report only (1–365; blank keeps configured defaults)
+        type: string
+        default: ''
 permissions:
   contents: read
   actions: read
@@ -54,6 +58,7 @@ jobs:
           REP0RTER_CONFIG: ${{ secrets.REP0RTER_CONFIG }}
           AI_MODEL: gpt-6-luna
           REPORT_ADDITIONAL_FEEDS: https://slack-archive-2fl.pages.dev/
+          REPORT_CFJ_COLLECT_DAYS: ${{ inputs.cfj_days }}
           REP0RTER_RUNNER_TOKEN: ${{ secrets.REP0RTER_RUNNER_TOKEN }}
           THREADS_ACCESS_TOKEN: ${{ secrets.REP0RTER_THREADS_ACCESS_TOKEN }}
           THREADS_ENABLED: ${{ vars.REP0RTER_THREADS_ENABLED || '0' }}

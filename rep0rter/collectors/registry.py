@@ -70,7 +70,8 @@ def collect_all(store, days=2, max_channels=None, config=None, *, session=None):
     if notion_feeds:
         jobs.append(('notion', lambda: notion.collect(store, notion_feeds, transport, metrics, days)))
     if cfj_feeds:
-        jobs.append(('cfj_slack', lambda: cfj_slack.collect(store, transport, metrics, days)))
+        jobs.append(('cfj_slack', lambda: cfj_slack.collect(
+            store, transport, metrics, int(os.getenv('REP0RTER_CFJ_COLLECT_DAYS', str(days))))))
     # Complete bounded independent snapshots first. Slack's incremental backlog
     # can use their unspent allowance while retaining the same global budget.
     jobs.append(('slack', lambda: slack_incremental.collect(store, days, max_channels, transport, metrics=metrics)))
