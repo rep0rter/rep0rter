@@ -170,6 +170,9 @@ class NativePublication:
                         links.update(link['href'] for link in article.select('p.meta a[rel~=noopener][href]'))
                 del content, document
                 gc.collect()
+        # Source links can live only in the generation being replaced. Retain
+        # them durably before its commit, so frontend retries still scrub peers.
+        policy.queue_public_withdrawal(store, links)
         for name in paths:
             if not name.endswith(('.html', '.xml')):
                 self.copy(name)

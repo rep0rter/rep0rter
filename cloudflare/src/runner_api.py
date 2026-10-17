@@ -46,6 +46,7 @@ async def handle(owner, request, path):
         if not isinstance(lease, str) or len(lease) != 32 or data.get('mode') not in ('build', 'report', 'deliver'):
             return Response('Invalid lease', status=400)
         runtime.set_meta('runner_lease', lease)
+        runtime.set_meta('native_cache_stale', 'true')
         runtime.set_meta('runner_until', now + 1200)
         runtime.set_meta('runner_sequence', '0')
         runtime.set_meta('runner_payload_hash', '')
@@ -98,6 +99,7 @@ async def handle(owner, request, path):
                 runtime.sql.exec('INSERT INTO db_pages VALUES (?,?) ON CONFLICT(number) DO UPDATE SET data=excluded.data', number, content)
             runtime.sql.exec('DELETE FROM db_pages WHERE number>=?', count)
             runtime.set_meta('runner_sequence', sequence)
+            runtime.set_meta('native_cache_stale', 'true')
             runtime.set_meta('runner_payload_hash', digest)
             runtime.set_meta('runner_until', time.time() + 1200)
         runtime.transaction(commit)

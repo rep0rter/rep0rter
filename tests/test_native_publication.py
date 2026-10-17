@@ -34,6 +34,7 @@ def native(engine, tmp_path, monkeypatch):
     runtime.root = tmp_path / 'application'
     runtime.root.mkdir()
     runtime.poisoned = False
+    runtime.set_meta('runner_until', '0')
     runtime.pages = []
     (runtime.root / 'exclusions.json').write_text('{"schema":1,"rules":[],"tombstones":[]}')
     return SimpleNamespace(runtime=runtime, engine=engine, module=module)

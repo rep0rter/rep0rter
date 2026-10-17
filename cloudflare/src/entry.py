@@ -112,6 +112,31 @@ class Runtime:
         self.pages = current
         gc.collect()
 
+    def ensure_native(self):
+        """Refresh the native cache after runner ownership, never its lease state."""
+        if float(self.meta('runner_until', '0')) > time.time():
+            raise DurabilityError('Reporting update in progress; retry after lease release')
+        if self.meta('native_cache_stale') != 'true':
+            return False
+        self.abort_site_generation()
+        # The application lock excludes native connections and runner writes.
+        # Durable SQL, rather than the warm filesystem, is the recovery source.
+        self.pages = [buffer_bytes(row['data']) for row in rows(
+            self.sql.exec('SELECT data FROM db_pages ORDER BY number'))]
+        for path in self.root.iterdir():
+            if path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+        if self.pages:
+            (self.root / 'rep0rter.sqlite').write_bytes(b''.join(self.pages))
+        for row in rows(self.sql.exec("SELECT data FROM files WHERE path='exclusions.json'")):
+            (self.root / 'exclusions.json').write_bytes(buffer_bytes(row['data']))
+        self.image_failure_times = {}
+        self.set_meta('native_cache_stale', 'false')
+        self.native_generation = getattr(self, 'native_generation', 0) + 1
+        return True
+
     def persist_policy(self, path):
         data = path.read_bytes()
         self.sql.exec('INSERT INTO files VALUES (?,?,?) ON CONFLICT(path) DO UPDATE SET data=excluded.data,digest=excluded.digest',
@@ -385,6 +410,10 @@ class Reporter(DurableObject):
             runtime = self.load()
             if getattr(self.env, 'RUN_ENABLED', 'false') != 'true' or runtime.meta('imported') != 'true':
                 return
+            if float(runtime.meta('runner_until', '0')) > time.time():
+                return
+            if runtime.ensure_native():
+                self.app = None
             # Reserve the hourly slot durably. Crash retries do not start another
             # publishing cycle; the delivery outbox retains ambiguous sends.
             if time.time() - float(runtime.meta('last_started', '0')) < 3500:
@@ -436,9 +465,13 @@ class Reporter(DurableObject):
             if path.startswith(('/auth/', '/projects')) or path in ('/submit', '/write'):
                 if float(runtime.meta('runner_until', '0')) > time.time():
                     return Response('Reporting update in progress. Please retry shortly.', status=503, headers={'Retry-After': '60'})
+                runtime.ensure_native()
+                if getattr(self, 'app_generation', None) != getattr(runtime, 'native_generation', 0):
+                    self.app = None
                 if self.app is None:
                     from rep0rter.web import create_app
                     self.app = create_app()
+                    self.app_generation = getattr(runtime, 'native_generation', 0)
                 return await wsgi.fetch(self.app, request, self.env)
             if request.method not in ('GET', 'HEAD'):
                 return Response('Method not allowed', status=405)

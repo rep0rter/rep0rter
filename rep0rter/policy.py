@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS event_tombstones (
 CREATE TABLE IF NOT EXISTS retractions (
  post_id INTEGER PRIMARY KEY, requested_at REAL NOT NULL, status TEXT NOT NULL DEFAULT 'pending',
  error TEXT, completed_at REAL);
+CREATE TABLE IF NOT EXISTS public_withdrawals (url TEXT PRIMARY KEY);
 """
 SCOPES = ('user', 'container', 'event')
 
@@ -62,19 +63,24 @@ def _import_external(store):
                   effective_at=excluded.effective_at WHERE excluded.version>=policy_rules.version''', rule)
             for item in data['tombstones']:
                 store.conn.execute('INSERT OR IGNORE INTO event_tombstones VALUES(:event_id,:redacted_at,:reason)', item)
+            pending = data.get('public_withdrawals', [])
+            if not isinstance(pending, list) or any(not isinstance(url, str) for url in pending):
+                raise ValueError('Invalid public withdrawal obligations')
+            store.conn.executemany('INSERT OR IGNORE INTO public_withdrawals VALUES(?)', ((url,) for url in pending))
 
 
 def initialize(store):
     store.conn.executescript(SCHEMA)
     _import_external(store)
     # Union with the external ledger: restoring an older DB cannot revive content.
-    scrubbed = False
     withdrawn_urls = {row[0] for row in store.conn.execute('SELECT url FROM events JOIN event_tombstones ON events.id=event_tombstones.event_id') if row[0]}
+    ids = [row['event_id'] for row in store.conn.execute('SELECT event_id FROM event_tombstones')]
+    if any(_scrub_required(store, event_id) for event_id in ids):
+        queue_public_withdrawal(store, withdrawn_urls)
     with store.conn:
-        for row in store.conn.execute('SELECT event_id FROM event_tombstones').fetchall():
-            scrubbed = _scrub(store, row['event_id']) or scrubbed
-    if scrubbed:
-        _purge_media(store, withdrawn_urls)
+        for event_id in ids:
+            _scrub(store, event_id)
+    flush_public_withdrawals(store)
     save(store)
 
 
@@ -88,7 +94,9 @@ def _save_locked(store):
             rules[key] = rule
     tombstones = {r['event_id']:r for r in previous['tombstones']}
     tombstones.update({r['event_id']:dict(r) for r in store.conn.execute('SELECT * FROM event_tombstones')})
-    _atomic_json(path, {'schema':1,'rules':list(rules.values()),'tombstones':list(tombstones.values())})
+    pending = [row[0] for row in store.conn.execute('SELECT url FROM public_withdrawals ORDER BY url')]
+    _atomic_json(path, {'schema':1,'rules':list(rules.values()),'tombstones':list(tombstones.values()),
+                        'public_withdrawals': pending})
     if services.get() is not None:
         services.get().persist_policy(path)
 
@@ -97,6 +105,27 @@ def save(store):
     with policy_path(store).with_suffix('.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         _save_locked(store)
+
+
+def queue_public_withdrawal(store, urls):
+    # The empty sentinel retains an obligation even without a surviving URL.
+    # Keep it in both checkpoints and the external ledger before destructive I/O.
+    with store.conn:
+        store.conn.executemany('INSERT OR IGNORE INTO public_withdrawals VALUES(?)',
+                               ((url,) for url in {'', *urls}))
+    save(store)
+
+
+def flush_public_withdrawals(store):
+    pending = [row[0] for row in store.conn.execute('SELECT url FROM public_withdrawals')]
+    if not pending:
+        return
+    _purge_media(store, set(pending) - {''})
+    # A failed/lost frontend acknowledgement leaves the obligation intact.
+    # Clearing DB before the ledger makes interruption replay safely.
+    with store.conn:
+        store.conn.execute('DELETE FROM public_withdrawals')
+    save(store)
 
 
 def _excluded(store, scope, subject, occurred_at=None):
@@ -428,11 +457,15 @@ def _purge_media(store, withdrawn_urls=()):
             runtime.publish_site(None)
 
 
+def _scrub_required(store, event_id):
+    event = store.conn.execute('SELECT text,html,author_id,author_name,url,meta FROM events WHERE id=?', (event_id,)).fetchone()
+    return bool(event and (any(event[column] for column in ('text','html','author_id','author_name','url'))
+                   or event['meta'] != json.dumps({'content_status':'deleted','visibility':'unknown'}))) or any(_audit_rows(store, {event_id}))
+
+
 def _scrub(store, event_id):
     now=time.time()
-    event = store.conn.execute('SELECT text,html,author_id,author_name,url,meta FROM events WHERE id=?', (event_id,)).fetchone()
-    changed = bool(event and (any(event[column] for column in ('text','html','author_id','author_name','url'))
-                   or event['meta'] != json.dumps({'content_status':'deleted','visibility':'unknown'})))
+    changed = _scrub_required(store, event_id)
     audit_rows = list(_audit_rows(store, {event_id}))
     changed = changed or bool(audit_rows)
     for row in store.conn.execute('SELECT id FROM posts WHERE event_id=?',(event_id,)).fetchall():
@@ -480,13 +513,13 @@ def redact(store, event_ids, reason='withdrawn'):
     with store.conn:
         store.conn.executemany('INSERT OR IGNORE INTO event_tombstones VALUES(?,?,?)',((e,now,reason) for e in event_ids))
     # Durable ledger precedes removal, so interruption replays removal on next open.
-    save(store)
+    queue_public_withdrawal(store, withdrawn_urls)
     with store.conn:
         for event_id in event_ids:
             _scrub(store,event_id)
         for row in store.conn.execute("SELECT subject FROM policy_rules WHERE scope='user'").fetchall():
             store.conn.execute('DELETE FROM users WHERE id=?',(row['subject'],))
-    _purge_media(store, withdrawn_urls)
+    flush_public_withdrawals(store)
     return sorted(event_ids)
 
 
