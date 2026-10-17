@@ -11,6 +11,13 @@ account features, and holds the durable SQLite database and generated assets.
 `report`, `build`, and `deliver` dispatches. GitHub cron can be delayed. The workflow requires
 passing Offline tests for its exact main commit; the Worker also rejects a
 runner whose source commit differs from the deployed engine.
+
+The public Worker health preflight retries transient HTTP 500/502/503/504 or
+timeout/connection-reset failures up to three GET attempts, with 2/5-second
+backoff and a 10-second request timeout. It still requires the exact deployed
+commit, readiness and GitHub scheduler flags. Other HTTP errors, invalid health
+data and persistent failures stop the cycle before reporting dependencies are
+installed; these retries do not dispatch or replay a reporting job.
 An early engine health check reports both commit IDs before installing Python
 dependencies and Chromium when deployment has fallen behind. Deploy tested main;
 do not bypass the runner's version guard. Successful reporting runs print an
