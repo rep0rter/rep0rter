@@ -119,7 +119,12 @@ class RunnerRuntime:
             if not isinstance(item, dict):
                 raise ValueError('Invalid asset manifest')
             name, size, digest = item.get('path'), item.get('size'), item.get('digest')
-            if (not isinstance(name, str) or len(name) > 2048 or '\\' in name or '\x00' in name
+            try:
+                expressible = (isinstance(name, str) and len(name.encode('utf-8')) <= 2048
+                               and all(len(part.encode('utf-8')) <= 255 for part in name.split('/')))
+            except UnicodeError:
+                expressible = False
+            if (not expressible or '\\' in name or '\x00' in name
                     or any(part in ('', '.', '..') for part in name.split('/')) or name in seen
                     or not (name == 'exclusions.json' or name.startswith(('site/', 'image-cache/')))
                     or type(size) is not int or not 0 <= size <= TRANSFER_LIMITS['largest_file_bytes']

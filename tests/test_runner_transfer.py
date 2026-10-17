@@ -244,6 +244,16 @@ def test_file_directory_prefix_conflicts_never_commit_an_unrestorable_snapshot(e
     assert engine.read_files() == engine.initial
 
 
+@pytest.mark.parametrize('name', ['site/' + 'a' * 256, 'site/' + '字' * 86, 'site/\ud800'])
+def test_snapshot_paths_must_be_representable_as_utf8_filesystem_components(engine, name):
+    runner = load('filename_runner', ROOT / 'cloudflare/github_runner.py')
+    files = manifest(generation(**{name: b'x'}))
+    for validate in (runner.RunnerRuntime.validate_manifest, engine.transfer.validate):
+        with pytest.raises(ValueError, match='Invalid'):
+            validate(files)
+    assert engine.request('publish-begin', {'publication': 'b' * 32, 'files': files}).status == 400
+
+
 def test_expiry_new_lease_and_replacement_fence_pending_publications(engine):
     files = generation()
     begin(engine, files)

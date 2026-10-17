@@ -26,7 +26,12 @@ def raw(value):
 
 
 def valid_path(path):
-    return (isinstance(path, str) and len(path) <= 2048 and '\\' not in path and '\x00' not in path
+    try:
+        expressible = (isinstance(path, str) and len(path.encode('utf-8')) <= 2048
+                       and all(len(part.encode('utf-8')) <= 255 for part in path.split('/')))
+    except UnicodeError:
+        expressible = False
+    return (expressible and '\\' not in path and '\x00' not in path
             and all(part not in ('', '.', '..') for part in path.split('/'))
             and (path == 'exclusions.json' or path.startswith(('site/', 'image-cache/'))))
 
