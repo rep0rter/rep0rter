@@ -53,6 +53,8 @@ class Runtime:
         self.sql.exec('CREATE TABLE IF NOT EXISTS db_pages (number INTEGER PRIMARY KEY, data BLOB NOT NULL)')
         self.sql.exec('CREATE TABLE IF NOT EXISTS files (path TEXT PRIMARY KEY, data BLOB NOT NULL, digest TEXT NOT NULL)')
         self.sql.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+        self.sql.exec('CREATE TABLE IF NOT EXISTS native_files(path TEXT PRIMARY KEY,data BLOB NOT NULL,digest TEXT NOT NULL)')
+        self.sql.exec('DELETE FROM native_files')  # Abandoned native build after an isolate restart.
         if self.root.exists():
             shutil.rmtree(self.root)
         self.root.mkdir(parents=True)
@@ -110,66 +112,132 @@ class Runtime:
         self.pages = current
         gc.collect()
 
+    def ensure_native(self):
+        """Refresh the native cache after runner ownership, never its lease state."""
+        if float(self.meta('runner_until', '0')) > time.time():
+            raise DurabilityError('Reporting update in progress; retry after lease release')
+        if self.meta('native_cache_stale') != 'true':
+            return False
+        self.abort_site_generation()
+        # The application lock excludes native connections and runner writes.
+        # Durable SQL, rather than the warm filesystem, is the recovery source.
+        self.pages = [buffer_bytes(row['data']) for row in rows(
+            self.sql.exec('SELECT data FROM db_pages ORDER BY number'))]
+        for path in self.root.iterdir():
+            if path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+        if self.pages:
+            (self.root / 'rep0rter.sqlite').write_bytes(b''.join(self.pages))
+        for row in rows(self.sql.exec("SELECT data FROM files WHERE path='exclusions.json'")):
+            (self.root / 'exclusions.json').write_bytes(buffer_bytes(row['data']))
+        self.image_failure_times = {}
+        self.set_meta('native_cache_stale', 'false')
+        self.native_generation = getattr(self, 'native_generation', 0) + 1
+        return True
+
     def persist_policy(self, path):
         data = path.read_bytes()
         self.sql.exec('INSERT INTO files VALUES (?,?,?) ON CONFLICT(path) DO UPDATE SET data=excluded.data,digest=excluded.digest',
                       'exclusions.json', data, hashlib.sha256(data).hexdigest())
 
-    def hydrate_site(self):
-        # Withdrawals scrub the complete durable generation before any render
-        # attempt. A later Browser Run failure must not leave old text online.
-        directory = self.root / 'site'
-        if directory.exists():
-            if directory.is_symlink():
-                directory.unlink()
-            else:
-                shutil.rmtree(directory)
-        for item in rows(self.sql.exec("SELECT path FROM files WHERE path LIKE 'site/%'")):
-            row = rows(self.sql.exec('SELECT data FROM files WHERE path=?', item['path']))[0]
-            path = self.root / item['path']
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(buffer_bytes(row['data']))
-        gc.collect()
-
     def hydrate_assets(self, cfg):
-        # Generated HTML is served straight from durable storage. Only cached
-        # media are needed in Python memory to build the next generation.
-        for row in rows(self.sql.exec("SELECT path FROM files WHERE path LIKE 'site/cards/%' OR path LIKE 'image-cache/%'")):
-            path = self.root / row['path']
-            if not path.exists():
-                item = rows(self.sql.exec('SELECT data FROM files WHERE path=?', row['path']))[0]
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(buffer_bytes(item['data']))
-        gc.collect()
+        pass  # Cards are reused inside SQLite; identity images are read lazily.
+
+    def begin_site_generation(self, directory):
+        from native_publication import NativePublication
+        self.publication = NativePublication(self, directory)
+
+    def abort_site_generation(self):
+        if getattr(self, 'publication', None) is not None:
+            self.publication.discard()
+            self.publication = None
+
+    def stage_site_text(self, path, content):
+        publication = getattr(self, 'publication', None)
+        return publication is not None and publication.text(path, content)
+
+    def use_cached_card(self, path):
+        publication = getattr(self, 'publication', None)
+        return publication is not None and publication.cached_card(path)
+
+    def stage_card(self, path):
+        publication = getattr(self, 'publication', None)
+        return publication is not None and publication.card(path)
+
+    def asset_size(self, path):
+        publication = getattr(self, 'publication', None)
+        return publication.size(path) if publication is not None else path.stat().st_size
+
+    def retain_cards(self, keep):
+        publication = getattr(self, 'publication', None)
+        if publication is not None:
+            publication.keep_cards(keep)
+
+    def cached_image(self, path):
+        try:
+            name = path.relative_to(self.root).as_posix()
+        except ValueError:
+            return None
+        if not name.startswith('image-cache/'):
+            return None
+        # The old bulk hydration started persisted failure-cache TTLs when the
+        # runtime loaded. Preserve that behavior without writing cache files.
+        if name.endswith('.failed'):
+            if not hasattr(self, 'image_failure_times'):
+                self.image_failure_times = {}
+            since = self.image_failure_times.setdefault(name, time.time())
+            if time.time() - since >= 3600:
+                return None
+        publication = getattr(self, 'publication', None)
+        found = rows(self.sql.exec('SELECT data FROM native_files WHERE path=?', name)) if publication is not None else []
+        if not found:
+            found = rows(self.sql.exec('SELECT data FROM files WHERE path=?', name))
+        return buffer_bytes(found[0]['data']) if found else None
+
+    def stage_image_cache(self, path):
+        publication = getattr(self, 'publication', None)
+        if publication is not None:
+            publication.cache_image(path)
 
     def publish_site(self, cfg):
-        # Prepare the whole generation before changing anything durable. Paths
-        # removed by a withdrawal are deleted in the same transaction.
-        files = {}
-        for prefix in ('site', 'image-cache'):
-            directory = self.root / prefix
-            if directory.exists():
-                for path in directory.rglob('*'):
-                    if path.is_file():
-                        data = path.read_bytes()
-                        if len(data) > MAX_FILE:
-                            raise ValueError('Generated file exceeds durable storage row limit')
-                        files[f'{prefix}/{path.relative_to(directory).as_posix()}'] = data
-        policy = self.root / 'exclusions.json'
-        if policy.exists():
-            files['exclusions.json'] = policy.read_bytes()
-        existing = {r['path']: r['digest'] for r in rows(self.sql.exec('SELECT path,digest FROM files'))}
-        changed = [(p, data, hashlib.sha256(data).hexdigest()) for p, data in files.items()]
-        def write():
-            for path, data, digest in changed:
-                if existing.get(path) != digest:
-                    self.sql.exec('INSERT INTO files VALUES (?,?,?) ON CONFLICT(path) DO UPDATE SET data=excluded.data,digest=excluded.digest', path, data, digest)
-            for path in existing.keys() - files.keys():
-                self.sql.exec('DELETE FROM files WHERE path=?', path)
-            self.set_meta('site_built_at', time.time())
-        self.transaction(write)
-        gc.collect()
-        self.publish_public()
+        from native_publication import NativePublication
+        publication = getattr(self, 'publication', None)
+        if publication is None:
+            # Withdrawal publication owns a scrubbed complete filesystem view.
+            # Never merge an older card/image cache back into that generation.
+            publication = NativePublication(self, self.root / 'site', preserve_images=False)
+        try:
+            publication.commit()
+            self.publish_public()
+        finally:
+            publication.discard()
+            self.publication = None
+            gc.collect()
+
+    def scrub_site(self, store, withdrawn_urls):
+        from native_publication import NativePublication
+        directory = self.root / '.withdrawal-file'
+        self.abort_site_generation()
+        if directory.exists():
+            shutil.rmtree(directory)
+        publication = NativePublication(self, directory, preserve_images=False)
+        try:
+            publication.scrub(store, withdrawn_urls)
+            publication.commit()
+            self.publish_public()
+        finally:
+            # A prior failed build may still have local media. It must not be
+            # carried into a subsequent rebuild after the durable withdrawal.
+            for path in (self.root / 'image-cache', self.root / '.site-releases', self.root / 'site'):
+                if path.is_symlink():
+                    path.unlink()
+                elif path.is_dir():
+                    shutil.rmtree(path)
+            publication.discard()
+            shutil.rmtree(directory, ignore_errors=True)
+            gc.collect()
 
     def health(self):
         from rep0rter.config import Config
@@ -342,6 +410,10 @@ class Reporter(DurableObject):
             runtime = self.load()
             if getattr(self.env, 'RUN_ENABLED', 'false') != 'true' or runtime.meta('imported') != 'true':
                 return
+            if float(runtime.meta('runner_until', '0')) > time.time():
+                return
+            if runtime.ensure_native():
+                self.app = None
             # Reserve the hourly slot durably. Crash retries do not start another
             # publishing cycle; the delivery outbox retains ambiguous sends.
             if time.time() - float(runtime.meta('last_started', '0')) < 3500:
@@ -393,9 +465,13 @@ class Reporter(DurableObject):
             if path.startswith(('/auth/', '/projects')) or path in ('/submit', '/write'):
                 if float(runtime.meta('runner_until', '0')) > time.time():
                     return Response('Reporting update in progress. Please retry shortly.', status=503, headers={'Retry-After': '60'})
+                runtime.ensure_native()
+                if getattr(self, 'app_generation', None) != getattr(runtime, 'native_generation', 0):
+                    self.app = None
                 if self.app is None:
                     from rep0rter.web import create_app
                     self.app = create_app()
+                    self.app_generation = getattr(runtime, 'native_generation', 0)
                 return await wsgi.fetch(self.app, request, self.env)
             if request.method not in ('GET', 'HEAD'):
                 return Response('Method not allowed', status=405)

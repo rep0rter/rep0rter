@@ -145,6 +145,18 @@ def identity_image(event: Event, cfg: Config) -> bytes | None:
             continue
         key = hashlib.sha256(url.encode()).hexdigest()
         path, failure = cache / f"{key}.png", cache / f"{key}.failed"
+        runtime = services.get()
+        if not path.exists() and runtime is not None and hasattr(runtime, 'cached_image'):
+            data = runtime.cached_image(path)
+            if data is not None:
+                try:
+                    with Image.open(io.BytesIO(data)) as cached:
+                        cached.verify()
+                    return data
+                except (OSError, ValueError):
+                    pass
+            if runtime.cached_image(failure) is not None:
+                continue
         if path.exists():
             try:
                 data = path.read_bytes()
@@ -167,6 +179,8 @@ def identity_image(event: Event, cfg: Config) -> bytes | None:
                 finally:
                     temporary.unlink(missing_ok=True)
                 failure.unlink(missing_ok=True)
+                if runtime is not None and hasattr(runtime, 'stage_image_cache'):
+                    runtime.stage_image_cache(path)
                 return data
         except (urllib3.exceptions.HTTPError, OSError, ValueError, Image.DecompressionBombError):
             log.info("identity image unavailable for event %s", event.id)
@@ -310,6 +324,9 @@ class CardRenderer:
                       version: str = "card-v1") -> Path:
         digest = hashlib.sha256((version + rendered + str(self.cfg.card_font)).encode()).hexdigest()[:24]
         path = self.cfg.site_dir / "cards" / f"{digest}.png"
+        cache_runtime = services.get()
+        if cache_runtime is not None and hasattr(cache_runtime, 'use_cached_card') and cache_runtime.use_cached_card(path):
+            return path
         if path.exists():
             try:
                 with Image.open(path) as cached:
@@ -338,6 +355,8 @@ class CardRenderer:
             with Image.open(temporary) as complete:
                 complete.verify()
             temporary.replace(path)
+            if cache_runtime is not None and hasattr(cache_runtime, 'stage_card'):
+                cache_runtime.stage_card(path)
         finally:
             temporary.unlink(missing_ok=True)
         return path

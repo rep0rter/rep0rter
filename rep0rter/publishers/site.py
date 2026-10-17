@@ -42,6 +42,9 @@ def _fmt_rfc822(ts: float) -> str:
 
 
 def _write(path: Path, content: str):
+    runtime = services.get()
+    if runtime is not None and hasattr(runtime, 'stage_site_text') and runtime.stage_site_text(path, content):
+        return
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".tmp", delete=False) as output:
         temporary = Path(output.name)
@@ -63,9 +66,19 @@ def _author_avatar(event, cfg: Config) -> str:
     folder = cfg.site_dir / "cards"
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / filename
+    runtime = services.get()
+    if runtime is not None and hasattr(runtime, 'use_cached_card') and runtime.use_cached_card(path):
+        return 'cards/' + filename
     if not path.exists():
         path.write_bytes(data)
+    if runtime is not None and hasattr(runtime, 'stage_card'):
+        runtime.stage_card(path)
     return "cards/" + filename
+
+
+def _asset_size(path):
+    runtime = services.get()
+    return runtime.asset_size(path) if runtime is not None and hasattr(runtime, 'asset_size') else path.stat().st_size
 
 
 def branding_paths() -> dict:
@@ -183,12 +196,12 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
                 "event_local": event_date_text(event),
                 "event_iso": event_date(event).isoformat(),
                 "day": datetime.fromtimestamp(post.published_at, TAIPEI).strftime("%Y-%m-%d"),
-                "image": image.relative_to(cfg.site_dir).as_posix(), "image_size": image.stat().st_size,
+                "image": image.relative_to(cfg.site_dir).as_posix(), "image_size": _asset_size(image),
                 "original_image": image.relative_to(cfg.site_dir).as_posix(),
                 "original_image_dark": image_dark.relative_to(cfg.site_dir).as_posix(),
                 "report_image_dark": report_image_dark.relative_to(cfg.site_dir).as_posix(),
                 "report_image": report_image.relative_to(cfg.site_dir).as_posix(),
-                "report_image_size": report_image.stat().st_size,
+                "report_image_size": _asset_size(report_image),
                 "original": original,
                 "topic_ids": classify_topics(post.headline, post.summary, original),
                 "source_path": source_path,
@@ -293,6 +306,9 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
                        env.get_template('withdrawn.html').render(language=language,copy=COPY[language],languages=LANGUAGES,page_name=page_name))
     keep={Path(item[key]).name for item in items for key in ('original_image', 'report_image', 'original_image_dark', 'report_image_dark')}
     keep.update(Path(item['author_avatar']).name for item in items if item['author_avatar'])
+    runtime = services.get()
+    if runtime is not None and hasattr(runtime, 'retain_cards'):
+        runtime.retain_cards(keep)
     for path in (cfg.site_dir/'cards').glob('*.png'):
         if path.name not in keep: path.unlink()
     log.info("site written to %s (%d posts, four languages)", cfg.site_dir, len(items))
@@ -321,7 +337,11 @@ def build(store: Store, cfg: Config, limit: int = 300) -> Path:
         staged=releases/uuid.uuid4().hex
         staged.mkdir()
         try:
-            if (cfg.site_dir/'cards').exists():
+            runtime = services.get()
+            native = runtime is not None and hasattr(runtime, 'begin_site_generation')
+            if native:
+                runtime.begin_site_generation(staged)
+            if not native and (cfg.site_dir/'cards').exists():
                 shutil.copytree(cfg.site_dir/'cards',staged/'cards',copy_function=shutil.copy2 if services.get() else os.link)
             _build(store,_StagingConfig(cfg,staged),limit)
             pointer=cfg.data_dir/('.site-'+uuid.uuid4().hex)
@@ -330,6 +350,8 @@ def build(store: Store, cfg: Config, limit: int = 300) -> Path:
                 cfg.site_dir.rename(releases/('legacy-'+uuid.uuid4().hex))
             pointer.replace(cfg.site_dir)
         except BaseException:
+            if native:
+                runtime.abort_site_generation()
             shutil.rmtree(staged,ignore_errors=True)
             raise
         # Withdrawals purge every older generation so old private assets cannot linger.

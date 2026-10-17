@@ -90,6 +90,9 @@ class DurableConnection(sqlite3.Connection):
 def connect(path):
     if services.get() is None:
         return sqlite3.connect(path)
+    ensure = getattr(services.get(), 'ensure_native', None)
+    if ensure is not None:
+        ensure()
     return sqlite3.connect(path, factory=DurableConnection)
 
 

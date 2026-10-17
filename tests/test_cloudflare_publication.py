@@ -122,6 +122,23 @@ assert.equal((await site.fetch(new Request('https://example.test/withdrawn.html'
 """)
 
 
+def test_durable_generation_above_former_64_mib_limit_is_still_batched_and_bounded():
+    run_publication_checks("""
+const block=new Uint8Array(1024*1024).fill(7);
+const files=[file('index.html','next'),file('feed.xml','feed')];
+for(let i=0;i<83;i++) files.push(file(`cards/${i}.png`,block));
+site.beginPublication(first,manifest(files));
+for(const f of files) site.stagePublication(first,[f]);
+assert.equal(await read('index.html'),'old');
+site.commitPublication(first,{ready:true});
+assert.equal(await read('index.html'),'next');
+const oversized=manifest(files);
+for(let i=83;i<129;i++) oversized.push({path:`cards/${i}.png`,digest:'a'.repeat(64),size:1024*1024});
+assert.throws(()=>site.beginPublication(next,oversized),/oversized/);
+assert.equal(await read('index.html'),'next');
+""")
+
+
 def load_runtime(monkeypatch):
     monkeypatch.setitem(sys.modules, 'js', SimpleNamespace())
     monkeypatch.setitem(sys.modules, 'revision', SimpleNamespace(SOURCE_COMMIT='test'))

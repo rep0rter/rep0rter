@@ -2,7 +2,6 @@
 import argparse
 import base64
 import hashlib
-import io
 import json
 import os
 from pathlib import Path
@@ -12,7 +11,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
-import zipfile
+from urllib.parse import quote
 
 
 # Observability thresholds mirror the existing engine/frontend checks; these
@@ -22,6 +21,14 @@ CAPACITY_LIMITS = {
     'zip_bytes': 32 * 1024 * 1024,
     'expanded_bytes': 64 * 1024 * 1024,
     'public_asset_bytes': 64 * 1024 * 1024,
+    'public_asset_count': 10000,
+    'largest_file_bytes': 1_900_000,
+}
+
+TRANSFER_LIMITS = {
+    'database_bytes': 32 * 1024 * 1024,
+    'expanded_bytes': 160 * 1024 * 1024,
+    'public_asset_bytes': 128 * 1024 * 1024,
     'public_asset_count': 10000,
     'largest_file_bytes': 1_900_000,
 }
@@ -49,14 +56,17 @@ class RunnerRuntime:
         self.poisoned = False
         self.policy_digest = None
 
-    def request(self, action, body=b'', content_type='application/json'):
+    def request(self, action, body=b'', content_type='application/json', headers=None):
         request = urllib.request.Request(self.url + '/__runner/' + action, data=body, method='POST',
             headers={'Authorization': 'Bearer ' + self.token, 'X-Runner-Lease': self.lease,
-                     'Content-Type': content_type, 'User-Agent': 'rep0rter-github-runner/1.0'})
+                     'Content-Type': content_type, 'User-Agent': 'rep0rter-github-runner/1.0', **(headers or {})})
         for attempt in range(3):
             try:
                 with urllib.request.urlopen(request, timeout=180) as response:
-                    return response.read()
+                    content = response.read(2 * 1024 * 1024 + 1)
+                    if len(content) > 2 * 1024 * 1024:
+                        raise RuntimeError(f'Worker {action} response exceeds transfer budget')
+                    return content
             except urllib.error.HTTPError as error:
                 if error.code < 500 or attempt == 2:
                     raise RuntimeError(f'Worker {action} failed with HTTP {error.code}') from None
@@ -66,15 +76,70 @@ class RunnerRuntime:
             time.sleep(2 ** attempt)
 
     def start(self, revision, mode):
-        snapshot = self.request('start', json.dumps({'lease': self.lease, 'source_commit': revision, 'mode': mode}).encode())
-        with zipfile.ZipFile(io.BytesIO(snapshot)) as archive:
-            for info in archive.infolist():
-                name = info.filename
-                if name.startswith('/') or '..' in name.split('/') or '\\' in name or info.file_size > 32*1024*1024:
-                    raise ValueError('Invalid worker snapshot')
-            archive.extractall(self.root)
-        data = (self.root / 'rep0rter.sqlite').read_bytes()
-        self.pages = [data[i:i+4096] for i in range(0, len(data), 4096)]
+        snapshot = json.loads(self.request('start', json.dumps({
+            'lease': self.lease, 'source_commit': revision, 'mode': mode, 'protocol': 2}).encode()))
+        if snapshot.get('protocol') != 2:
+            raise ValueError('Worker does not support bounded transfer')
+        files = snapshot.get('files')
+        self.validate_manifest(files)
+        if type(snapshot.get('database_size')) is not int or not 0 < snapshot['database_size'] <= TRANSFER_LIMITS['database_bytes']:
+            raise ValueError('Invalid snapshot database size')
+        digest = hashlib.sha256()
+        self.pages = []
+        with (self.root / 'rep0rter.sqlite').open('wb') as destination:
+            for offset in range(0, snapshot['database_size'], 1024 * 1024):
+                length = min(1024 * 1024, snapshot['database_size'] - offset)
+                data = self.request('snapshot', json.dumps({'path': 'rep0rter.sqlite', 'offset': offset, 'length': length}).encode())
+                if len(data) != length:
+                    raise ValueError('Incomplete snapshot database range')
+                digest.update(data)
+                destination.write(data)
+                self.pages.extend(data[i:i+4096] for i in range(0, len(data), 4096))
+        if digest.hexdigest() != snapshot.get('database_digest'):
+            raise ValueError('Snapshot database does not match manifest')
+        del data
+        for item in files:
+            content = self.request('snapshot', json.dumps({'path': item['path']}).encode())
+            if len(content) != item['size'] or hashlib.sha256(content).hexdigest() != item['digest']:
+                raise ValueError('Snapshot asset does not match manifest')
+            destination = self.root / item['path']
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(content)
+
+    @staticmethod
+    def validate_manifest(files):
+        if not isinstance(files, list) or len(files) > 10000:
+            raise ValueError('Invalid asset manifest')
+        envelopes = ({'publication': 'f' * 32, 'files': files},
+                     {'protocol': 2, 'database_size': 32 * 1024 * 1024, 'database_digest': 'f' * 64, 'files': files})
+        if any(len(json.dumps(envelope).encode()) > 2 * 1024 * 1024 for envelope in envelopes):
+            raise ValueError('Asset manifest exceeds transfer budget')
+        seen, total, public = set(), 0, 0
+        for item in files:
+            if not isinstance(item, dict):
+                raise ValueError('Invalid asset manifest')
+            name, size, digest = item.get('path'), item.get('size'), item.get('digest')
+            try:
+                expressible = (isinstance(name, str) and len(name.encode('utf-8')) <= 2048
+                               and all(len(part.encode('utf-8')) <= 255 for part in name.split('/')))
+            except UnicodeError:
+                expressible = False
+            if (not expressible or '\\' in name or '\x00' in name
+                    or any(part in ('', '.', '..') for part in name.split('/')) or name in seen
+                    or not (name == 'exclusions.json' or name.startswith(('site/', 'image-cache/')))
+                    or type(size) is not int or not 0 <= size <= TRANSFER_LIMITS['largest_file_bytes']
+                    or not isinstance(digest, str) or len(digest) != 64 or any(c not in '0123456789abcdef' for c in digest)):
+                raise ValueError('Invalid asset manifest')
+            seen.add(name)
+            total += size
+            public += size if name.startswith('site/') else 0
+        if any('/'.join(parts[:index]) in seen for name in seen
+               for parts in [name.split('/')] for index in range(1, len(parts))):
+            raise ValueError('Conflicting file and directory paths')
+        if not {'site/index.html', 'site/feed.xml', 'exclusions.json'} <= seen:
+            raise ValueError('Incomplete site generation')
+        if total > TRANSFER_LIMITS['expanded_bytes'] or public > TRANSFER_LIMITS['public_asset_bytes']:
+            raise ValueError('Site generation exceeds storage budget')
 
     def commit_database(self, data):
         current = [data[i:i+4096] for i in range(0, len(data), 4096)]
@@ -102,27 +167,45 @@ class RunnerRuntime:
         pass  # The local published generation is the runner's authoritative copy.
 
     def publish_site(self, cfg):
-        output = io.BytesIO()
-        with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
-            for prefix in ('site', 'image-cache'):
-                folder = self.root / prefix
-                if folder.exists():
-                    for path in sorted(folder.rglob('*')):
-                        if path.is_file():
-                            archive.write(path, prefix + '/' + path.relative_to(folder).as_posix())
-            archive.write(self.root / 'exclusions.json', 'exclusions.json')
-            entries = archive.infolist()
-            public = [entry for entry in entries if entry.filename.startswith('site/')]
-        payload = output.getvalue()
-        report_capacity({
-            'database_bytes': sum(map(len, self.pages)),
-            'zip_bytes': len(payload),
-            'expanded_bytes': sum(entry.file_size for entry in entries),
-            'public_asset_bytes': sum(entry.file_size for entry in public),
-            'public_asset_count': len(public),
-            'largest_file_bytes': max(entry.file_size for entry in entries),
-        })
-        self.request('publish', payload, 'application/zip')
+        files = []
+        for prefix in ('site', 'image-cache'):
+            folder = self.root / prefix
+            if folder.exists():
+                for path in sorted(folder.rglob('*')):
+                    if path.is_file():
+                        if path.stat().st_size > TRANSFER_LIMITS['largest_file_bytes']:
+                            raise ValueError('Generated file exceeds storage row budget')
+                        content = path.read_bytes()
+                        files.append({'path': prefix + '/' + path.relative_to(folder).as_posix(),
+                                      'size': len(content), 'digest': hashlib.sha256(content).hexdigest()})
+        policy = self.root / 'exclusions.json'
+        content = policy.read_bytes()
+        files.append({'path': 'exclusions.json', 'size': len(content), 'digest': hashlib.sha256(content).hexdigest()})
+        self.validate_manifest(files)
+        usage = {'database_bytes': sum(map(len, self.pages)),
+                 'expanded_bytes': sum(item['size'] for item in files),
+                 'public_asset_bytes': sum(item['size'] for item in files if item['path'].startswith('site/')),
+                 'public_asset_count': sum(item['path'].startswith('site/') for item in files),
+                 'largest_file_bytes': max(item['size'] for item in files)}
+        print('Capacity evidence: ' + json.dumps({'protocol': 2, 'usage': usage, 'limits': TRANSFER_LIMITS}, sort_keys=True), flush=True)
+        for name, limit in TRANSFER_LIMITS.items():
+            if usage[name] * 5 >= limit * 4:
+                print(f'::warning title=Publication capacity::{name} uses {usage[name]} of {limit}; at least 80% of the existing limit.', flush=True)
+        if usage['database_bytes'] > TRANSFER_LIMITS['database_bytes']:
+            raise ValueError('Database exceeds memory budget')
+        publication = uuid.uuid4().hex
+        response = json.loads(self.request('publish-begin', json.dumps({'publication': publication, 'files': files}).encode()))
+        missing = response.get('missing')
+        known = {item['path']: item for item in files}
+        if not isinstance(missing, list) or any(not isinstance(name, str) or name not in known for name in missing) or len(missing) != len(set(missing)):
+            raise ValueError('Invalid publication response')
+        for name in missing:
+            content = (self.root / name).read_bytes()
+            if len(content) != known[name]['size'] or hashlib.sha256(content).hexdigest() != known[name]['digest']:
+                raise ValueError('Generated asset changed during publication')
+            self.request('publish-file', content, 'application/octet-stream',
+                         headers={'X-Publication': publication, 'X-Asset-Path': quote(name, safe='')})
+        self.request('publish-commit', headers={'X-Publication': publication})
 
     def finish(self, success, collection_healthy=False):
         self.request('finish', json.dumps({'success': success, 'collection_healthy': collection_healthy}).encode())
