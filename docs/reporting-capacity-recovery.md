@@ -33,11 +33,22 @@ billing, network duration, or Pyodide memory.
 | Actions `publish-begin/file/commit` | Hash/size/path validation, durable staging and retry | Real DO SQL duration and memory |
 | Engine → frontend | Existing 2 MiB batches and atomic switch; 128 MiB storage budget | Public health/version and all editions |
 | Legacy ZIP `start` / `publish` | Existing protocol retained | Remains unsuitable for the oversized generation |
-| Account `/submit`, `/write` | No behavior change in this package | Existing full media hydration/rendering may exceed Worker memory |
+| Account `/submit`, `/write` | HTML/XML/new cards spool to SQLite; cached cards reused in SQL, identity images read lazily | Real Pyodide heap and SQL/rendering duration |
+| Native withdrawals | Existing sanitizer processes one stored file at a time; all old media/cache excluded | Public scrub and failure recovery without private-content logging |
 | Native Worker cron | Remains disabled | Never introduce another publisher |
 
-Before production rollout, review the native-account memory limitation separately.
-The transfer package alone is not proof of end-to-end recovery. Follow the normal
+The first transfer-only commit did not address native-account memory. Its follow-up
+removes bulk media hydration, filesystem staging copies, and the complete native
+publication bytes dictionary. Native generation staging stays in SQLite, with
+per-file reads/writes, incremental count/byte budgets and atomic SQL replacement.
+The existing withdrawal sanitizer is reused through a bounded single-file
+workspace, including cross-page source-link removal and all language tombstones.
+No old card/image cache is merged back after a withdrawal. Offline tests exercise
+an 83 MiB cached native generation, repeated builds without rerendering, staged
+write/commit failures, and conservative withdrawal behavior. They do not replace
+native Workers runtime measurements.
+
+The code packages alone are not proof of end-to-end recovery. Follow the normal
 clean main / exact-commit Offline tests / frontend-first deployment process in
 `cloudflare.md`. The code version guard blocks runners while main and engine
 differ; do not bypass it.

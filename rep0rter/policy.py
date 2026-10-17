@@ -293,7 +293,7 @@ def _withdrawn_page(language):
             '">' + links + '</nav></main></body></html>')
 
 
-def _sanitize_site(store, root, withdrawn_urls=()):
+def _sanitize_site(store, root, withdrawn_urls=(), *, tombstones=True):
     """Fail closed for withdrawal, even if a later complete rebuild fails.
 
     Public artifacts are derived caches. Remove only withdrawn articles/items;
@@ -388,10 +388,11 @@ def _sanitize_site(store, root, withdrawn_urls=()):
                 _atomic_text(path, ET.tostring(tree, encoding='unicode', xml_declaration=True))
         except ET.ParseError:
             _atomic_text(path, '<?xml version="1.0" encoding="utf-8"?><rss version="2.0"><channel><title>rep0rter</title><description>Feed rebuilding</description></channel></rss>')
-    for post_id in withdrawn:
-        for language in LANGUAGES:
-            for filename in (page_name(language), *page_aliases(language)):
-                _atomic_text(root / 'posts' / post_id / filename, _withdrawn_page(language))
+    if tombstones:
+        for post_id in withdrawn:
+            for language in LANGUAGES:
+                for filename in (page_name(language), *page_aliases(language)):
+                    _atomic_text(root / 'posts' / post_id / filename, _withdrawn_page(language))
 
 
 def _purge_media(store, withdrawn_urls=()):
@@ -399,6 +400,11 @@ def _purge_media(store, withdrawn_urls=()):
     # page just after this scrub. The lock is acquired only after DB commits.
     base = store.path.parent
     runtime = services.get()
+    if runtime is not None and hasattr(runtime, 'scrub_site'):
+        with (base / 'site-build.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            runtime.scrub_site(store, withdrawn_urls)
+        return
     if runtime is not None:
         runtime.hydrate_site()
     with (base / 'site-build.lock').open('a') as lock:

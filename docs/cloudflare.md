@@ -149,12 +149,18 @@ limit, the runner emits a GitHub Actions warning. Logs contain only aggregate
 numbers, never filenames, content, or credentials. Old run records use the old
 ZIP limits; do not interpret those numbers against the new protocol's limits.
 
-This transfer change addresses Actions publication and snapshot transport. Native
-account `/submit` and `/write` still rebuild inside the Python Worker; their
-existing asset hydration/rendering can retain a complete media cache in memory.
-Do not infer that those routes are memory-safe at the larger durable budget.
-See [the recovery and validation runbook](reporting-capacity-recovery.md) before
-production rollout.
+Native account `/submit` and `/write` rebuild inside the Python Worker. Their
+generated HTML/XML and cards now spool into a separate SQLite staging table;
+cached cards are verified one at a time and reused within SQL. Identity images
+are read lazily, and the build does not copy a complete media cache into its
+virtual filesystem. Withdrawals run the existing sanitizer one file at a time,
+then conservatively remove every old card and identity cache. Native staging
+enforces the same aggregate budgets incrementally and clears after success,
+failure, or isolate reload. Saved-post, retry, and redirect behavior is unchanged.
+These bounds remove complete-generation byte buffers, but offline CPython tests
+do not establish real Pyodide heap, Browser Run quota, or Durable Object SQL CPU
+usage. See [the recovery and validation runbook](reporting-capacity-recovery.md)
+before production rollout.
 
 Native Browser Run calls honor transient rate limits and explicitly
 fail if the daily browser quota is exhausted.
