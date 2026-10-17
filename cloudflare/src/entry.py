@@ -24,6 +24,7 @@ from rep0rter.runtime import services, DurabilityError
 
 PAGE_SIZE = 4096
 MAX_DATABASE = 32 * 1024 * 1024
+RESTORE_BATCH_PAGES = 64
 MAX_FILE = 1_900_000
 
 
@@ -55,17 +56,7 @@ class Runtime:
         self.sql.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
         self.sql.exec('CREATE TABLE IF NOT EXISTS native_files(path TEXT PRIMARY KEY,data BLOB NOT NULL,digest TEXT NOT NULL)')
         self.sql.exec('DELETE FROM native_files')  # Abandoned native build after an isolate restart.
-        if self.root.exists():
-            shutil.rmtree(self.root)
-        self.root.mkdir(parents=True)
-        for row in rows(self.sql.exec('SELECT data FROM db_pages ORDER BY number')):
-            self.pages.append(buffer_bytes(row['data']))
-        if self.pages:
-            (self.root / 'rep0rter.sqlite').write_bytes(b''.join(self.pages))
-        for row in rows(self.sql.exec("SELECT path,data FROM files WHERE path='exclusions.json'")):
-            path = self.root / row['path']
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(buffer_bytes(row['data']))
+        self.pages = self._restore_native_files()
         # Bindings are exposed only inside this Worker, never in source or logs.
         configuration = json.loads(getattr(env, 'REP0RTER_CONFIG', '{}'))
         if not isinstance(configuration, dict):
@@ -112,6 +103,84 @@ class Runtime:
         self.pages = current
         gc.collect()
 
+    def _restore_native_files(self):
+        """Restore a consistent SQL snapshot without whole-DB transfer buffers."""
+        staged = self.root.with_name(self.root.name + '.restore')
+        previous = self.root.with_name(self.root.name + '.previous')
+        pages = []
+
+        def discard(path):
+            if path.is_symlink():
+                path.unlink()
+            elif path.exists():
+                shutil.rmtree(path)
+
+        def read():
+            summary = rows(self.sql.exec(
+                'SELECT count(*) AS page_count,coalesce(sum(length(data)),0) AS byte_count,'
+                'min(number) AS first_page,max(number) AS last_page,'
+                'coalesce(sum(CASE WHEN length(data)=? THEN 0 ELSE 1 END),0) AS invalid_pages FROM db_pages',
+                PAGE_SIZE))[0]
+            count, size = summary['page_count'], summary['byte_count']
+            if (type(count) is not int or type(size) is not int
+                    or not 0 <= count <= MAX_DATABASE // PAGE_SIZE
+                    or size != count * PAGE_SIZE or size > MAX_DATABASE
+                    or summary['invalid_pages'] != 0
+                    or (count and (summary['first_page'] != 0 or summary['last_page'] != count - 1))
+                    or (not count and self.meta('imported') == 'true')):
+                raise ValueError('Invalid durable database pages')
+            if count:
+                with (staged / 'rep0rter.sqlite').open('wb') as output:
+                    for start in range(0, count, RESTORE_BATCH_PAGES):
+                        end = min(start + RESTORE_BATCH_PAGES, count)
+                        batch = rows(self.sql.exec(
+                            'SELECT number,data FROM db_pages WHERE number>=? AND number<? ORDER BY number',
+                            start, end))
+                        if len(batch) != end - start:
+                            raise ValueError('Incomplete durable database range')
+                        for number, row in enumerate(batch, start):
+                            if type(row['number']) is not int or row['number'] != number:
+                                raise ValueError('Invalid durable database page order')
+                            page = buffer_bytes(row['data'])
+                            if len(page) != PAGE_SIZE:
+                                raise ValueError('Invalid durable database page size')
+                            if output.write(page) != PAGE_SIZE:
+                                raise OSError('Incomplete native database write')
+                            pages.append(page)
+                        del batch
+            for row in rows(self.sql.exec("SELECT data FROM files WHERE path='exclusions.json'")):
+                ledger = buffer_bytes(row['data'])
+                if (staged / 'exclusions.json').write_bytes(ledger) != len(ledger):
+                    raise OSError('Incomplete native policy write')
+
+        try:
+            # A prior failed restore owns only these temporary directories.
+            # Durable SQL remains the recovery source even if root is absent.
+            discard(staged)
+            discard(previous)
+            staged.mkdir(parents=True)
+            self.transaction(read)
+            had_root = self.root.exists()
+            if had_root:
+                self.root.replace(previous)
+            try:
+                staged.replace(self.root)
+            except BaseException:
+                if had_root:
+                    previous.replace(self.root)
+                raise
+            discard(previous)
+            return pages
+        except BaseException as failure:
+            self.poisoned = True
+            try:
+                discard(staged)
+            except BaseException as cleanup_failure:
+                # Preserve the restore fault as the raised exception, with the
+                # secondary cleanup fault available in its explicit chain.
+                raise failure from cleanup_failure
+            raise
+
     def ensure_native(self):
         """Refresh the native cache after runner ownership, never its lease state."""
         if float(self.meta('runner_until', '0')) > time.time():
@@ -121,20 +190,15 @@ class Runtime:
         self.abort_site_generation()
         # The application lock excludes native connections and runner writes.
         # Durable SQL, rather than the warm filesystem, is the recovery source.
-        self.pages = [buffer_bytes(row['data']) for row in rows(
-            self.sql.exec('SELECT data FROM db_pages ORDER BY number'))]
-        for path in self.root.iterdir():
-            if path.is_dir() and not path.is_symlink():
-                shutil.rmtree(path)
-            else:
-                path.unlink()
-        if self.pages:
-            (self.root / 'rep0rter.sqlite').write_bytes(b''.join(self.pages))
-        for row in rows(self.sql.exec("SELECT data FROM files WHERE path='exclusions.json'")):
-            (self.root / 'exclusions.json').write_bytes(buffer_bytes(row['data']))
-        self.image_failure_times = {}
-        self.set_meta('native_cache_stale', 'false')
-        self.native_generation = getattr(self, 'native_generation', 0) + 1
+        try:
+            pages = self._restore_native_files()
+            self.set_meta('native_cache_stale', 'false')
+            self.pages = pages
+            self.image_failure_times = {}
+            self.native_generation = getattr(self, 'native_generation', 0) + 1
+        except BaseException:
+            self.poisoned = True
+            raise
         return True
 
     def persist_policy(self, path):

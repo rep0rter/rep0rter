@@ -53,6 +53,35 @@ clean main / exact-commit Offline tests / frontend-first deployment process in
 `cloudflare.md`. The code version guard blocks runners while main and engine
 differ; do not bypass it.
 
+Cold engine startup and native refresh after an expired runner lease restore the
+checkpointed database through one synchronous SQL read transaction. Before
+reading BLOBs, the engine checks contiguous page numbering, 4096-byte page sizes,
+the 8192-page / 32 MiB database bound, and rejects an imported state with no pages.
+It reads at most 64 pages (256 KiB of database payload) per cursor and writes them
+sequentially into a temporary native directory. The complete database and
+exclusions ledger are restored before that directory replaces the old cache;
+only then can native freshness and application-generation state advance.
+Restore failure poisons the runtime and propagates instead of reporting healthy
+storage or clearing a stale marker. Durable database pages and runner ownership,
+checkpoint and upload state are not changed by restoration.
+Before directory promotion, a failure leaves the selected old directory intact.
+If promotion rollback also fails, the old directory can remain under its
+temporary previous name while the selected path is absent. A failure cleaning
+the previous directory or updating freshness after promotion can leave the
+complete new directory selected with the old Python page cache; the poisoned
+runtime must reload before another request uses it. Cleanup faults retain the
+original restore fault with the secondary fault explicitly chained.
+
+The full Python page cache and virtual SQLite file remain, and a refresh can
+temporarily retain both old and new page caches and virtual database files.
+These bounds remove the
+whole-database cursor result and joined temporary byte buffer; they do not cap
+total Worker memory at 256 KiB or measure Pyodide heap. Native SQLite serialization
+and dirty-page comparison allocations also remain. Additional SQL calls and
+directory replacement need real runtime duration and filesystem validation.
+The operational engine `/healthz` still loads the runtime and enforces its
+existing readiness semantics; this is not a metadata-only health fast path.
+
 After approved deployment, prefer a controlled `build` workflow to exercise the
 existing checkpointed database without collecting, generating model text, or
 sending Telegram/Threads messages. It still renders cards locally in Chromium.
