@@ -116,28 +116,42 @@ code recovery; durable data is independent of Worker versions.
 ## Capacity and recovery
 
 The in-memory database copy is capped at 32 MiB and individual files at 1.9 MB.
-The GitHub runner still uploads a complete ZIP of the site, image cache and
-exclusions ledger: that request is capped at 32 MiB compressed and 64 MiB expanded.
-The public-site manifest is separately capped at 64 MiB and 10,000 files.
-The frontend receives a manifest,
-reuses unchanged stored files, and stages changed files in RPC batches of at most
-2 MiB. Only a complete generation switches the public site; interrupted transfers
-leave the previous generation available. A subsequent publication replaces the
-abandoned staging area and fences its older token. This avoids the former 24 MiB
-whole-site RPC ceiling without buffering the entire site in Worker memory.
-Profile storage and memory before raising these limits.
+Runner transfer protocol 2 downloads the database in 1 MiB ranges and assets one
+file at a time. Publication sends a validated manifest, uploads only missing or
+changed files, and commits the complete generation. Each new transfer request
+and response is bounded at 2 MiB. The engine's durable generation budget is
+160 MiB including image cache and exclusions; the public generation budget is
+128 MiB. A manifest contains at most 10,000 files and 2 MiB of JSON. These are
+SQLite storage budgets, not whole-request or Python memory allocations.
 
-Every runner publication prints a `Capacity evidence:` JSON record before its
-upload, including when the upload subsequently fails. `usage` records the exact
-checkpointed `database_bytes`, compressed `zip_bytes`, total `expanded_bytes`,
-`public_asset_bytes`, `public_asset_count`, and `largest_file_bytes`; `limits`
-records their existing bounds. The expanded size includes the image cache and
-exclusions ledger, while public asset measurements include only `site/` files.
-At 80% or more of any limit the runner emits a GitHub Actions warning. These logs
-contain only aggregate numbers, not filenames, content, or credentials. Inspect
-the latest Production reporting run's `Capacity evidence:` line to measure actual
-usage; public HTTP sizes cannot establish database or image-cache usage. The
-frontend's batched RPC does not remove the runner's complete-ZIP upload limit.
+The frontend reuses unchanged stored files and stages changed files in RPC batches
+of at most 2 MiB. Only a complete generation switches the public site. Interrupted
+transfers leave the previous public generation available. Retrying the same
+manifest preserves successfully staged files; replacing it fences the older
+token. Uploads expire after twenty minutes without progress. Expired staging is
+removed lazily on the next authenticated transfer/start; finish removes staging
+immediately. At most one bounded pending generation is retained. A committed
+engine generation can retry its frontend transfer after a lost response.
+
+The old ZIP endpoints remain compatible, with their existing 32 MiB compressed /
+64 MiB expanded limits. New runners explicitly request protocol 2 and require the
+matching deployed source commit. Deploy the frontend before the engine through
+the existing deployment script. Do not bypass the commit guard to mix versions.
+
+Every new runner publication prints a `Capacity evidence:` JSON record before
+upload. `protocol=2` records exact `database_bytes`, `expanded_bytes`,
+`public_asset_bytes`, `public_asset_count`, and `largest_file_bytes`, alongside
+their limits. ZIP bytes are absent because no complete ZIP is built. At 80% of a
+limit, the runner emits a GitHub Actions warning. Logs contain only aggregate
+numbers, never filenames, content, or credentials. Old run records use the old
+ZIP limits; do not interpret those numbers against the new protocol's limits.
+
+This transfer change addresses Actions publication and snapshot transport. Native
+account `/submit` and `/write` still rebuild inside the Python Worker; their
+existing asset hydration/rendering can retain a complete media cache in memory.
+Do not infer that those routes are memory-safe at the larger durable budget.
+See [the recovery and validation runbook](reporting-capacity-recovery.md) before
+production rollout.
 
 Native Browser Run calls honor transient rate limits and explicitly
 fail if the daily browser quota is exhausted.

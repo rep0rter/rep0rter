@@ -13,8 +13,6 @@ spec.loader.exec_module(module)
 
 @pytest.mark.parametrize('upload_fails', [False, True])
 def test_publication_logs_exact_safe_capacity_before_upload(tmp_path, capsys, upload_fails):
-    import io
-    import zipfile
     runtime = module.RunnerRuntime('https://example.test', 'PRIVATE-TOKEN', tmp_path, 'PRIVATE-LEASE')
     runtime.pages = [b'x' * 4096, b'y' * 4096]
     files = {'site/index.html': b'<html>PRIVATE-CONTENT</html>',
@@ -25,14 +23,22 @@ def test_publication_logs_exact_safe_capacity_before_upload(tmp_path, capsys, up
         path = tmp_path / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(data)
-    captured = {}
-    def request(action, body, content_type):
+    captured = {'files': {}}
+    def request(action, body=b'', content_type='application/json', headers=None):
         # The evidence must survive the same size rejection it diagnoses.
-        captured['logs'] = capsys.readouterr().out
-        captured['body'] = body
-        assert action == 'publish' and content_type == 'application/zip'
-        if upload_fails:
-            raise RuntimeError('Worker publish failed with HTTP 413')
+        if action == 'publish-begin':
+            captured['logs'] = capsys.readouterr().out
+            if upload_fails:
+                raise RuntimeError('Worker publish failed with HTTP 413')
+            manifest = json.loads(body)['files']
+            return json.dumps({'missing': [item['path'] for item in manifest]}).encode()
+        if action == 'publish-file':
+            from urllib.parse import unquote
+            assert content_type == 'application/octet-stream'
+            captured['files'][unquote(headers['X-Asset-Path'])] = body
+        else:
+            assert action == 'publish-commit'
+        return b'{}'
     runtime.request = request
     if upload_fails:
         with pytest.raises(RuntimeError, match='HTTP 413'):
@@ -43,14 +49,15 @@ def test_publication_logs_exact_safe_capacity_before_upload(tmp_path, capsys, up
     evidence = json.loads(logs.split('Capacity evidence: ', 1)[1].splitlines()[0])
     assert evidence['usage'] == {
         'database_bytes': 8192,
-        'zip_bytes': len(captured['body']),
         'expanded_bytes': sum(map(len, files.values())),
         'public_asset_bytes': sum(len(data) for name, data in files.items() if name.startswith('site/')),
         'public_asset_count': 3,
         'largest_file_bytes': 1200,
     }
-    with zipfile.ZipFile(io.BytesIO(captured['body'])) as archive:
-        assert {name: archive.read(name) for name in archive.namelist()} == files
+    assert evidence['protocol'] == 2
+    assert evidence['limits'] == module.TRANSFER_LIMITS
+    if not upload_fails:
+        assert captured['files'] == files
     assert '::warning' not in logs
     assert all(secret not in logs for secret in ('PRIVATE', 'private-name', 'private-policy', str(tmp_path)))
 

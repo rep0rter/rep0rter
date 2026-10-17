@@ -30,11 +30,14 @@ async def handle(owner, request, path):
     if getattr(owner.env, 'RUNNER_ENABLED', 'false') != 'true':
         return Response('GitHub runner disabled', status=409)
     body = raw(await request.bytes())
-    if len(body) > 32 * 1024 * 1024:
+    bounded = path in ('/__runner/snapshot', '/__runner/publish-begin', '/__runner/publish-file', '/__runner/publish-commit')
+    if len(body) > (2 if bounded else 32) * 1024 * 1024:
         return Response('Payload too large', status=413)
     now = time.time()
     if path == '/__runner/start':
         data = json.loads(body)
+        if data.get('protocol', 1) not in (1, 2):
+            return Response('Unsupported transfer protocol', status=400)
         if runtime.meta('imported') != 'true' or data.get('source_commit') != SOURCE_COMMIT:
             return Response('Import and matching deployed source commit required', status=409)
         if float(runtime.meta('runner_until', '0')) > now:
@@ -47,9 +50,15 @@ async def handle(owner, request, path):
         runtime.set_meta('runner_sequence', '0')
         runtime.set_meta('runner_payload_hash', '')
         runtime.set_meta('runner_mode', data['mode'])
+        from runner_transfer import prepare, discard, snapshot
+        prepare(runtime)
+        discard(runtime)
+        runtime.set_meta('runner_upload_committed', '')
         if data['mode'] == 'report':
             runtime.set_meta('last_started', now)
         runtime.publish_status()
+        if data.get('protocol') == 2:
+            return Response.json(snapshot(runtime), headers={'Cache-Control': 'no-store'})
         output = io.BytesIO()
         with zipfile.ZipFile(output, 'w', zipfile.ZIP_DEFLATED) as archive:
             archive.writestr('rep0rter.sqlite', b''.join(runtime.pages))
@@ -61,6 +70,9 @@ async def handle(owner, request, path):
     if (not lease or not hmac.compare_digest(lease, runtime.meta('runner_lease', ''))
             or float(runtime.meta('runner_until', '0')) <= now):
         return Response('Reporting lease expired or replaced', status=409)
+    if path in ('/__runner/snapshot', '/__runner/publish-begin', '/__runner/publish-file', '/__runner/publish-commit'):
+        from runner_transfer import handle as transfer
+        return transfer(runtime, request, path, body)
     if path == '/__runner/checkpoint':
         data = json.loads(body)
         sequence = int(data['sequence'])
@@ -128,6 +140,9 @@ async def handle(owner, request, path):
         return Response.json({'published': True})
     if path == '/__runner/finish':
         data = json.loads(body)
+        from runner_transfer import prepare, discard
+        prepare(runtime)
+        discard(runtime)
         runtime.set_meta('runner_until', '0')
         runtime.set_meta('runner_lease', '')
         runtime.set_meta('last_error', '' if data.get('success') else 'GitHub reporting job failed')

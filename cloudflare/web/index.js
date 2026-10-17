@@ -7,7 +7,9 @@ const TYPES = {html:'text/html; charset=utf-8', xml:'application/rss+xml; charse
 
 const MAX_FILE = 1_900_000;
 const MAX_BATCH = 2 * 1024 * 1024;
-const MAX_SITE = 64 * 1024 * 1024;
+// The runner and engine transfer each file separately. This is a durable
+// generation budget, never a whole-body/RPC/memory allocation.
+const MAX_SITE = 128 * 1024 * 1024;
 function validPath(path) {
   return typeof path === 'string' && path && !path.startsWith('/') && !/[\\\x00]/.test(path)
     && !path.split('/').some(part => part === '..' || part === '.' || !part);
