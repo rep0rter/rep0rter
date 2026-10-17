@@ -110,7 +110,9 @@ class RunnerRuntime:
     def validate_manifest(files):
         if not isinstance(files, list) or len(files) > 10000:
             raise ValueError('Invalid asset manifest')
-        if len(json.dumps(files).encode()) > 2 * 1024 * 1024:
+        envelopes = ({'publication': 'f' * 32, 'files': files},
+                     {'protocol': 2, 'database_size': 32 * 1024 * 1024, 'database_digest': 'f' * 64, 'files': files})
+        if any(len(json.dumps(envelope).encode()) > 2 * 1024 * 1024 for envelope in envelopes):
             raise ValueError('Asset manifest exceeds transfer budget')
         seen, total, public = set(), 0, 0
         for item in files:
@@ -126,6 +128,9 @@ class RunnerRuntime:
             seen.add(name)
             total += size
             public += size if name.startswith('site/') else 0
+        if any('/'.join(parts[:index]) in seen for name in seen
+               for parts in [name.split('/')] for index in range(1, len(parts))):
+            raise ValueError('Conflicting file and directory paths')
         if not {'site/index.html', 'site/feed.xml', 'exclusions.json'} <= seen:
             raise ValueError('Incomplete site generation')
         if total > TRANSFER_LIMITS['expanded_bytes'] or public > TRANSFER_LIMITS['public_asset_bytes']:

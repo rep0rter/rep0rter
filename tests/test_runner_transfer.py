@@ -196,6 +196,54 @@ def test_hash_size_duplicate_and_storage_budgets_are_hard_limits(engine):
     assert engine.read_files() == engine.initial
 
 
+def test_manifest_budget_counts_complete_upload_and_snapshot_envelopes(engine):
+    runner = load('envelope_runner', ROOT / 'cloudflare/github_runner.py')
+    files = manifest(generation())
+    for index in range(6400):
+        files.append({'path': f'site/{index:04}/' + 'a' * 216, 'size': 0,
+                      'digest': hashlib.sha256(b'').hexdigest()})
+    def snapshot_body():
+        return json.dumps({'protocol': 2, 'database_size': 32 * 1024 * 1024,
+                           'database_digest': 'f' * 64, 'files': files}).encode()
+    target = 2 * 1024 * 1024
+    while len(snapshot_body()) > target:
+        files.pop()
+    padding = target - len(snapshot_body())
+    while padding:
+        if padding == 1:
+            files[-1]['path'] += 'p'
+            padding -= 1
+        else:
+            length = min(200, padding - 1)
+            files[-1]['path'] += '/' + 'p' * length
+            padding -= length + 1
+    assert len(snapshot_body()) == target
+    runner.RunnerRuntime.validate_manifest(files)
+    engine.transfer.validate(files)
+    upload = json.dumps({'publication': 'b' * 32, 'files': files}).encode()
+    assert len(upload) <= target
+    assert engine.request('publish-begin', body=upload).status == 200
+    files[-1]['path'] += 'x'
+    assert len(json.dumps(files).encode()) < target
+    for validate in (runner.RunnerRuntime.validate_manifest, engine.transfer.validate):
+        with pytest.raises(ValueError, match='transfer budget'):
+            validate(files)
+    assert engine.request('publish-begin', {'publication': 'c' * 32, 'files': files}).status == 400
+
+
+@pytest.mark.parametrize('name', ['site/index.html/child', 'image-cache/a/child'])
+def test_file_directory_prefix_conflicts_never_commit_an_unrestorable_snapshot(engine, name):
+    runner = load('prefix_runner', ROOT / 'cloudflare/github_runner.py')
+    files = generation(**{name: b'x'})
+    if name.startswith('image-cache/'):
+        files['image-cache/a'] = b'parent'
+    for validate in (runner.RunnerRuntime.validate_manifest, engine.transfer.validate):
+        with pytest.raises(ValueError, match='Conflicting'):
+            validate(manifest(files))
+    assert engine.request('publish-begin', {'publication': 'b' * 32, 'files': manifest(files)}).status == 400
+    assert engine.read_files() == engine.initial
+
+
 def test_expiry_new_lease_and_replacement_fence_pending_publications(engine):
     files = generation()
     begin(engine, files)

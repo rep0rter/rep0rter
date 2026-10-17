@@ -34,7 +34,9 @@ def valid_path(path):
 def validate(manifest):
     if not isinstance(manifest, list) or len(manifest) > MAX_FILES:
         raise ValueError('Invalid file manifest')
-    if len(json.dumps(manifest).encode()) > 2 * 1024 * 1024:
+    envelopes = ({'publication': 'f' * 32, 'files': manifest},
+                 {'protocol': 2, 'database_size': 32 * 1024 * 1024, 'database_digest': 'f' * 64, 'files': manifest})
+    if any(len(json.dumps(envelope).encode()) > 2 * 1024 * 1024 for envelope in envelopes):
         raise ValueError('File manifest exceeds transfer budget')
     seen, total, public = set(), 0, 0
     for item in manifest:
@@ -47,6 +49,9 @@ def validate(manifest):
         seen.add(path)
         total += size
         public += size if path.startswith('site/') else 0
+    if any('/'.join(parts[:index]) in seen for path in seen
+           for parts in [path.split('/')] for index in range(1, len(parts))):
+        raise ValueError('Conflicting file and directory paths')
     if not {'site/index.html', 'site/feed.xml', 'exclusions.json'} <= seen:
         raise ValueError('Incomplete site generation')
     if total > MAX_TOTAL or public > MAX_SITE:

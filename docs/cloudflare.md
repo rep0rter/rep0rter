@@ -128,10 +128,13 @@ The frontend reuses unchanged stored files and stages changed files in RPC batch
 of at most 2 MiB. Only a complete generation switches the public site. Interrupted
 transfers leave the previous public generation available. Retrying the same
 manifest preserves successfully staged files; replacing it fences the older
-token. Uploads expire after twenty minutes without progress. Expired staging is
+token. Engine uploads expire after twenty minutes without progress. Expired engine staging is
 removed lazily on the next authenticated transfer/start; finish removes staging
 immediately. At most one bounded pending generation is retained. A committed
-engine generation can retry its frontend transfer after a lost response.
+engine generation can retry its frontend transfer after a lost response. The
+frontend pending generation has no TTL; the next publication replaces it. A
+commit retry starts a fresh frontend transfer and reuses active-generation assets,
+while the engine's already received upload files remain durable.
 
 The old ZIP endpoints remain compatible, with their existing 32 MiB compressed /
 64 MiB expanded limits. New runners explicitly request protocol 2 and require the
