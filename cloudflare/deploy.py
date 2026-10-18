@@ -2,21 +2,45 @@
 import argparse
 import json
 from pathlib import Path
+import re
+import shutil
 import subprocess
 import sys
 from urllib.parse import urlencode
 
 root = Path(__file__).resolve().parents[1]
+MIN_UV_VERSION = (0, 12, 3)
 
 
 def output(*command):
     return subprocess.check_output(command, cwd=root, text=True).strip()
 
 
+def check_prerequisites(parser):
+    tools = {name: shutil.which(name) for name in ('git', 'gh', 'node', 'npm', 'npx', 'pywrangler', 'uv')}
+    missing = [name for name, path in tools.items() if path is None]
+    if missing:
+        parser.error('Missing deployment tools: ' + ', '.join(missing) +
+                     '. Add them to PATH before deploying; see docs/cloudflare.md. No deployment started.')
+    try:
+        result = subprocess.run([tools['uv'], '--version'], check=True, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                stderr=subprocess.DEVNULL, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        parser.error('Could not check uv version within 5 seconds. Check uv on PATH; no deployment started.')
+    match = re.fullmatch(rb'uv ([0-9]+)\.([0-9]+)\.([0-9]+)(?: \([^\r\n]{1,120}\))?\r?\n?',
+                         result.stdout) if len(result.stdout) <= 256 else None
+    if not match:
+        parser.error('Unrecognized uv version output. Provide uv >= 0.12.3 on PATH; no deployment started.')
+    if tuple(int(part) for part in match.groups()) < MIN_UV_VERSION:
+        parser.error('uv >= 0.12.3 is required by workers-py 1.17.3. Update the selected uv separately; '
+                     'see docs/cloudflare.md. No deployment started.')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--production', action='store_true')
     args = parser.parse_args()
+    check_prerequisites(parser)
     if output('git', 'status', '--porcelain'):
         parser.error('Commit all changes in this worktree before deployment.')
     sha = output('git', 'rev-parse', 'HEAD')

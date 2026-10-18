@@ -73,7 +73,26 @@ credentials. This activates CfJ collection without replacing shared secrets.
 
 ## Code deployment
 
-Install Node.js, `uv`, and `uv tool install workers-py==1.17.3`. Authenticate
+Install Node.js (with `npm` and `npx`), Git, GitHub CLI (`gh`), **uv >= 0.12.3**,
+and `uv tool install workers-py==1.17.3`. Both `uv` and `pywrangler` must remain
+on the deployment process's PATH: pywrangler uses uv subprocesses when syncing
+Python dependencies before the engine upload. Having pywrangler installed alone
+is insufficient. The deployment script checks these executables and the uv
+version before preparing files or uploading either Worker; it does not install
+or upgrade tools, check login, or run a dependency sync as a preflight.
+
+For a separately verified standalone uv installation, prepend its binary
+directory only for the deployment command, without changing global tools or the
+existing workers-py environment:
+
+```sh
+PATH="/absolute/path/to/verified-uv-bin:$PATH" python3 cloudflare/deploy.py --production
+```
+
+Provision and verify that tool separately before deploying. A passing executable
+preflight does not verify login, dependency resolution, or upload success; later
+failures can still leave the backwards-compatible frontend deployed before the
+engine. Authenticate
 Wrangler, merge changes through a pull request, and wait for the merged commit's
 successful **Offline tests** push run. From its clean checkout:
 
