@@ -81,6 +81,10 @@ Slack 僅有「某人暫停／恢復通知」狀態句（可附大量密集八�
 
 事件與完成高水位在同一個 SQLite transaction 寫入。每個 scan 最多 30 頁，並按本輪剩餘請求與待抓頻道數限制分頁，避免單一繁忙頻道耗盡全部額度；請求／分頁 budget 用完時保存 pending lower/high/before，下一輪續掃，完整高水位不會提前前進。程序在提交前中断不留半個游標。完整同步之後不會把游標直接跳成現在。額度不足屬於待補工作，下一輪立即重試，不套用來源錯誤的一小時退避；尚未發出 HTTP 的頻道保留原本嘗試／回掃時間，按最久未嘗試排序優先補抓。回掃時間只在完成時更新，所有未完成缺口仍列入健康狀態，不會因延後而變綠。
 
+小數游標向上取整後若重複短頁，仍須以最新月份 HTML 的完整 raw 計數、原始 timestamp 與所有符合窗口的訊息證明已掃完。跨輪續掃時，原始 pending before 以上的區間已隨事件原子提交；HTML 驗證只將這個固定邊界以上視為已觀測，本輪向前移動的游標不會擴大該範圍。其餘較舊訊息必須在本輪實際取得；缺漏、跨月份或 markup 不符都仍保留 gap。空白或無進展頁也保留已確認的 pending cursor，避免丟失跨輪進度；不跳過未知訊息或提前推進完整高水位。
+
+`Acceptance evidence.collection.latest_sources.slack.catch_up` 另外提供本輪續抓頻道數、實際向舊訊息推進的游標數、完成頻道數及仍有 pending cursor 的頻道數。這些是已提交的進度計數，不包含頻道 ID、原始游標或文字；完成數不代表全部來源完整。既有 failed_channels、healthy 與 history_complete 判斷不變，仍可用自然排程紀錄區分有限補抓進展與持續卡住。
+
 首頁訊息數或 last-posted 改變會觸發增量，不以 last-synced 代表可見性。近期頻道每六小時回掃 48 小時；另以固定上限每輪挑兩個最久未檢查的舊頻道回掃七天。未解析的 thread parent 與近期／較舊 root 共用持久 bounded queue，每輪最多 4 次精確 timestamp 補抓；已排除或刪除的 root 不占請求名額。補抓用下一個整秒作為 before 邊界，回應仍必須完全匹配原始 timestamp；找不到 root 留 `context_incomplete`，不拿鄰近訊息替代。已觀測的 reaction 可以下降，歷史高點另存在 `engagement_high_water`。
 
 上游在 SQL limit 之後才移除 subtype，而且沒有提供 raw-page bounds：空頁無法區分真正結尾與「整頁被過濾」。初次 after 查詢與無界 head 都空白時，額外讀取該頻道的最新月份 HTML；其月份索引與訊息 JSON 包含未過濾的加入頻道通知。只有確認相同頻道、最新月份、有效原始訊息時間，而且整個最新月份早於採集下界，才證明該窗口沒有消息並清除 gap。這次額外 GET 仍受共用 budget 限制，不把加入通知存成新聞，也不將游標跳到現在。

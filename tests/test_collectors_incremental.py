@@ -204,7 +204,7 @@ def test_large_backlog_short_pages_and_after_before_exclusive(monkeypatch):
 def test_empty_subtype_and_same_ts_do_not_advance(monkeypatch):
     pages(monkeypatch, [[{'ts':'100'}],[]])
     rows, complete, error, resume=inc.scan(Mock(),'C',Decimal('90'))
-    assert not complete and len(rows)==1 and 'ambiguous' in error and resume is None
+    assert not complete and len(rows)==1 and 'ambiguous' in error and resume == '100'
     pages(monkeypatch, [[{'ts':'100'}],[{'ts':'100'}]])
     assert 'did not advance' in inc.scan(Mock(),'C',Decimal('90'))[2]
 
@@ -551,7 +551,7 @@ def test_same_second_page_saturation_remains_a_gap(monkeypatch):
     pages(monkeypatch, [rows, rows])
     saved, complete, error, resume = inc.scan(Mock(), 'C', Decimal('1789571776'))
     assert not complete and len(saved) == 100
-    assert 'did not advance' in error and resume is None
+    assert 'did not advance' in error and resume == rows[-1]['ts']
 
 
 def recent_month_html():

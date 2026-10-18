@@ -197,13 +197,18 @@ def channel_is_older_than(session, channel_id: str, lower: Decimal) -> bool:
     return True
 
 
-def channel_window_is_complete(session, channel_id: str, lower: Decimal, collected) -> bool:
+def channel_window_is_complete(session, channel_id: str, lower: Decimal, collected,
+                               *, covered_after: Decimal | None = None) -> bool:
     """Prove a recent JSON window against the complete raw latest-month HTML.
 
     A widened fractional cursor can repeat the only non-subtype message. The
     month's raw count and timestamps must agree, and every eligible HTML row
-    must already be collected. Missing markup or older-month overlap is a gap.
+    must already be collected. A resumed scan also has a durably observed
+    interval at or above its original cursor. That boundary must not move with
+    this scan's pages. Missing markup or older-month overlap is still a gap.
     """
+    if covered_after is not None and covered_after < lower:
+        return False
     soup = BeautifulSoup(_get(session, BASE_URL + '/index/channel/' + channel_id).text, 'html.parser')
     feed, nav = soup.select_one('section[role="feed"]'), soup.select_one('nav[role="pagination"]')
     if feed is None or nav is None:
@@ -245,7 +250,8 @@ def channel_window_is_complete(session, channel_id: str, lower: Decimal, collect
             valid_ids = {'ts-' + str(raw['ts']), 'ts-' + format(stamp, '.14g')}
             if node.get('id') not in valid_ids or not start_ts <= stamp < end_ts:
                 return False
-            if not raw.get('subtype') and stamp >= lower and stamp not in collected:
+            if (not raw.get('subtype') and stamp >= lower and stamp not in collected
+                    and not (covered_after is not None and stamp >= covered_after)):
                 return False
         return True
     except (ValueError, KeyError, TypeError, RuntimeError):

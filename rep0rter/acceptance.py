@@ -57,6 +57,13 @@ def report(store, now=None):
     sources = {key: {field: value.get(field) for field in ('healthy', 'available', 'history_complete', 'events', 'failed_channels')}
                for key, value in health.get('sources', {}).items()
                if key in SOURCE_FAMILIES}
+    # Fixed numeric progress only: never include channel IDs, cursors or errors.
+    progress = health.get('sources', {}).get('slack', {}).get('catch_up')
+    if isinstance(progress, dict) and 'slack' in sources:
+        sources['slack']['catch_up'] = {
+            key: progress[key] for key in ('resumed_channels', 'cursor_progressed_channels',
+                                          'completed_channels', 'pending_channels')
+            if type(progress.get(key)) is int and progress[key] >= 0}
     errors = json.loads(store.get_kv('collector_errors', '{}'))
     error_counts = {}
     for value in errors.values():

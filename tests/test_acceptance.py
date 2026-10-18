@@ -126,3 +126,21 @@ def test_cfj_source_health_is_visible_without_private_source_details(tmp_path):
         assert result['collection']['latest_sources']['cfj_slack']['healthy'] is True
         assert result['collection']['by_source']['cfj_slack']['measured_totals']['requests'] == 11
         assert 'never-log-this' not in json.dumps(result)
+
+
+def test_slack_catch_up_progress_is_numeric_and_does_not_hide_gaps(tmp_path):
+    with Store(tmp_path / 'db') as store:
+        store.set_kv('collector_health', json.dumps({'sources': {'slack': {
+            'healthy': False, 'failed_channels': 3, 'catch_up': {
+                'resumed_channels': 2, 'cursor_progressed_channels': 1,
+                'completed_channels': 0, 'pending_channels': 3,
+                'channel:private': 'never-log-this'}}}}))
+        source = report(store)['collection']['latest_sources']['slack']
+        assert source['healthy'] is False and source['failed_channels'] == 3
+        assert source['catch_up'] == {'resumed_channels': 2, 'cursor_progressed_channels': 1,
+                                     'completed_channels': 0, 'pending_channels': 3}
+        assert 'never-log-this' not in json.dumps(source)
+        store.set_kv('collector_health', json.dumps({'sources': {'slack': {'catch_up': {
+            'resumed_channels': 'secret', 'cursor_progressed_channels': True,
+            'completed_channels': -1, 'pending_channels': []}}}}))
+        assert report(store)['collection']['latest_sources']['slack']['catch_up'] == {}
