@@ -91,6 +91,8 @@ def collect_all(store, days=2, max_channels=None, config=None, *, session=None):
             sources[name] = {'healthy': count == 0, 'available': state.get('available', count == 0),
                              'history_complete': state.get('history_complete', count == 0 and name != 'cfj_slack'),
                              'events': n, 'failed_channels': count, 'reasons': state.get('reasons', {})}
+            if name == 'slack' and 'catch_up' in state:
+                sources[name]['catch_up'] = state['catch_up']
         except Exception as exc:
             failures += 1
             record_source_error(store, name, exc)

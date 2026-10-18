@@ -149,6 +149,10 @@ def _allowed(store, event=None, container_id=None):
 def scan(session, channel_id, lower, *, max_pages=30, start_before=None):
     """Return snapshots + completeness. Empty filtered pages never prove completion."""
     collected, before = {}, start_before
+    # A resumed cursor was committed atomically with the preceding snapshots.
+    # Keep that coverage boundary separate from this scan's moving cursor:
+    # newer rows need not be downloaded again to prove the remaining window.
+    covered_after = Decimal(start_before) if start_before is not None else None
     for _ in range(max_pages):
         params = {'channel': channel_id, 'count': 100}
         # The archive turns query floats back into PHP strings before SQL,
@@ -179,7 +183,7 @@ def scan(session, channel_id, lower, *, max_pages=30, start_before=None):
                         return [], True, '', None
                 except BudgetExceeded:
                     return [], False, 'request budget exhausted while verifying quiet channel HTML', None
-            return list(collected.values()), False, 'ambiguous empty page: upstream exposes no raw cursor', None
+            return list(collected.values()), False, 'ambiguous empty page: upstream exposes no raw cursor', before
         page = {}
         for raw in payload['messages']:
             if not isinstance(raw, dict) or 'ts' not in raw:
@@ -187,17 +191,18 @@ def scan(session, channel_id, lower, *, max_pages=30, start_before=None):
             ts = api._timestamp(raw['ts'])
             page[ts] = api._merge_duplicate(page[ts], raw) if ts in page else raw
         oldest = min(page)
-        if before is not None and oldest >= Decimal(before):
-            if Decimal(before) != Decimal(before).to_integral_value() and len(payload['messages']) < 100:
-                try:
-                    if api.channel_window_is_complete(session, channel_id, lower, collected):
-                        return list(collected.values()), True, '', None
-                except BudgetExceeded:
-                    return list(collected.values()), False, 'request budget exhausted while verifying repeated page', before
-            return list(collected.values()), False, 'pagination did not advance (duplicate timestamp/page)', None
         for ts, raw in page.items():
             if ts >= lower:
                 collected[ts] = api._merge_duplicate(collected[ts], raw) if ts in collected else raw
+        if before is not None and oldest >= Decimal(before):
+            if Decimal(before) != Decimal(before).to_integral_value() and len(payload['messages']) < 100:
+                try:
+                    if api.channel_window_is_complete(session, channel_id, lower, collected,
+                                                      covered_after=covered_after):
+                        return list(collected.values()), True, '', None
+                except BudgetExceeded:
+                    return list(collected.values()), False, 'request budget exhausted while verifying repeated page', before
+            return list(collected.values()), False, 'pagination did not advance (duplicate timestamp/page)', before
         if oldest <= lower:
             return list(collected.values()), True, '', None
         before = str(oldest)
@@ -234,6 +239,8 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
     public_ids = {ch.id for ch in channels}
     fragments = reconcile_permalinks(store, session, public_ids, now)
     failures, total, transport_failures = 0, 0, 0
+    catch_up = {'resumed_channels': 0, 'cursor_progressed_channels': 0,
+                'completed_channels': 0, 'pending_channels': 0}
     reasons = {}
     selected = []
     quiet = []
@@ -271,6 +278,7 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
             break
         cid = 'slack:' + channel.id
         start = time.time()
+        catch_up['resumed_channels'] += int(bool(state.get('pending_before')))
         bootstrap = not state.get('last_complete_ts')
         recovery = bool(state.get('error'))
         lower = Decimal(state['last_complete_ts']) - OVERLAP if not bootstrap else Decimal(str(now - days * 86400))
@@ -281,8 +289,9 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         old_high = state.get('last_complete_ts')
         if state.get('pending_before'):
             lower = Decimal(state['pending_lower'])
-        next_state = dict(state, last_attempt=start, last_posted=channel.last_posted_at.timestamp() if channel.last_posted_at else None,
-                          total_messages=channel.total_messages, last_synced=channel.last_synced_at.timestamp() if channel.last_synced_at else None)
+        attempt_state = dict(state, last_attempt=start, last_posted=channel.last_posted_at.timestamp() if channel.last_posted_at else None,
+                             total_messages=channel.total_messages, last_synced=channel.last_synced_at.timestamp() if channel.last_synced_at else None)
+        next_state = dict(attempt_state)
         try:
             # Share pages across the remaining channels. A busy channel can
             # retain its cursor without consuming the entire source allowance.
@@ -320,9 +329,14 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
             for event in events:
                 for uid, name in mention_names_from_html(event.text, event.html).items():
                     store.upsert_user_name('slack:' + uid, name)
+            catch_up['completed_channels'] += int(complete)
+            catch_up['cursor_progressed_channels'] += int(bool(resume_before) and (
+                not state.get('pending_before') or Decimal(resume_before) < Decimal(state['pending_before'])))
             total += len(events)
         except BudgetExceeded as exc:
-            next_state.update(error=str(exc), gap=True)
+            # A failed snapshot transaction must not install its candidate
+            # watermark/cursor through the error handler. Replay old coverage.
+            next_state = dict(attempt_state, error=str(exc), gap=True)
             reasons[cid] = str(exc)
             with store.conn:
                 write_state(store, cid, next_state)
@@ -331,7 +345,7 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         except Exception as exc:
             log.warning('Slack channel %s failed: %s', channel.id, exc)
             transport_failures += 1
-            next_state.update(error=str(exc), gap=True)
+            next_state = dict(attempt_state, error=str(exc), gap=True)
             reasons[cid] = str(exc)
             with store.conn:
                 write_state(store, cid, next_state)
@@ -451,8 +465,10 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
     for channel in channels:
         cid = 'slack:' + channel.id
         state = read_state(store, cid)
-        if _allowed(store, container_id=cid) and state.get('gap') and state.get('error'):
-            reasons.setdefault(cid, state['error'])
+        if _allowed(store, container_id=cid):
+            catch_up['pending_channels'] += int(bool(state.get('pending_before')))
+            if state.get('gap') and state.get('error'):
+                reasons.setdefault(cid, state['error'])
     # Missing roots, deferred reply refreshes and failed lookups remain gaps
     # during the six-hour backoff or while bounded refresh slots are exhausted.
     for root_id in due_ids:
@@ -486,7 +502,7 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         write_state(store, 'slack:root_refresh', queue)
         write_state(store, 'slack:health', {'last_attempt_at': now, 'containers': len(channels), 'failed_channels': failures,
                    'healthy': failures == 0, 'available': transport_failures == 0, 'history_complete': failures == 0, 'reasons': reasons, 'last_good_directory_count': len(channels), 'fingerprint': hashlib.sha256(repr(channels).encode()).hexdigest(),
-                   'metrics': asdict(metrics)})
+                   'metrics': asdict(metrics), 'catch_up': catch_up})
     from .registry import record_source_error
     for channel, reason in reasons.items():
         record_source_error(store, channel, reason)
