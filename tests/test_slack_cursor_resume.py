@@ -5,8 +5,10 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import Mock
 
+import pytest
+
 from rep0rter.collectors import slack_incremental as inc
-from rep0rter.collectors.state import BudgetSession, Metrics, read_state
+from rep0rter.collectors.state import BudgetExceeded, BudgetSession, Metrics, read_state, write_state
 from rep0rter.store import Store
 
 
@@ -123,3 +125,77 @@ def test_persisted_single_page_scan_converges_next_run(tmp_path, monkeypatch):
         assert read_state(store, 'slack:health')['catch_up'] == {
             'resumed_channels': 1, 'cursor_progressed_channels': 0,
             'completed_channels': 1, 'pending_channels': 0}
+
+
+@pytest.mark.parametrize('failure', [RuntimeError, BudgetExceeded])
+@pytest.mark.parametrize('resuming', [False, True])
+def test_failed_snapshot_commit_cannot_advance_durable_coverage(tmp_path, monkeypatch, failure, resuming):
+    now = 1789600000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    channel = inc.api.ChannelRow('C', 'synthetic', '', '', 10, 2,
+                                datetime.fromtimestamp(float(NEW), timezone.utc))
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda _: [channel])
+    monkeypatch.setattr(inc, 'persist', Mock(side_effect=failure('Synthetic snapshot failure')))
+    _, budget = transport(monkeypatch, [[{'ts': '1789400000'}]], limit=1)
+    previous = {'last_complete_ts': str(LOWER), 'last_success': 123}
+    if resuming:
+        previous.update(pending_before=OLD, pending_lower=str(LOWER), pending_high=NEW)
+    with Store(tmp_path / 'db') as store:
+        with store.conn:
+            write_state(store, 'slack:C', previous)
+        inc.collect(store, session=budget)
+        saved = read_state(store, 'slack:C')
+        assert saved['last_complete_ts'] == previous['last_complete_ts']
+        assert saved['last_success'] == 123
+        for key in ('pending_before', 'pending_lower', 'pending_high'):
+            assert saved.get(key) == previous.get(key)
+        assert saved['gap'] and 'Synthetic snapshot failure' in saved['error']
+        assert not read_state(store, 'slack:health')['healthy']
+        assert read_state(store, 'slack:health')['catch_up']['completed_channels'] == 0
+
+
+def test_partial_event_transaction_rolls_back_before_error_state_is_saved(tmp_path, monkeypatch):
+    from rep0rter.collectors import state
+    now = 1789600000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    channel = inc.api.ChannelRow('C', 'synthetic', '', '', 10, 2,
+                                datetime.fromtimestamp(float(NEW), timezone.utc))
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda _: [channel])
+    original_write = state.write_state
+
+    def fail_after_events(store, key, candidate):
+        assert store.conn.in_transaction
+        assert store.event_count() == 1
+        assert candidate['last_complete_ts'] == NEW
+        raise RuntimeError('Synthetic failure between events and cursor')
+
+    monkeypatch.setattr(state, 'write_state', fail_after_events)
+    _, budget = transport(monkeypatch, [[{'ts': NEW, 'text': 'Synthetic civic update'},
+                                       {'ts': '1789400000'}]], limit=1)
+    with Store(tmp_path / 'db') as store:
+        with store.conn:
+            original_write(store, 'slack:C', {'last_complete_ts': str(LOWER), 'last_success': 123})
+        inc.collect(store, session=budget)
+        saved = read_state(store, 'slack:C')
+        assert store.event_count() == 0
+        assert saved['last_complete_ts'] == str(LOWER) and saved['last_success'] == 123
+        assert saved['gap'] and not saved.get('pending_before')
+        assert not read_state(store, 'slack:health')['healthy']
+
+
+def test_uncertain_durable_checkpoint_aborts_without_recoverable_error_state(tmp_path, monkeypatch):
+    from rep0rter.runtime import DurabilityError
+    now = 1789600000
+    monkeypatch.setattr(inc.time, 'time', lambda: now)
+    channel = inc.api.ChannelRow('C', 'synthetic', '', '', 10, 2,
+                                datetime.fromtimestamp(float(NEW), timezone.utc))
+    monkeypatch.setattr(inc.api, 'fetch_channels', lambda _: [channel])
+    monkeypatch.setattr(inc, 'persist', Mock(side_effect=DurabilityError('Synthetic uncertain checkpoint')))
+    _, budget = transport(monkeypatch, [[{'ts': NEW}, {'ts': '1789400000'}]], limit=1)
+    with Store(tmp_path / 'db') as store:
+        with store.conn:
+            write_state(store, 'slack:C', {'last_complete_ts': str(LOWER)})
+        with pytest.raises(DurabilityError):
+            inc.collect(store, session=budget)
+        assert read_state(store, 'slack:C') == {'last_complete_ts': str(LOWER)}
+        assert read_state(store, 'slack:health') == {}

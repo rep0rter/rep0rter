@@ -83,6 +83,8 @@ Slack 僅有「某人暫停／恢復通知」狀態句（可附大量密集八�
 
 小數游標向上取整後若重複短頁，仍須以最新月份 HTML 的完整 raw 計數、原始 timestamp 與所有符合窗口的訊息證明已掃完。跨輪續掃時，原始 pending before 以上的區間已隨事件原子提交；HTML 驗證只將這個固定邊界以上視為已觀測，本輪向前移動的游標不會擴大該範圍。其餘較舊訊息必須在本輪實際取得；缺漏、跨月份或 markup 不符都仍保留 gap。空白或無進展頁也保留已確認的 pending cursor，避免丟失跨輪進度；不跳過未知訊息或提前推進完整高水位。
 
+若事件與游標交易失敗，錯誤狀態沿用嘗試前的完整高水位、pending 範圍與成功時間，不會從失敗的候選狀態另外寫入進度。事件已提交後若後續作者資訊處理失敗，保守退回舊游標只會重讀已存事件。遠端持久化回應不確定仍沿用 DurabilityError 中止整輪並重新載入的機制，不當成可繼續採集的頻道錯誤。
+
 `Acceptance evidence.collection.latest_sources.slack.catch_up` 另外提供本輪續抓頻道數、實際向舊訊息推進的游標數、完成頻道數及仍有 pending cursor 的頻道數。這些是已提交的進度計數，不包含頻道 ID、原始游標或文字；完成數不代表全部來源完整。既有 failed_channels、healthy 與 history_complete 判斷不變，仍可用自然排程紀錄區分有限補抓進展與持續卡住。
 
 首頁訊息數或 last-posted 改變會觸發增量，不以 last-synced 代表可見性。近期頻道每六小時回掃 48 小時；另以固定上限每輪挑兩個最久未檢查的舊頻道回掃七天。未解析的 thread parent 與近期／較舊 root 共用持久 bounded queue，每輪最多 4 次精確 timestamp 補抓；已排除或刪除的 root 不占請求名額。補抓用下一個整秒作為 before 邊界，回應仍必須完全匹配原始 timestamp；找不到 root 留 `context_incomplete`，不拿鄰近訊息替代。已觀測的 reaction 可以下降，歷史高點另存在 `engagement_high_water`。

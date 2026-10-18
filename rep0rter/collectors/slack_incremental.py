@@ -289,8 +289,9 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         old_high = state.get('last_complete_ts')
         if state.get('pending_before'):
             lower = Decimal(state['pending_lower'])
-        next_state = dict(state, last_attempt=start, last_posted=channel.last_posted_at.timestamp() if channel.last_posted_at else None,
-                          total_messages=channel.total_messages, last_synced=channel.last_synced_at.timestamp() if channel.last_synced_at else None)
+        attempt_state = dict(state, last_attempt=start, last_posted=channel.last_posted_at.timestamp() if channel.last_posted_at else None,
+                             total_messages=channel.total_messages, last_synced=channel.last_synced_at.timestamp() if channel.last_synced_at else None)
+        next_state = dict(attempt_state)
         try:
             # Share pages across the remaining channels. A busy channel can
             # retain its cursor without consuming the entire source allowance.
@@ -323,17 +324,19 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
             store.upsert_container(Container(id=cid, source='slack', name=channel.name, topic=channel.topic,
                 purpose=channel.purpose, num_members=channel.num_members, url=api.channel_url(channel.id)))
             persist(store, cid, next_state, events, metrics, now)
-            catch_up['completed_channels'] += int(complete)
-            catch_up['cursor_progressed_channels'] += int(bool(resume_before) and (
-                not state.get('pending_before') or Decimal(resume_before) < Decimal(state['pending_before'])))
             for author in authors:
                 store.upsert_user(*author)
             for event in events:
                 for uid, name in mention_names_from_html(event.text, event.html).items():
                     store.upsert_user_name('slack:' + uid, name)
+            catch_up['completed_channels'] += int(complete)
+            catch_up['cursor_progressed_channels'] += int(bool(resume_before) and (
+                not state.get('pending_before') or Decimal(resume_before) < Decimal(state['pending_before'])))
             total += len(events)
         except BudgetExceeded as exc:
-            next_state.update(error=str(exc), gap=True)
+            # A failed snapshot transaction must not install its candidate
+            # watermark/cursor through the error handler. Replay old coverage.
+            next_state = dict(attempt_state, error=str(exc), gap=True)
             reasons[cid] = str(exc)
             with store.conn:
                 write_state(store, cid, next_state)
@@ -342,7 +345,7 @@ def collect(store, days=2, max_channels=None, session=None, *, metrics=None, req
         except Exception as exc:
             log.warning('Slack channel %s failed: %s', channel.id, exc)
             transport_failures += 1
-            next_state.update(error=str(exc), gap=True)
+            next_state = dict(attempt_state, error=str(exc), gap=True)
             reasons[cid] = str(exc)
             with store.conn:
                 write_state(store, cid, next_state)
