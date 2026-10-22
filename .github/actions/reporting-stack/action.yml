@@ -1,0 +1,58 @@
+name: Reporting dependencies
+description: Install the production reporting stack and verify Chromium before collecting
+runs:
+  using: composite
+  steps:
+    - name: Use the official Ubuntu package mirror
+      shell: bash
+      run: |
+        sudo python3 - <<'PYTHON'
+        from pathlib import Path
+        apt = Path('/etc/apt')
+        paths = [apt / 'sources.list', apt / 'apt-mirrors.txt',
+                 *(apt / 'sources.list.d').glob('*.list'),
+                 *(apt / 'sources.list.d').glob('*.sources')]
+        changed = 0
+        for path in paths:
+            if not path.is_file():
+                continue
+            original = path.read_text()
+            updated = original
+            for scheme in ('http', 'https'):
+                updated = updated.replace(
+                    f'{scheme}://azure.archive.ubuntu.com/ubuntu',
+                    'https://archive.ubuntu.com/ubuntu',
+                )
+            if updated != original:
+                path.write_text(updated)
+                changed += 1
+        print(f'Updated {changed} Ubuntu mirror source files')
+        PYTHON
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+        cache: pip
+    - name: Install Python, CJK fonts and Chromium
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y fonts-noto-cjk
+        python -m pip install -r requirements.txt
+        python -m playwright install --with-deps chromium
+    - name: Verify Chromium without application requests
+      shell: bash
+      run: |
+        python - <<'PYTHON'
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            try:
+                page = browser.new_page()
+                page.route('**/*', lambda route: route.abort())
+                page.set_content('<p>Reporting dependency smoke 測試</p>')
+                assert page.locator('p').inner_text() == 'Reporting dependency smoke 測試'
+                assert page.screenshot().startswith(b'\x89PNG\r\n\x1a\n')
+            finally:
+                browser.close()
+        print('Chromium bootstrap smoke passed')
+        PYTHON
