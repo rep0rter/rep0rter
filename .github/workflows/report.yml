@@ -25,7 +25,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   report:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -43,16 +43,8 @@ jobs:
           PY
       - name: Verify deployed Worker before installing the reporting stack
         run: python3 cloudflare/check_deployed.py
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: pip
-      - name: Install Python and Chromium
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y fonts-noto-cjk
-          python -m pip install -r requirements.txt
-          python -m playwright install --with-deps chromium
+      - name: Install and verify reporting dependencies
+        uses: ./.github/actions/reporting-stack
       - name: Collect, write and publish with durable checkpoints
         env:
           REP0RTER_CONFIG: ${{ secrets.REP0RTER_CONFIG }}
