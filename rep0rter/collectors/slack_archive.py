@@ -140,12 +140,21 @@ def _timestamp(value) -> Decimal:
         raise RuntimeError("archive returned an invalid message timestamp") from exc
 
 
+def _html_timestamp_ids(raw_ts, stamp):
+    # PHP renders doubles with 14 significant digits and strips trailing zeroes.
+    # Decimal's `g` retains those zeroes (e.g. .3820 versus PHP's .382).
+    # Identity still comes from the exact embedded JSON, never this rounded ID.
+    return {'ts-' + str(raw_ts), 'ts-' + format(stamp, '.14g'),
+            'ts-' + format(float(stamp), '.14g')}
+
+
 def channel_is_older_than(session, channel_id: str, lower: Decimal) -> bool:
     """Verify a quiet channel using the unfiltered latest-month HTML archive.
 
     JSON filters subtype rows after its LIMIT, so even a nonempty raw head can
     return no messages. The HTML month index covers raw rows, including joins.
-    Only prove an empty window when the entire latest month precedes its start.
+    A current-month empty window also requires exact raw monthly counts and
+    verification that no eligible message lies in the requested interval.
     Missing/changed markup is not proof; callers retain their existing gap.
     """
     response = _get(session, BASE_URL + '/index/channel/' + channel_id)
@@ -172,7 +181,7 @@ def channel_is_older_than(session, channel_id: str, lower: Decimal) -> bool:
         return False
     end = latest.replace(year=latest.year + 1, month=1) if latest.month == 12 else latest.replace(month=latest.month + 1)
     if Decimal(str(end.timestamp())) > lower:
-        return False
+        return _verify_channel_window(session, channel_id, lower, {}, soup)
     raw_stamps = []
     for node in feed.select('.message[id]'):
         if node.find_parent(class_='message') is not None:
@@ -183,7 +192,7 @@ def channel_is_older_than(session, channel_id: str, lower: Decimal) -> bool:
         try:
             raw = json.loads(metadata['title'])
             stamp = _timestamp(raw['ts'])
-            if node.get('id') != 'ts-' + str(raw['ts']):
+            if node.get('id') not in _html_timestamp_ids(raw['ts'], stamp):
                 return False
         except (ValueError, KeyError, TypeError, RuntimeError):
             return False
@@ -199,17 +208,24 @@ def channel_is_older_than(session, channel_id: str, lower: Decimal) -> bool:
 
 def channel_window_is_complete(session, channel_id: str, lower: Decimal, collected,
                                *, covered_after: Decimal | None = None) -> bool:
-    """Prove a recent JSON window against the complete raw latest-month HTML.
+    """Prove a JSON window against at most three complete raw HTML months.
 
     A widened fractional cursor can repeat the only non-subtype message. The
     month's raw count and timestamps must agree, and every eligible HTML row
     must already be collected. A resumed scan also has a durably observed
     interval at or above its original cursor. That boundary must not move with
-    this scan's pages. Missing markup or older-month overlap is still a gap.
+    this scan's pages. Missing markup, rows or a wider interval is still a gap.
     """
     if covered_after is not None and covered_after < lower:
         return False
     soup = BeautifulSoup(_get(session, BASE_URL + '/index/channel/' + channel_id).text, 'html.parser')
+    return _verify_channel_window(session, channel_id, lower, collected, soup,
+                                  covered_after=covered_after)
+
+
+def _verify_channel_window(session, channel_id, lower, collected, soup, *, covered_after=None):
+    from .state import BudgetExceeded
+
     feed, nav = soup.select_one('section[role="feed"]'), soup.select_one('nav[role="pagination"]')
     if feed is None or nav is None:
         return False
@@ -221,6 +237,8 @@ def channel_window_is_complete(session, channel_id: str, lower: Decimal, collect
             if not match:
                 return False
             month = datetime.strptime(match[1], '%Y-%m').replace(tzinfo=ARCHIVE_TZ)
+            if month in months:
+                return False
             months[month] = link
         active = nav.select('a.nav-link.active')
         if not months or len(active) != 1:
@@ -228,33 +246,54 @@ def channel_window_is_complete(session, channel_id: str, lower: Decimal, collect
         latest = max(months)
         if active[0].get('href') != months[latest].get('href'):
             return False
-        end = latest.replace(year=latest.year + 1, month=1) if latest.month == 12 else latest.replace(month=latest.month + 1)
-        start_ts, end_ts = Decimal(str(latest.timestamp())), Decimal(str(end.timestamp()))
-        if not start_ts <= lower < end_ts:
+        lower_month = datetime.fromtimestamp(float(lower), ARCHIVE_TZ).replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0)
+        # An absent month is not proof of an empty interval. Keep the gap when
+        # the index cannot establish the lower boundary or the bounded window.
+        relevant = sorted((month for month in months if month >= lower_month), reverse=True)
+        if lower_month not in months or len(relevant) > 3:
             return False
-        badge = months[latest].select_one('.badge')
-        if badge is None:
-            return False
-        expected = int(badge.get_text(strip=True))
-        rows = [n for n in feed.select('.message[id]') if n.find_parent(class_='message') is None]
-        if not rows or len(rows) != expected:
-            return False
-        for node in rows:
-            metadata = node.select_one('.message-time[title]')
-            if metadata is None or metadata.find_parent(class_='message') is not node:
+        for month in relevant:
+            path = months[month]['href']
+            badge = months[month].select_one('.badge')
+            if badge is None:
                 return False
-            raw = json.loads(metadata['title'])
-            stamp = _timestamp(raw['ts'])
-            # PHP formats the numeric row ID with 14 significant digits; the
-            # embedded Slack JSON retains the authoritative microseconds.
-            valid_ids = {'ts-' + str(raw['ts']), 'ts-' + format(stamp, '.14g')}
-            if node.get('id') not in valid_ids or not start_ts <= stamp < end_ts:
+            expected = int(badge.get_text(strip=True))
+            if month != latest:
+                # Uses the existing shared transport: retries and each proof
+                # page consume the same run/day budget as collection.
+                document = BeautifulSoup(_get(session, BASE_URL + path).text, 'html.parser')
+                feed = document.select_one('section[role="feed"]')
+                nav = document.select_one('nav[role="pagination"]')
+                if feed is None or nav is None:
+                    return False
+                active = nav.select('a.nav-link.active')
+                indexed = [link for link in nav.select('a.dropdown-item') if link.get('href') == path]
+                if (len(active) != 1 or active[0].get('href') != path or len(indexed) != 1
+                        or indexed[0].select_one('.badge') is None
+                        or int(indexed[0].select_one('.badge').get_text(strip=True)) != expected):
+                    return False
+            end = month.replace(year=month.year + 1, month=1) if month.month == 12 else month.replace(month=month.month + 1)
+            start_ts, end_ts = Decimal(str(month.timestamp())), Decimal(str(end.timestamp()))
+            rows = [n for n in feed.select('.message[id]') if n.find_parent(class_='message') is None]
+            if not rows or len(rows) != expected:
                 return False
-            if (not raw.get('subtype') and stamp >= lower and stamp not in collected
-                    and not (covered_after is not None and stamp >= covered_after)):
-                return False
+            for node in rows:
+                metadata = node.select_one('.message-time[title]')
+                if metadata is None or metadata.find_parent(class_='message') is not node:
+                    return False
+                raw = json.loads(metadata['title'])
+                stamp = _timestamp(raw['ts'])
+                if (node.get('id') not in _html_timestamp_ids(raw['ts'], stamp)
+                        or not start_ts <= stamp < end_ts or raw.get('channel', channel_id) != channel_id):
+                    return False
+                if (not raw.get('subtype') and stamp >= lower and stamp not in collected
+                        and not (covered_after is not None and stamp >= covered_after)):
+                    return False
         return True
-    except (ValueError, KeyError, TypeError, RuntimeError):
+    except BudgetExceeded:
+        raise
+    except (ValueError, KeyError, TypeError, RuntimeError, OverflowError, OSError):
         return False
 
 
@@ -301,7 +340,7 @@ def root_from_html(session, channel_id: str, root_ts: str) -> dict | None:
             raw = json.loads(metadata['title'])
             if not isinstance(raw, dict) or str(raw.get('ts')) != root_ts:
                 continue
-            valid_ids = {'ts-' + root_ts, 'ts-' + format(_timestamp(root_ts), '.14g')}
+            valid_ids = _html_timestamp_ids(root_ts, _timestamp(root_ts))
             if node.get('id') not in valid_ids or (raw.get('thread_ts') and str(raw['thread_ts']) != root_ts):
                 continue
             author = node.select_one('.user-name[title]')
@@ -389,7 +428,7 @@ def verified_month_fragments(session, channel_id: str, month: str) -> dict[str, 
             ts = str(raw['ts'])
             stamp = _timestamp(ts)
             fragment = node['id']
-            if (fragment not in {'ts-' + ts, 'ts-' + format(stamp, '.14g')}
+            if (fragment not in _html_timestamp_ids(ts, stamp)
                     or datetime.fromtimestamp(float(stamp), ARCHIVE_TZ).strftime('%Y-%m') != month
                     or raw.get('channel', channel_id) != channel_id):
                 continue
