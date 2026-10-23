@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from .runtime import locks as fcntl, services
 import os
+import re
 import tempfile
 
 import time
@@ -322,6 +323,12 @@ def _withdrawn_page(language):
             '">' + links + '</nav></main></body></html>')
 
 
+def _sitemap(locs):
+    import html
+    return ('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+            ''.join('<url><loc>' + html.escape(loc, quote=False) + '</loc></url>\n' for loc in locs) + '</urlset>\n')
+
+
 def _sanitize_site(store, root, withdrawn_urls=(), *, tombstones=True):
     """Fail closed for withdrawal, even if a later complete rebuild fails.
 
@@ -404,9 +411,17 @@ def _sanitize_site(store, root, withdrawn_urls=(), *, tombstones=True):
             elif section.h2 and section.h2.span:
                 section.h2.span.string = str(len(articles))
         _atomic_text(path, str(document))
+    sitemap = '{http://www.sitemaps.org/schemas/sitemap/0.9}'
     for path in root.rglob('*.xml'):
         try:
             tree = ET.fromstring(path.read_bytes())
+            if tree.tag == sitemap + 'urlset':
+                locs = [url.findtext(sitemap + 'loc', '').strip() for url in tree.findall(sitemap + 'url')]
+                kept = [loc for loc in locs if (story := re.search(r'/posts/([^/]+)/', loc)) is None
+                        or story.group(1) not in withdrawn]
+                if kept != locs:
+                    _atomic_text(path, _sitemap(kept))
+                continue
             changed = False
             for channel in tree.findall('./channel'):
                 for item in list(channel.findall('item')):
@@ -416,6 +431,9 @@ def _sanitize_site(store, root, withdrawn_urls=(), *, tombstones=True):
             if changed:
                 _atomic_text(path, ET.tostring(tree, encoding='unicode', xml_declaration=True))
         except ET.ParseError:
+            if path.name == 'sitemap.xml':
+                _atomic_text(path, _sitemap([]))
+                continue
             _atomic_text(path, '<?xml version="1.0" encoding="utf-8"?><rss version="2.0"><channel><title>rep0rter</title><description>Feed rebuilding</description></channel></rss>')
     if tombstones:
         for post_id in withdrawn:

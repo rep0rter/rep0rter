@@ -138,7 +138,9 @@ export class PublishedSite extends DurableObject {
     // Only shared, content-addressed assets are immutable. Reports and their
     // cards must revalidate so corrections and withdrawals remain effective.
     const cacheControl = path.startsWith('assets/') ? 'public, max-age=31536000, immutable' : 'no-cache';
-    const headers = new Headers({'Content-Type':TYPES[path.split('.').pop()] || 'application/octet-stream',
+    // Feeds are RSS; the sitemap is plain XML for search engines.
+    const type = path === 'sitemap.xml' ? 'application/xml; charset=utf-8' : TYPES[path.split('.').pop()];
+    const headers = new Headers({'Content-Type':type || 'application/octet-stream',
       'Cache-Control':cacheControl, 'ETag':`"${row.digest}"`, 'X-Content-Type-Options':'nosniff'});
     if (request.headers.get('If-None-Match') === headers.get('ETag')) return new Response(null,{status:304,headers});
     return new Response(request.method === 'HEAD' ? null : row.data,{headers});

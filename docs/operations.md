@@ -79,8 +79,28 @@ the site build lock, before requesting a full rebuild. Matching articles and RSS
 GUIDs are removed, permanent pages become generic four-language notices without
 personal metadata, and derived image caches are purged. These are atomic per-file
 replacements, so a later renderer failure does not keep withdrawn text online.
-Surviving article text and link targets remain intact. A subsequent successful
+Surviving article text and link targets remain intact. The sitemap drops the
+withdrawn story URLs. A subsequent successful
 build restores the normal layout and regenerates allowed cards.
+
+## Search indexing
+
+A story edition is complete only when it shows its own stored translation; the
+English pending copy and the saved-text fallback of other editions are not. Each
+generation derives this again from stored translations, so a completed backfill
+restores its edition without manual steps:
+
+- Incomplete story editions keep their self canonical and remain readable, but
+  carry `<meta name="robots" content="noindex">` and no hreflang alternates.
+  Complete editions list only complete editions as hreflang alternates.
+- `sitemap.xml` lists the four homepages and complete editions of the latest
+  revision of each public story, at their canonical `index*.html` URLs. It omits
+  `lastmod` because translation backfills have no reliable change time. Superseded
+  revisions, source/tag timelines, aliases, withdrawn stories, source examples,
+  and account pages are not listed. Withdrawal scrubs remove story URLs from it.
+- `robots.txt` allows crawling and points to the sitemap. Sign-in, writing and
+  project pages stay crawlable so that their existing `noindex` is honored.
+- The frontend serves `sitemap.xml` as `application/xml`; feeds remain RSS.
 
 ## Read-only health and explicit administrator alerts
 
