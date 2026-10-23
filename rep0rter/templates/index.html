@@ -16,7 +16,8 @@
 <meta name="twitter:card" content="summary_large_image">
 {% if branding %}<link rel="icon" type="image/png" href="{{ prefix }}{{ branding.favicon }}">{% endif %}
 <link rel="alternate" type="application/rss+xml" title="{{ cfg.site_title }} RSS · {{ languages[language] }}" href="{{ prefix }}{{ feed }}">
-{% for lang in languages %}<link rel="alternate" hreflang="{{ lang }}" href="{{ canonical.rsplit('/', 1)[0] }}/{{ page_name(lang) }}">{% endfor %}
+{% if not indexable %}<meta name="robots" content="noindex">{% endif %}
+{% for lang in alternates %}<link rel="alternate" hreflang="{{ lang }}" href="{{ canonical.rsplit('/', 1)[0] }}/{{ page_name(lang) }}">{% endfor %}
 <script src="{{ prefix }}theme.js"></script>
 <script src="{{ prefix }}entry-motion.js"></script>
 <link rel="stylesheet" href="{{ prefix }}style.css{% if style_version %}?v={{ style_version }}{% endif %}">

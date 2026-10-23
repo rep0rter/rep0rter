@@ -550,7 +550,9 @@ class Reporter(DurableObject):
             if not found:
                 return Response('Not found', status=404)
             row = found[0]
-            mime = 'application/rss+xml; charset=utf-8' if relative.endswith('.xml') else mimetypes.guess_type(relative)[0] or 'application/octet-stream'
+            mime = ('application/xml; charset=utf-8' if relative == 'sitemap.xml' else
+                    'application/rss+xml; charset=utf-8' if relative.endswith('.xml') else
+                    mimetypes.guess_type(relative)[0] or 'application/octet-stream')
             headers = {'Content-Type': mime, 'Cache-Control': 'no-cache', 'ETag': '"' + row['digest'] + '"', 'X-Content-Type-Options': 'nosniff'}
             if request.headers.get('If-None-Match') == headers['ETag']:
                 return Response(None, status=304, headers=headers)

@@ -346,6 +346,66 @@ def test_missing_english_translation_uses_honest_pending_copy_without_saving_it(
     assert 'en' not in json.loads(saved)
 
 
+SITEMAP = '{http://www.sitemaps.org/schemas/sitemap/0.9}'
+
+
+def sitemap_urls(cfg):
+    tree = ElementTree.parse(cfg.site_dir / 'sitemap.xml').getroot()
+    assert tree.tag == SITEMAP + 'urlset'
+    assert not tree.findall(f'{SITEMAP}url/{SITEMAP}lastmod')
+    return [node.findtext(SITEMAP + 'loc') for node in tree.findall(SITEMAP + 'url')]
+
+
+def test_incomplete_story_editions_are_noindex_until_their_translation_is_stored(published_site):
+    store, cfg, _, entries, _ = published_site
+    latest = entries[-1][0]
+    complete = {key: value for key, value in latest.translations.items() if key in ('zh-TW', 'ko')}
+    with store.conn:
+        store.conn.execute('UPDATE posts SET translations=? WHERE id=?', (json.dumps(complete), latest.id))
+    site.build(store, cfg)
+    story = cfg.site_url + f'/posts/{latest.id}/'
+    for language, (page, _) in EDITIONS.items():
+        doc = html(cfg.site_dir / 'posts' / str(latest.id) / page)
+        assert doc.select_one('link[rel="canonical"]')['href'] == story + page
+        alternates = {node['hreflang']: node['href'] for node in doc.select('link[rel="alternate"][hreflang]')}
+        if language in complete:
+            assert not doc.select('meta[name="robots"]')
+            assert alternates == {code: story + EDITIONS[code][0] for code in complete}
+        else:
+            assert doc.select_one('meta[name="robots"]')['content'] == 'noindex'
+            assert alternates == {}
+        # Discovery pages remain complete in every interface language.
+        home = html(cfg.site_dir / page)
+        assert not home.select('meta[name="robots"]')
+        assert set(node['hreflang'] for node in home.select('link[rel="alternate"][hreflang]')) == set(EDITIONS)
+    urls = sitemap_urls(cfg)
+    assert [url for url in urls if f'/posts/{latest.id}/' in url] == [story + EDITIONS[code][0] for code in complete]
+    # Completing the translation restores the edition without manual steps.
+    with store.conn:
+        store.conn.execute('UPDATE posts SET translations=? WHERE id=?', (json.dumps(latest.translations), latest.id))
+    site.build(store, cfg)
+    for page, _ in EDITIONS.values():
+        assert not html(cfg.site_dir / 'posts' / str(latest.id) / page).select('meta[name="robots"]')
+    assert sorted(url for url in sitemap_urls(cfg) if f'/posts/{latest.id}/' in url) == sorted(
+        story + page for page, _ in EDITIONS.values())
+
+
+def test_sitemap_lists_only_indexable_canonical_public_pages_and_robots_points_to_it(published_site):
+    _, cfg, _, entries, _ = published_site
+    urls = sitemap_urls(cfg)
+    assert len(urls) == len(set(urls)) == len(EDITIONS) * (1 + len(entries))
+    assert {cfg.site_url + '/' + page for page, _ in EDITIONS.values()} <= set(urls)
+    for url in urls:
+        doc = html(local_path(cfg, url))
+        assert doc.select_one('link[rel="canonical"]')['href'] == url
+        assert not doc.select('meta[name="robots"]')
+        assert not url.endswith('index.en.html')
+        assert not any(private in url for private in ('/write', '/submit', '/auth/', '/projects', '/sources/', '/tags/'))
+    robots = (cfg.site_dir / 'robots.txt').read_text()
+    assert robots.splitlines()[-1] == f'Sitemap: {cfg.site_url}/sitemap.xml'
+    assert 'User-agent: *' in robots and 'Disallow' not in robots
+
+
 def test_source_rename_keeps_same_url_and_source_history(published_site):
     store, cfg, container, entries, _ = published_site
     before = html(cfg.site_dir / "index.html").select_one("a.channel")["href"]
@@ -622,6 +682,8 @@ def test_superseded_pages_cards_and_feeds_link_latest_without_repeating_stale_og
         description = next(item.findtext('description') for item in items if item.findtext('guid') == str(old.id))
         assert description.startswith(COPY[language]['superseded'])
         assert expected in description
+        assert expected in sitemap_urls(cfg) and old_url not in sitemap_urls(cfg)
+        assert not doc.select('meta[name="robots"]')
 
 
 def test_latest_revision_link_does_not_point_to_withdrawn_content(published_site):
@@ -711,6 +773,11 @@ def test_emergency_withdrawal_scrubs_home_highlights_when_rebuild_fails(publishe
             assert not doc.find('article', id=str(post.id))
         if not remove_all:
             assert doc.find('article', id=str(entries[0][0].id))
+    urls = sitemap_urls(cfg)
+    assert {cfg.site_url + '/' + page for page, _ in EDITIONS.values()} <= set(urls)
+    for post, _ in removed:
+        assert not [url for url in urls if f'/posts/{post.id}/' in url]
+    assert bool([url for url in urls if f'/posts/{entries[0][0].id}/' in url]) == (not remove_all)
 
 
 def test_source_optout_scrubs_cached_pages_and_keeps_styled_tombstones_without_rebuild(published_site):

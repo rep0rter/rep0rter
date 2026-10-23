@@ -110,3 +110,17 @@ for (const path of ['/auth/login', '/auth/callback', '/projects', '/projects/1',
     assert.equal(delegated.at(-1), path);
 }
 """)
+
+
+def test_sitemap_is_served_as_xml_while_feeds_stay_rss():
+    run_worker_checks("""
+for (const [path, type] of [['sitemap.xml', 'application/xml; charset=utf-8'],
+                            ['feed.xml', 'application/rss+xml; charset=utf-8'],
+                            ['robots.txt', 'text/plain; charset=utf-8']]) {
+    add(path);
+    const response = await site.fetch(request('/' + path));
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('Content-Type'), type);
+    assert.equal(response.headers.get('Cache-Control'), 'no-cache');
+}
+""")

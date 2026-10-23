@@ -78,3 +78,21 @@ repository，逐一以 GitHub 官方 API 核對後採用 90 天內有 push 的�
   `writer_audits` 記錄各版本，可比較初次驗證通過率與重試率。
 - #2 的兩週條件只計目前版本的 shadow 紀錄；active 或其他版本不能灌入觀察期。
   #2、#6 的真實兩週比較尚未滿期，不能只憑測試通過就關閉。其他項目依各自驗收條件判定。
+
+## 2026-10-23 搜尋索引：未完成語版與內容 Sitemap（GSC-20261023）
+
+- 缺陷：單篇頁不論語版是否完成，都輸出自我 canonical、四語 hreflang 且可索引。例如
+  `/posts/184/index.html` 顯示 English translation pending，zh-TW／ja／ko 也只顯示已儲存的
+  fallback 文字，但仍互列 hreflang。`robots.txt` 與 `sitemap.xml` 不存在（404），而前端把所有
+  `.xml` 都以 `application/rss+xml` 回應。
+- 判定：沿用頁面既有的 `translated` 判斷（英文需有已儲存的 en 標題與摘要；其他語言需有已儲存
+  的該語言譯文）。未完成語版保留可閱讀與自我 canonical，加上 `noindex`、不列 hreflang；完成
+  語版只互列完成語版。補譯完成後下一次建置自動恢復，不改既有發布、撤稿與來源引用規則。
+- Sitemap：四個首頁加上每篇公開報導最新修訂的完成語版。舊修訂、來源／標籤時間軸、別名、
+  撤稿、來源範例與帳號頁不列入；無可靠時間（補譯沒有時間戳），因此省略 `lastmod`。緊急撤稿
+  清除也會移除 sitemap 內該篇網址。`robots.txt` 允許抓取並指向 sitemap；登入／撰寫頁維持
+  可抓取以讓既有 `noindex` 生效。
+- 規則見 [維運：Search indexing](operations.md#search-indexing)。正式部署版本與 HTTP／robots／
+  sitemap 證據記於 PR 留言；為避免 runner 的 commit 版本檢查與正式 engine 不一致，部署後不另推
+  僅含文件的 main commit。Search Console 提交與 Google 側驗證由 Codex 負責；提交或讀取不等於已索引。
+

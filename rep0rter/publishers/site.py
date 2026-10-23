@@ -135,6 +135,11 @@ def _display_text(post, language):
     return post_text(post, language)
 
 
+def _complete_languages(post) -> list[str]:
+    """Editions showing their own stored translation, not pending or fallback text."""
+    return [language for language in LANGUAGES if _display_text(post, language)[2]]
+
+
 def _search_text(post, event, source_label, tags):
     """Keep published wording searchable when readers change their edition."""
     parts = [source_label, event.author_name, *tags]
@@ -208,6 +213,7 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
                 "hashtags": story_tags,
                 "search_text": _search_text(post, event, source_label, story_tags),
                 "evidence": [url for url in event.meta.get('evidence', []) if isinstance(url, str) and _safe_url(url)],
+                "complete_languages": _complete_languages(post),
             })
     now = datetime.now(timezone.utc).timestamp()
     health = json.loads(store.get_kv('collector_health', '{}'))
@@ -232,7 +238,12 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
         for item in page_items:
             days.setdefault(item["day"], []).append(item)
         canonical = cfg.site_url.rstrip("/") + "/" + quote(relative_path, safe='/')
+        # An incomplete story edition stays readable but is neither indexed nor
+        # advertised; it joins hreflang/sitemap once its translation is stored.
+        alternates = page_items[0]["complete_languages"] if detail else list(LANGUAGES)
+        indexable = language in alternates
         context = {**ctx, "language": language, "copy": COPY[language], "items": page_items, "days": days,
+                   "indexable": indexable, "alternates": alternates if indexable else [],
                    "prefix": prefix, "canonical": canonical, "page_title": title or COPY[language]["title"],
                    "description": page_items[0]["page_description"] if detail else COPY[language]["intro"],
                    "og_image": page_items[0]["image"] if detail else ctx["branding"].get("social", ""),
@@ -263,6 +274,7 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
         for tag in item['hashtags']:
             tag_counts[tag] = tag_counts.get(tag, 0) + 1
     root_outputs = []
+    sitemap_paths = [page_name(language) for language in LANGUAGES]
     visible_posts = {item['post'].id: item['post'] for item in items}
     for language in LANGUAGES:
         localized = []
@@ -286,6 +298,9 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
         for item in localized:
             title = COPY[language]['previous_report'] + ' · ' + item['headline'] if item['latest_path'] else item['headline']
             render_page(language, [item], item["story_path"], "../../", title, detail=True)
+            # Superseded revisions stay readable; the sitemap lists the latest one.
+            if language in item['complete_languages'] and not item['latest_path']:
+                sitemap_paths.append(item["story_path"])
             sources.setdefault(item["source_path"], []).append(item)
             for tag in item['hashtags']:
                 tagged.setdefault(tag, []).append(item)
@@ -304,6 +319,11 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
             for filename in (page_name(language), *page_aliases(language)):
                 _write(cfg.site_dir / 'posts' / str(row['post_id']) / filename,
                        env.get_template('withdrawn.html').render(language=language,copy=COPY[language],languages=LANGUAGES,page_name=page_name))
+    # No stored time reliably covers later translation backfills, so omit lastmod.
+    base_url = cfg.site_url.rstrip("/") + "/"
+    _write(cfg.site_dir / 'sitemap.xml', env.get_template('sitemap.xml').render(
+        urls=[base_url + quote(path, safe='/') for path in sitemap_paths]))
+    _write(cfg.site_dir / 'robots.txt', env.get_template('robots.txt').render(sitemap=base_url + 'sitemap.xml'))
     keep={Path(item[key]).name for item in items for key in ('original_image', 'report_image', 'original_image_dark', 'report_image_dark')}
     keep.update(Path(item['author_avatar']).name for item in items if item['author_avatar'])
     runtime = services.get()

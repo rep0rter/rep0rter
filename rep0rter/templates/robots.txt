@@ -1,0 +1,5 @@
+# Sign-in and writing pages stay crawlable so their noindex is honored.
+User-agent: *
+Allow: /
+
+Sitemap: {{ sitemap }}
