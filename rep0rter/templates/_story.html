@@ -13,6 +13,7 @@
       <p class="summary" lang="{{ language if it.translated or language == 'en' else 'und' }}">{{ it.summary }}</p>
       {% if it.latest_path %}</details>{% endif %}
       {% if not it.translated and language != 'en' %}<p class="translation-note">{{ copy.missing }}</p>{% endif %}
+      {% if not it.translated and language == 'en' and it.complete_languages %}<p class="translation-note translation-links">{{ copy.read_in }} {% for lang in it.complete_languages %}<a href="{{ prefix }}posts/{{ it.post.id }}/{{ page_name(lang) }}" lang="{{ lang }}" hreflang="{{ lang }}">{{ languages[lang] }}</a>{% endfor %}</p>{% endif %}
       {% if it.event.meta.get('take_part') %}<p class="take-part"><strong>{{ copy.take_part }}</strong> {{ it.event.meta.take_part }}</p>{% endif %}
       {% if it.hashtags %}<nav class="hashtag-list" aria-label="{{ copy.hashtags }}">{% for name in it.hashtags %}<a class="hashtag" href="{{ prefix }}{{ tag_path(name) }}{{ page_name(language) }}" rel="tag">#{{ name }}</a>{% endfor %}</nav>{% endif %}
       <p class="byline"><span class="avatar-initial" aria-hidden="true">{{ (it.event.author_name or it.channel)[:1] }}{% if it.author_avatar %}<img data-author-avatar src="{{ prefix }}{{ it.author_avatar }}" width="29" height="29" loading="lazy" decoding="async" alt="">{% endif %}</span><span>{{ it.event.author_name or it.channel }}</span></p>

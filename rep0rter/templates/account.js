@@ -346,7 +346,7 @@
         const form = document.querySelector('.project-form form');
         if (!notice || !form || form.querySelector('.field-error'))
             return;
-        const message = notice.textContent?.trim() || '';
+        const message = (notice.querySelector('p') || notice).textContent?.trim() || '';
         const name = FIELD_ERRORS.find(([pattern]) => pattern.test(message))?.[1];
         const field = name ? form.querySelector(`[name="${name}"]`) : null;
         if (!field)
@@ -360,6 +360,20 @@
         field.setAttribute('aria-invalid', 'true');
         field.setAttribute('aria-describedby', [field.getAttribute('aria-describedby'), inline.id].filter(Boolean).join(' '));
         field.addEventListener('input', () => { field.removeAttribute('aria-invalid'); inline.remove(); }, { once: true });
+        // The banner sits above the form; link it to the field it is about.
+        const label = field.id ? form.querySelector(`label[for="${field.id}"]`)?.firstChild?.textContent?.trim() : '';
+        if (label) {
+            const jump = document.createElement('a');
+            jump.className = 'field-link';
+            jump.href = `#${field.id}`;
+            jump.textContent = `↓ ${label}`;
+            jump.addEventListener('click', event => {
+                event.preventDefault();
+                field.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+                field.focus({ preventScroll: true });
+            });
+            notice.append(document.createElement('br'), jump);
+        }
     };
     const accountPage = () => {
         if (!document.body.classList.contains('account-page'))
@@ -454,7 +468,9 @@
         const body = document.createElement('p');
         body.textContent = copy.publishedBody || '';
         const links = document.createElement('nav');
-        for (const [href, label] of [[copy.publishedFeed, copy.publishedFeedLabel], [copy.publishedWrite, copy.publishedWriteLabel]]) {
+        const again = published.kind === 'project'
+            ? [copy.publishedProjectAgain, copy.publishedProjectAgainLabel] : [copy.publishedWrite, copy.publishedWriteLabel];
+        for (const [href, label] of [[copy.publishedFeed, copy.publishedFeedLabel], again]) {
             if (!href || !label)
                 continue;
             const link = document.createElement('a');

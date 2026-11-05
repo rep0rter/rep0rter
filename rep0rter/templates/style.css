@@ -536,6 +536,10 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
 .account-page .owner-confirmation input { flex: 0 0 auto; width: 20px; height: 20px; margin: 3px 0 0; accent-color: var(--accent); }
 .account-page .form-notice { margin-bottom: 24px; padding: 20px 24px; border: 1px solid var(--line); border-radius: var(--radius-nested); background: var(--accent-soft); color: var(--ink); }
 .account-page .form-notice[role=alert] { border-color: var(--danger-line); border-left-width: 5px; background: var(--danger-bg); color: var(--danger-text); font-weight: 600; }
+.account-page .form-notice[role=status] { border-color: color-mix(in srgb, var(--green) 45%, transparent); border-left-width: 5px; background: light-dark(#e8f5ef, #1d3029); }
+.account-page .form-notice[role=alert].form-notice--warning { border-color: color-mix(in srgb, var(--warning-text) 55%, transparent); background: var(--warning-bg); color: var(--warning-text); }
+.account-page .form-notice > button { margin-top: 14px; }
+.account-page .form-notice .field-link { display: inline-flex; align-items: center; min-height: 44px; margin-top: 4px; color: inherit; font-weight: 700; }
 .account-page .account-bar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 24px; margin-bottom: 24px; }
 .account-page .account-bar > span { min-width: 0; overflow-wrap: anywhere; }
 .account-page .project-list { margin: 0; padding: 0; list-style: none; }
@@ -619,5 +623,13 @@ html[data-brand-entering] main, html[data-brand-entering] .site-footer { opacity
 @media (prefers-reduced-motion: no-preference) { body > main, body > .site-footer { transition: opacity 420ms ease-out; } }
 
 /* Large desktop canvases scale the whole interface instead of floating a narrow column. */
-@media (min-width: 1700px) { html { zoom: 1.2; } }
-@media (min-width: 2200px) { html { zoom: 1.4; } }
+/* The presentation sizes its own slides to the viewport. */
+@media (min-width: 1700px) { html:not(:has(> body.presentation)) { zoom: 1.2; } }
+@media (min-width: 2200px) { html:not(:has(> body.presentation)) { zoom: 1.4; } }
+
+/* A lone story in its day (or in filtered results) uses the whole column. */
+.story-grid--single > .story-card, .story-grid[data-visible="1"] > .story-card { grid-column: 1 / -1; }
+.translation-links a { margin-inline-start: 8px; font-weight: 700; color: inherit; }
+
+/* The withdrawal notice is a single centred column with no sticky header. */
+.withdrawal-page .site-header { background: none; width: min(100% - 40px, 660px); }

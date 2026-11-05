@@ -33,7 +33,7 @@
 <link rel="stylesheet" href="{{ prefix }}login.css">
 <script defer src="{{ prefix }}account.js"></script>
 </head>
-<body class="page-{{ page_kind }}"{% if detail %} data-published-story="{{ copy.published_story }}" data-published-project="{{ copy.published_project }}" data-published-body="{{ copy.published_body }}" data-published-feed="{{ prefix }}{{ page_name(language) }}" data-published-feed-label="{{ copy.published_feed }}" data-published-write="{{ prefix }}write?lang={{ language }}" data-published-write-label="{{ copy.published_write }}"{% endif %} data-brand-skip="{{ copy.brand_skip }}" data-brand-dismiss="{{ copy.brand_dismiss }}" data-brand-intro="{{ copy.brand_intro }}">
+<body class="page-{{ page_kind }}"{% if detail %} data-published-story="{{ copy.published_story }}" data-published-project="{{ copy.published_project }}" data-published-body="{{ copy.published_body }}" data-published-feed="{{ prefix }}{{ page_name(language) }}" data-published-feed-label="{{ copy.published_feed }}" data-published-write="{{ prefix }}write?lang={{ language }}" data-published-write-label="{{ copy.published_write }}" data-published-project-again="{{ prefix }}submit?lang={{ language }}" data-published-project-again-label="{{ copy.published_project_again }}"{% endif %} data-brand-skip="{{ copy.brand_skip }}" data-brand-dismiss="{{ copy.brand_dismiss }}" data-brand-intro="{{ copy.brand_intro }}">
 <a class="skip-link" href="#main">{{ copy.skip_content }}</a>
 <div class="ambient" aria-hidden="true"><span></span><span></span><span></span></div>
 <header class="site-header page-shell">
@@ -131,7 +131,7 @@
       {% set first_day = loop.first %}
       <section class="day"{% if not detail %} aria-labelledby="day-{{ day }}"{% endif %}>
         {% if not detail %}<h2 id="day-{{ day }}" class="day-heading"><time datetime="{{ day }}">{{ day }}</time><span class="day-count">{{ day_items | length }}</span><span class="day-rule" aria-hidden="true"></span></h2>{% endif %}
-        <div class="story-grid">
+        <div class="story-grid{% if day_items | length == 1 %} story-grid--single{% endif %}">
           {% for it in day_items %}{% set featured = (first_day and loop.first) or detail %}{% include '_story.html' %}{% endfor %}
         </div>
       </section>

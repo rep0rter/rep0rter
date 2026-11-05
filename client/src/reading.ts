@@ -207,6 +207,10 @@
         ? status.dataset.resultTemplateOne
         : status.dataset.resultTemplate!.replace('{count}', String(count));
       empty.hidden = count !== 0 || Boolean(invalid);
+      // Let a lone visible story span its day's grid instead of half of it.
+      days.forEach(({ grid, stories }) => {
+        if (grid && 'dataset' in grid) (grid as HTMLElement).dataset.visible = String(stories.filter(story => !story.element.hidden).length);
+      });
       if (persist) writeURL(state);
     };
     let composing = false;

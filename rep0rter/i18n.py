@@ -352,3 +352,12 @@ for _language, _values in {
     COPY[_language].update(zip(('account_label', 'published_story', 'published_project', 'published_body',
                                'published_feed', 'published_write', 'story_count_one', 'search_results_one'),
                               _values))
+
+
+for _language, _values in {
+    'en': ('Read it now in', 'Post another project'),
+    'zh-TW': ('目前可閱讀的版本：', '再發布一個專案'),
+    'ja': ('現在読める版：', '別のプロジェクトを投稿'),
+    'ko': ('지금 읽을 수 있는 언어:', '다른 프로젝트 올리기'),
+}.items():
+    COPY[_language].update(zip(('read_in', 'published_project_again'), _values))

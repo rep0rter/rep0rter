@@ -5,11 +5,11 @@
 {% block intro %}{{ account_copy.write_intro }}{% endblock %}
 {% block navigation %}<a href="/?lang={{ account_language }}">{{ ui.icon('back') }}<span>{{ account_copy.back_feed }}</span></a><a href="/submit?lang={{ account_language }}">{{ ui.icon('chat') }}<span>{{ account_copy.post_project }}</span></a><a href="/projects?lang={{ account_language }}">{{ ui.icon('rss') }}<span>{{ account_copy.manage_news }}</span></a>{% endblock %}
 {% block content %}
-{% if error %}<p class="form-notice" role="alert">{{ error }}</p>{% endif %}
 
   <div class="account-bar"><span>{{ account_copy.signed_in }} {{ owner.name }}</span>
     <form action="{{ url_for('logout') }}" method="post"><input type="hidden" name="ui_language" value="{{ account_language }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="quiet-button">{{ account_copy.sign_out }}</button></form>
   </div>
+  {% if error %}<div class="form-notice{% if saved_post %} form-notice--warning{% endif %}" role="alert"><p>{{ error }}</p>{% if saved_post %}<button type="submit" form="story-form" name="action" value="publish" data-busy-label="{{ account_copy.busy_publish }}">{{ account_copy.retry_story }}</button>{% endif %}</div>{% endif %}
   {% if preview %}
   <section class="story-preview" aria-labelledby="preview-title">
     <p class="eyebrow" id="preview-title">{{ account_copy.preview_unpublished }}</p>
@@ -25,7 +25,7 @@
   <article class="project-form">
     <h2>{{ account_copy.your_update }}</h2>
     <p>{{ account_copy.english_notice }}</p>
-    <form action="{{ url_for('write_story') }}" method="post">
+    <form action="{{ url_for('write_story') }}" method="post" id="story-form">
       <input type="hidden" name="ui_language" value="{{ account_language }}"><input type="hidden" name="csrf" value="{{ csrf }}">
       <input type="hidden" name="submission_token" value="{{ submission_token }}">
       <label for="project_name">{{ account_copy.project_name }} <span class="form-help">{{ account_copy.optional }}</span></label>

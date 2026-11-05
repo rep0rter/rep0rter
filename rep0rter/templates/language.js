@@ -93,7 +93,7 @@
         if (focus)
             menu.querySelector('summary')?.focus({ preventScroll: true });
     }
-    function notice(message = '') {
+    function notice(message = '', retry) {
         let status = document.querySelector('[data-language-status]');
         if (!status && message) {
             status = document.createElement('p');
@@ -106,7 +106,27 @@
             status.textContent = message;
             status.hidden = !message;
         }
+        // A failed switch offers its own retry instead of only describing one.
+        if (status && message && retry) {
+            try {
+                status.dataset.state = 'error';
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'language-retry';
+                button.textContent = retryLabels[language] || retryLabels.en;
+                button.addEventListener('click', retry, { once: true });
+                status.append(' ', button);
+            }
+            catch { /* The message alone still explains what happened. */ }
+        }
+        else if (status) {
+            try {
+                delete status.dataset.state;
+            }
+            catch { /* optional */ }
+        }
     }
+    const retryLabels = { en: 'Try again', 'zh-TW': '再試一次', ja: '再試行', ko: '다시 시도' };
     const messages = {
         en: ['Loading language…', 'Could not load this language. Your current page is unchanged. Try again.'],
         'zh-TW': ['正在切換語言…', '目前無法載入此語言，原頁面已保留。請稍後再試。'],
@@ -247,7 +267,7 @@
             if (token !== revision)
                 return;
             document.documentElement.removeAttribute('aria-busy');
-            notice(messages[language]?.[1] || messages.en[1]);
+            notice(messages[language]?.[1] || messages.en[1], () => { void change(locale, { initial, history }); });
             if (initial)
                 window.history.replaceState(window.history.state, '', publicURL(location.href, language));
         }

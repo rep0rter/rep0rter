@@ -56,9 +56,10 @@ def no_validate(page):
 
 
 def scroll_to(selector):
+    # scrollIntoView honours the page's scroll-padding, as a reader's anchor
+    # navigation does, so sticky headers never cover the captured target.
     return lambda page: page.evaluate(
-        "s => { const e = document.querySelector(s); scrollTo({top: e.getBoundingClientRect().top + scrollY - 16, behavior: 'instant'}) }",
-        selector)
+        "s => document.querySelector(s).scrollIntoView({block: 'start', behavior: 'instant'})", selector)
 
 
 def type_search(term):
@@ -171,7 +172,7 @@ def submit(action_value, fill, stall_post=False, arm=None, novalidate=False):
 STATES = [
     ("home-en", "base", "/", None, {}),
     ("home-en-feed", "base", "/", scroll_to("#news"), {}),
-    ("home-en-footer", "base", "/", lambda p: p.evaluate("scrollTo({top: document.body.scrollHeight, behavior: 'instant'})"), {}),
+    ("home-en-footer", "base", "/", lambda p: p.evaluate("scrollTo({top: 1e9, behavior: 'instant'})"), {}),
     ("home-zh-TW", "base", "/index.zh-TW.html", None, {}),
     ("home-ja", "base", "/index.ja.html", None, {}),
     ("home-ko", "base", "/index.ko.html", None, {}),
@@ -213,7 +214,7 @@ STATES = [
     ("write-empty", "base", "/__preview/sign-in?next=/write%3Flang%3Den", None, {}),
     ("write-ja", "base", "/__preview/sign-in?next=/write%3Flang%3Dja", None, {}),
     ("write-filled", "base", "/__preview/sign-in?next=/write%3Flang%3Den",
-     lambda p: (fill_story(p), p.evaluate("scrollTo({top: document.body.scrollHeight, behavior:'instant'})")), {}),
+     lambda p: (fill_story(p), p.evaluate("scrollTo({top: 1e9, behavior:'instant'})")), {}),
     ("write-preview", "base", "/__preview/sign-in?next=/write%3Flang%3Den", submit("preview", fill_story), {}),
     ("write-error", "base", "/__preview/sign-in?next=/write%3Flang%3Den",
      submit("publish", lambda p: fill_story(p, evidence="not a link")), {}),
