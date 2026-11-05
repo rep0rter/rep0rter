@@ -723,3 +723,30 @@ html[data-brand-entering] main, html[data-brand-entering] .site-footer { opacity
   .image-viewer[data-image-state="error"] .image-viewer-stage { flex: 0 0 auto; }
 }
 .image-viewer[data-image-state="error"] [data-viewer-full] { display: none; }
+
+/* Invalid ranges: outline the dates; the summary chip only matters while the panel is closed. */
+.filter-panel input[aria-invalid="true"] { border-color: var(--danger-line); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger-line) 22%, transparent); }
+.search-filters[open] > summary > .filter-alert { display: none; }
+.filter-panel > .filter-error { margin: 0 0 16px; }
+/* Story pages: one focused reading column, report card as a compact thumbnail. */
+.reading-layout--detail { grid-template-columns: minmax(0, 880px); justify-content: center; }
+.reading-layout--detail .reading-aside { padding-top: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.reading-layout--detail .reading-aside .subscribe-card { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 4px 20px; grid-column: 1 / -1; }
+.reading-layout--detail .reading-aside .subscribe-card .icon-orb { grid-row: span 2; margin: 0; }
+.reading-layout--detail .reading-aside .subscribe-card h2 { margin: 0; }
+.reading-layout--detail .reading-aside .subscribe-card .button { grid-column: 3; grid-row: 1 / span 2; width: auto; margin: 0; }
+.reading-layout--detail .reading-aside .aside-note { grid-column: 1 / -1; }
+.reading-layout--detail .story-card .report-figure { display: grid; grid-template-columns: 280px minmax(0, 1fr); align-items: center; gap: 4px 20px; max-width: none; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--line); }
+.reading-layout--detail .story-card .report-figure figcaption { flex-direction: column; align-items: flex-start; font-size: 13px; }
+@media (max-width: 640px) {
+  .reading-layout--detail .reading-aside .subscribe-card { grid-template-columns: auto 1fr; }
+  .reading-layout--detail .reading-aside .subscribe-card .button { grid-column: 1 / -1; grid-row: auto; width: 100%; margin-top: 12px; }
+  .reading-layout--detail .story-card .report-figure { grid-template-columns: 140px minmax(0, 1fr); }
+}
+@media (max-width: 480px) {
+  /* Phone viewer: image centred in the sheet, actions pinned within thumb reach. */
+  .image-viewer-stage { flex: 1 1 auto; align-content: center; margin-top: 0; }
+  .image-viewer[data-image-state="error"] .image-viewer-stage { flex: 1 1 auto; }
+  .image-viewer-footer { margin-top: auto; }
+}
+.page-story .detail-intro { width: min(100%, 880px); margin-inline: auto; }

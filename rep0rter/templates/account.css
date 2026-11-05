@@ -81,9 +81,9 @@
   .account-page .account-intro { padding: 16px 4px 12px; }
   .account-page .account-intro h1 { margin-top: 10px; font-size: 30px; }
   .account-page .account-intro .tagline { margin-top: 8px; font-size: 15px; line-height: 1.6; }
-  /* One scrollable row of links with an edge fade, so the first field stays high. */
-  .account-navigation { flex-wrap: nowrap; overflow-x: auto; gap: 8px; margin: 12px -16px 0; padding: 0 40px 4px 16px; scrollbar-width: none;
-    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent); }
+  /* Links wrap as compact chips so none is hidden off-screen. */
+  .account-navigation { flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .account-navigation a { min-height: 44px; padding: 0 12px; }
   .account-page:has(.project-form) .account-intro .tagline { display: none; }
   .account-navigation a { flex: 0 0 auto; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--glass-clear); text-decoration: none; font-size: 13px; }
   .account-page .account-bar { padding: 8px 8px 8px 14px; margin-bottom: 16px; font-size: 13px; }

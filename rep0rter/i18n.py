@@ -393,3 +393,12 @@ for _language, _values in {
 }.items():
     COPY[_language].update(zip(('search_results_query', 'search_results_query_one', 'latest_version',
                                'revision_of', 'earlier_versions'), _values))
+
+
+for _language, (_title, _body) in {
+    'en': ('Fix the date range', 'Stories appear again once the start date is on or before the end date.'),
+    'zh-TW': ('請修正日期範圍', '開始日期不晚於結束日期後，消息就會重新出現。'),
+    'ja': ('日付の範囲を修正してください', '開始日が終了日以前になると、ニュースが再び表示されます。'),
+    'ko': ('날짜 범위를 고쳐 주세요', '시작일이 종료일과 같거나 빠르면 소식이 다시 표시됩니다.'),
+}.items():
+    COPY[_language].update(range_title=_title, range_body=_body)

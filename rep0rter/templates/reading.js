@@ -31,6 +31,11 @@
         const filters = document.querySelector('[data-filters]');
         const countBadge = document.querySelector('[data-filter-count]');
         const error = document.querySelector('[data-filter-error]');
+        let rangeNotice = null;
+        try {
+            rangeNotice = document.querySelector('[data-invalid-range]');
+        }
+        catch { /* Optional explanation. */ }
         let resetButton = null;
         try {
             resetButton = document.querySelector('[data-search-reset]');
@@ -175,6 +180,8 @@
                 error.hidden = !invalid;
             if (filterAlert)
                 filterAlert.hidden = !invalid;
+            if (rangeNotice)
+                rangeNotice.hidden = !invalid;
             // Calendar days are based on the publication timezone, including today.
             const dateParts = Object.fromEntries(dateFormatter.formatToParts(new Date()).map(part => [part.type, part.value]));
             const today = `${dateParts.year}-${dateParts.month}-${dateParts.day}`;

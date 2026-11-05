@@ -45,6 +45,9 @@
     const filters = document.querySelector<HTMLDetailsElement>('[data-filters]');
     const countBadge = document.querySelector<HTMLElement>('[data-filter-count]');
     const error = document.querySelector<HTMLElement>('[data-filter-error]');
+    let rangeNotice: HTMLElement | null = null;
+    try { rangeNotice = document.querySelector<HTMLElement>('[data-invalid-range]'); }
+    catch { /* Optional explanation. */ }
     let resetButton: HTMLElement | null = null;
     try { resetButton = document.querySelector<HTMLElement>('[data-search-reset]'); }
     catch { /* Optional label switch. */ }
@@ -168,6 +171,7 @@
       });
       if (error) error.hidden = !invalid;
       if (filterAlert) filterAlert.hidden = !invalid;
+      if (rangeNotice) rangeNotice.hidden = !invalid;
       // Calendar days are based on the publication timezone, including today.
       const dateParts: Partial<Record<string, string>> =
         Object.fromEntries(dateFormatter.formatToParts(new Date()).map(part => [part.type, part.value]));
