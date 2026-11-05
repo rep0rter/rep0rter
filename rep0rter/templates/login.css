@@ -40,15 +40,15 @@
 @media (forced-colors: active) { .login-dialog, .login-card .login-google, .login-close, .login-mark { border: 1px solid CanvasText; background: Canvas; color: CanvasText; box-shadow: none; } }
 
 /* New interface (beta): solid sign-in surface and a filled primary action. */
-:root[data-redesign] .login-dialog { border-color: var(--line); background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
-:root[data-redesign] .login-card .login-google { border-color: transparent; background: #315c8f; color: #fff; }
-:root[data-redesign] .account-page.login-page main > .login-card { background: var(--surface); }
+:root .login-dialog { border-color: var(--line); background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+:root .login-card .login-google { border-color: transparent; background: #315c8f; color: #fff; }
+:root .account-page.login-page main > .login-card { background: var(--surface); }
 /* New interface (beta), wide screens: the standalone card splits into intro and actions. */
 @media (min-width: 1100px) {
-  :root[data-redesign] .account-page.login-page main { width: min(1120px, calc(100% - 64px)); padding-block: clamp(48px, 12vh, 140px); }
-  :root[data-redesign] .account-page.login-page main > .login-card { columns: 2; column-gap: 96px; column-rule: 1px solid var(--line); padding: 64px 72px; }
-  :root[data-redesign] .account-page.login-page main > .login-card > * { break-inside: avoid; }
-  :root[data-redesign] .account-page.login-page main > .login-card h1 { font-size: 44px; }
-  :root[data-redesign] .account-page.login-page main > .login-card > .login-intro { font-size: 17px; }
-  :root[data-redesign] .account-page.login-page main > .login-card > .login-intro + * { break-before: column; margin-top: 0; }
+  :root .account-page.login-page main { width: min(1120px, calc(100% - 64px)); padding-block: clamp(48px, 12vh, 140px); }
+  :root .account-page.login-page main > .login-card { columns: 2; column-gap: 96px; column-rule: 1px solid var(--line); padding: 64px 72px; }
+  :root .account-page.login-page main > .login-card > * { break-inside: avoid; }
+  :root .account-page.login-page main > .login-card h1 { font-size: 44px; }
+  :root .account-page.login-page main > .login-card > .login-intro { font-size: 17px; }
+  :root .account-page.login-page main > .login-card > .login-intro + * { break-before: column; margin-top: 0; }
 }

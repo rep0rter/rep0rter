@@ -20,5 +20,5 @@ for p in "$port" "$((port + 1))" "$((port + 2))"; do
   for _ in $(seq 50); do curl -fs "http://127.0.0.1:$p/healthz" >/dev/null && break; sleep 0.2; done
 done
 "$python" "$tools/capture.py" --base "http://127.0.0.1:$port" --empty "http://127.0.0.1:$((port + 1))" \
-  --disabled "http://127.0.0.1:$((port + 2))" --out "$out" ${ONLY:+--only $ONLY} ${REDESIGN:+--redesign}
+  --disabled "http://127.0.0.1:$((port + 2))" --out "$out" ${ONLY:+--only $ONLY}
 echo "preview data: $work"

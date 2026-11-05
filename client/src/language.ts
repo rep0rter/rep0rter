@@ -101,9 +101,9 @@
       status.dataset.languageStatus = '';
       status.className = 'language-status';
       status.setAttribute('role', 'status');
-      // The new interface overlays the status just below the sticky header.
+      // The status overlays just below the sticky header.
       let header: Element | null = null;
-      try { if (document.documentElement.dataset.redesign !== undefined) header = document.querySelector('body > .site-header'); }
+      try { header = document.querySelector('body > .site-header'); }
       catch { /* minimal DOMs */ }
       if (header) {
         header.after(status);
@@ -134,11 +134,10 @@
     en: name => `Loading ${name}…`, 'zh-TW': name => `正在切換至${name}…`,
     ja: name => `${name}を読み込み中…`, ko: name => `${name} 불러오는 중…`,
   };
-  // The new interface names the edition being loaded, using its own language-menu label.
+  // Name the edition being loaded, using its own language-menu label.
   function loadingMessage(locale: string) {
     const fallback = messages[language as Locale]?.[0] || messages.en[0];
     try {
-      if (document.documentElement.dataset.redesign === undefined) return fallback;
       const link = [...document.querySelectorAll<HTMLAnchorElement>('a[data-language]')]
         .find(element => element.dataset.language === locale);
       const name = (link?.textContent || '').replace(/\s+/g, ' ').trim();

@@ -84,12 +84,11 @@ suppressed (its own "dismissed" flag) except in `home-entrance`.
 | `projects-error` | `/projects` | Validation failure |
 | `projects-saved` | `/projects/<id>` | Saved notice with project list |
 
-## New interface (beta) switch
+## New interface
 
-From brief v2 on, the new set is captured with the footer switch on
-(`REDESIGN=1 scripts/design-review/round.sh …`), which is what reviewers see.
-Every round also captures the same states with the switch off; that set is a
-regression check for the default interface and is not shown to reviewers.
+From brief v2 round 1 to round 2 the new interface sat behind a local flag and
+each round also captured the default interface as an unreviewed regression set.
+Since v2 round 3 the new interface is the only interface; one set is captured.
 
 ## Reference sites
 

@@ -77,48 +77,47 @@
 .account-page > footer > p:empty { display: none; }
 .account-page > footer > .account-footer-navigation { display: none; }
 
-/* ===== New interface (beta): account layout changes behind data-redesign. ===== */
-:root[data-redesign] .account-page > header.site-header { width: min(100% - 64px, 1200px); }
-:root:not([data-redesign]) .account-aside { display: none; }
-:root[data-redesign] .account-page:has(.account-aside) > main { width: min(100% - 64px, 1200px); display: grid; grid-template-columns: minmax(0, 1fr) 340px; column-gap: 40px; align-items: start; }
-:root[data-redesign] .account-page:has(.account-aside) > main > * { grid-column: 1; }
-:root[data-redesign] .account-page:has(.account-aside) > main > .account-intro { grid-column: 1 / -1; }
-:root[data-redesign] .account-page:has(.account-aside) > footer { width: min(100% - 64px, 1200px); }
-:root[data-redesign] .account-page main > aside.account-aside { grid-column: 2; grid-row: 2 / span 8; position: sticky; top: 132px; padding: 28px; margin: 0; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-card); }
+/* ===== Account layout: header grid, side panel and phone forms. ===== */
+:root .account-page > header.site-header { width: min(100% - 64px, 1200px); }
+:root .account-page:has(.account-aside) > main { width: min(100% - 64px, 1200px); display: grid; grid-template-columns: minmax(0, 1fr) 340px; column-gap: 40px; align-items: start; }
+:root .account-page:has(.account-aside) > main > * { grid-column: 1; }
+:root .account-page:has(.account-aside) > main > .account-intro { grid-column: 1 / -1; }
+:root .account-page:has(.account-aside) > footer { width: min(100% - 64px, 1200px); }
+:root .account-page main > aside.account-aside { grid-column: 2; grid-row: 2 / span 8; position: sticky; top: 132px; padding: 28px; margin: 0; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-card); }
 .account-aside h2 { margin-bottom: 18px; font-size: 20px; }
 .account-aside ol { display: grid; gap: 18px; margin: 0; padding: 0; list-style: none; counter-reset: step; }
 .account-aside li { display: grid; grid-template-columns: 32px 1fr; gap: 2px 12px; counter-increment: step; }
 .account-aside li::before { content: counter(step); grid-row: span 2; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 700; }
 .account-aside strong { font-size: 15px; }
 .account-aside span { color: var(--muted); font-size: 14px; line-height: 1.6; }
-:root[data-redesign] .account-page.login-page main { width: min(560px, calc(100% - 32px)); }
+:root .account-page.login-page main { width: min(560px, calc(100% - 32px)); }
 @media (max-width: 1100px) {
-  :root[data-redesign] .account-page:has(.account-aside) > main { display: flex; flex-direction: column; align-items: stretch; width: min(100% - 48px, 920px); }
-  :root[data-redesign] .account-page main > aside.account-aside { position: static; margin-top: 24px; order: 99; }
+  :root .account-page:has(.account-aside) > main { display: flex; flex-direction: column; align-items: stretch; width: min(100% - 48px, 920px); }
+  :root .account-page main > aside.account-aside { position: static; margin-top: 24px; order: 99; }
 }
 @media (max-width: 600px) {
-  :root[data-redesign] .account-page > header.site-header, :root[data-redesign] .account-page:has(.account-aside) > main,
-  :root[data-redesign] .account-page:has(.account-aside) > footer { width: calc(100% - 32px); }
+  :root .account-page > header.site-header, :root .account-page:has(.account-aside) > main,
+  :root .account-page:has(.account-aside) > footer { width: calc(100% - 32px); }
 }
 /* Forms on phones: reach the first field sooner. */
 @media (max-width: 640px) {
-  :root[data-redesign] .account-page .account-intro { padding: 16px 4px 12px; }
-  :root[data-redesign] .account-page .account-intro h1 { margin-top: 10px; font-size: 30px; }
-  :root[data-redesign] .account-page .account-intro .tagline { margin-top: 8px; font-size: 15px; line-height: 1.6; }
-  :root[data-redesign] .account-page:has(.project-form) .account-intro .tagline { display: none; }
-  :root[data-redesign] .account-navigation { flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-  :root[data-redesign] .account-navigation a { flex: 0 0 auto; min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--glass-clear); text-decoration: none; font-size: 13px; }
-  :root[data-redesign] .account-page .account-bar { padding: 8px 8px 8px 14px; margin-bottom: 16px; font-size: 13px; }
-  :root[data-redesign] .account-page .account-bar button { min-height: 44px; padding: 8px 14px; }
+  :root .account-page .account-intro { padding: 16px 4px 12px; }
+  :root .account-page .account-intro h1 { margin-top: 10px; font-size: 30px; }
+  :root .account-page .account-intro .tagline { margin-top: 8px; font-size: 15px; line-height: 1.6; }
+  :root .account-page:has(.project-form) .account-intro .tagline { display: none; }
+  :root .account-navigation { flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  :root .account-navigation a { flex: 0 0 auto; min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--glass-clear); text-decoration: none; font-size: 13px; }
+  :root .account-page .account-bar { padding: 8px 8px 8px 14px; margin-bottom: 16px; font-size: 13px; }
+  :root .account-page .account-bar button { min-height: 44px; padding: 8px 14px; }
   /* Keep only the way back above the form; the full link set moves to the footer. */
-  :root[data-redesign] .account-page:has(.project-form) .account-intro { padding-block: 12px 10px; }
-  :root[data-redesign] .account-page:has(.project-form) .account-intro .account-navigation a:not(:first-child) { display: none; }
-  :root[data-redesign] .account-page:has(.project-form) .account-bar { padding-block: 4px; margin-bottom: 12px; }
-  :root[data-redesign] .account-page .project-form > h2 { margin-bottom: 8px; }
-  :root[data-redesign] .account-page .project-form > p { font-size: 14px; line-height: 1.6; }
-  :root[data-redesign] .account-page > footer > .account-footer-navigation { display: flex; margin: 0 0 16px; }
+  :root .account-page:has(.project-form) .account-intro { padding-block: 12px 10px; }
+  :root .account-page:has(.project-form) .account-intro .account-navigation a:not(:first-child) { display: none; }
+  :root .account-page:has(.project-form) .account-bar { padding-block: 4px; margin-bottom: 12px; }
+  :root .account-page .project-form > h2 { margin-bottom: 8px; }
+  :root .account-page .project-form > p { font-size: 14px; line-height: 1.6; }
+  :root .account-page > footer > .account-footer-navigation { display: flex; margin: 0 0 16px; }
 }
 /* Phones: the header scrolls away so it never covers form actions such as Publish. */
 @media (max-width: 640px) {
-  :root[data-redesign] .account-page > header.site-header { position: static; }
+  :root .account-page > header.site-header { position: static; }
 }

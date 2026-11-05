@@ -21,10 +21,6 @@
       if (width > 0.5) root.dataset.scrollbar = 'classic'; else delete root.dataset.scrollbar;
     } catch { /* Cosmetic; appearance must still apply. */ }
   };
-  // Interim review mechanism: a local flag selects the new interface until it
-  // replaces the default. There is no visitor-facing switch.
-  try { if (localStorage.getItem('rep0rter-redesign') === '1') root.dataset.redesign = ''; }
-  catch { /* Storage blocked: the default interface stays. */ }
   try {
     measureScrollbar();
     addEventListener('resize', measureScrollbar);
