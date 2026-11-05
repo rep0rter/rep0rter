@@ -4,3 +4,16 @@ html[data-language-updating] * { overflow-anchor: none; }
 .language-status { position: fixed; z-index: 40; left: 50%; bottom: 24px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 40px); padding: 12px 20px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow-card); font-size: 14px; pointer-events: none; }
 .language-status[data-state=error] { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; border-color: var(--danger-line); border-left-width: 5px; background: var(--danger-bg); color: var(--danger-text); font-weight: 600; pointer-events: auto; }
 .language-retry { min-height: 44px; padding: 8px 16px; border: 1px solid currentColor; border-radius: 16px; background: var(--surface); color: inherit; font-weight: 700; }
+
+/* New interface: overlay the status just below the sticky header (top is set by
+   language.js) so loading never shifts the page; compact, opaque, content width. */
+:root[data-redesign] .site-header + [data-language-status].language-status { position: fixed; z-index: 9; top: 72px; left: 50%; bottom: auto; transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; box-sizing: border-box; width: min(100% - 64px, 1200px); max-width: none; margin: 0; padding: 8px 16px; border-radius: 14px; background: var(--surface); font-size: 14px; line-height: 1.4; pointer-events: none; }
+:root[data-redesign] .site-header + [data-language-status].language-status[data-state=error] { padding-block: 6px; background: var(--danger-bg); pointer-events: auto; }
+:root[data-redesign] .site-header + [data-language-status].language-status[data-state=loading]::before { content: ""; flex: 0 0 auto; width: 14px; height: 14px; border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%; animation: busy-spin .8s linear infinite; }
+@keyframes busy-spin { to { transform: rotate(360deg); } }
+@media (max-width: 640px) {
+  :root[data-redesign] .site-header + [data-language-status].language-status { width: calc(100% - 36px); padding: 8px 14px; font-size: 13px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root[data-redesign] .site-header + [data-language-status].language-status[data-state=loading]::before { animation-duration: 2.4s; }
+}

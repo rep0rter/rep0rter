@@ -100,9 +100,8 @@
             status.dataset.languageStatus = '';
             status.className = 'language-status';
             status.setAttribute('role', 'status');
-            // Sit in the flow under the header, pushing content down instead of covering it.
+            // The new interface overlays the status just below the sticky header.
             let header = null;
-            // Only the new interface places the status in the flow under the header.
             try {
                 if (document.documentElement.dataset.redesign !== undefined)
                     header = document.querySelector('body > .site-header');
@@ -133,11 +132,37 @@
             }
             catch { /* The message alone still explains what happened. */ }
         }
+        else if (status && message) {
+            // A pending switch shows a spinner in the new interface.
+            try {
+                status.dataset.state = 'loading';
+            }
+            catch { /* optional */ }
+        }
         else if (status) {
             try {
                 delete status.dataset.state;
             }
             catch { /* optional */ }
+        }
+    }
+    const loadingNames = {
+        en: name => `Loading ${name}…`, 'zh-TW': name => `正在切換至${name}…`,
+        ja: name => `${name}を読み込み中…`, ko: name => `${name} 불러오는 중…`,
+    };
+    // The new interface names the edition being loaded, using its own language-menu label.
+    function loadingMessage(locale) {
+        const fallback = messages[language]?.[0] || messages.en[0];
+        try {
+            if (document.documentElement.dataset.redesign === undefined)
+                return fallback;
+            const link = [...document.querySelectorAll('a[data-language]')]
+                .find(element => element.dataset.language === locale);
+            const name = (link?.textContent || '').replace(/\s+/g, ' ').trim();
+            return name ? (loadingNames[language] || loadingNames.en)(name) : fallback;
+        }
+        catch {
+            return fallback;
         }
     }
     const retryLabels = { en: 'Try again', 'zh-TW': '再試一次', ja: '再試行', ko: '다시 시도' };
@@ -225,7 +250,7 @@
         const request = new AbortController();
         controller = request;
         const timeout = setTimeout(() => request.abort(), 8000);
-        notice(messages[language]?.[0] || messages.en[0]);
+        notice(loadingMessage(locale));
         document.documentElement.setAttribute('aria-busy', 'true');
         try {
             const response = await fetch(sourceURL(locale), { signal: request.signal, cache: 'no-cache', headers: { Accept: 'text/html' } });

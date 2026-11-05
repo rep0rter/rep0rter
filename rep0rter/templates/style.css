@@ -666,7 +666,8 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
 :root[data-redesign] .story-badge { display: inline-flex; align-items: center; width: fit-content; max-width: 100%; min-height: 28px; padding: 3px 12px; margin-bottom: 12px; border-radius: 999px; font-size: 13px; font-weight: 600; line-height: 1.5; }
 
 /* The brand entrance plays over the blurred, rendered page. */
-:root[data-redesign][data-brand-entering] main, :root[data-redesign][data-brand-entering] .site-footer { opacity: .55; }
+/* Readable underneath: a light fade so the brand still leads without hiding the page. */
+:root[data-redesign][data-brand-entering] main, :root[data-redesign][data-brand-entering] .site-footer { opacity: .85; }
 @media (prefers-reduced-motion: no-preference) { :root[data-redesign] body > main, :root[data-redesign] body > .site-footer { transition: opacity 420ms ease-out; } }
 
 /* Feed: lone stories span the column; report cards become compact thumbnails. */
@@ -764,4 +765,54 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
   :root[data-redesign] .image-viewer-stage { flex: 1 1 auto; display: grid; align-content: center; padding: 0; background: transparent; }
   :root[data-redesign] .image-viewer[data-image-state="error"] .image-viewer-stage { display: flex; }
   :root[data-redesign] .image-viewer-footer { margin-top: auto; padding: 12px 8px 0; border-top: 1px solid var(--line); }
+}
+
+/* Featured feed story: copy first, the report image as the same compact thumbnail as other cards. */
+:root[data-redesign] .reading-layout:not(.reading-layout--detail) .story-card--featured { padding: 25px; }
+:root[data-redesign] .reading-layout:not(.reading-layout--detail) .story-card--featured .story-content { display: block; }
+:root[data-redesign] .reading-layout:not(.reading-layout--detail) .story-card--featured h3 { font-size: 25px; }
+:root[data-redesign] .reading-layout:not(.reading-layout--detail) .story-card--featured:not(.story-card--pending) .report-figure { display: grid; grid-template-columns: minmax(120px, 200px) minmax(0, 1fr); align-items: center; gap: 4px 16px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+:root[data-redesign] .reading-layout:not(.reading-layout--detail) .story-card--featured .report-figure :is(.image-link, .source-card) { border-radius: 12px; }
+:root[data-redesign] .reading-layout:not(.reading-layout--detail) .story-card--featured .source-card { max-height: none; }
+:root[data-redesign] .reading-layout:not(.reading-layout--detail) .story-card--featured .report-figure figcaption { flex-direction: column; align-items: flex-start; padding-top: 0; font-size: 13px; }
+
+/* Chinese and Korean headlines: balancing splits words, so break at punctuation and spaces instead. */
+:root[data-redesign] :is(h1, h2, h3, .page-intro-title):is(:lang(zh), :lang(ko)),
+:root[data-redesign] .reading-layout--detail .story-card h1:is(:lang(zh), :lang(ko)) { text-wrap: pretty; word-break: keep-all; }
+
+/* Story history: revisions as clear pill links; the one being read is filled. */
+:root[data-redesign] .story-history .links { gap: 8px; margin-top: 10px; }
+:root[data-redesign] .story-history .links a { justify-content: center; min-height: 44px; padding: 0 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--accent); font-size: 13px; font-weight: 700; box-shadow: var(--shadow-button); }
+:root[data-redesign] .story-history .links a[aria-current] { border-color: transparent; background: var(--accent); color: light-dark(#fff, #11161e); box-shadow: none; }
+@media (hover: hover) and (pointer: fine) {
+  :root[data-redesign] .story-history .links a:not([aria-current]):hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+}
+
+/* Empty site while collection is delayed: say so, and offer RSS to hear when stories arrive. */
+:root[data-redesign] .empty-delayed { display: flex; flex-direction: column; align-items: center; gap: 4px; margin-top: 18px; }
+:root[data-redesign] .empty-state .empty-delayed p { margin: 0; padding: 10px 16px; border-radius: 16px; background: var(--warning-bg); color: var(--warning-text); font-size: 14px; }
+
+/* Phone filter bar: an opaque band that reserves its own space at the end of the panel. */
+:root[data-redesign] .filter-show-bar, :root[data-redesign] .masthead-link-short { display: none; }
+@media (max-width: 640px) {
+  :root[data-redesign]:has(.search-filters[open]) { scroll-padding-bottom: 104px; }
+  :root[data-redesign] .search-filters[open] { background: var(--surface); }
+  :root[data-redesign] .filter-show-bar { position: sticky; z-index: 2; bottom: 0; display: block; margin: 18px -18px -18px; padding: 12px 18px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); border-radius: 0 0 24px 24px; background: var(--surface); box-shadow: 0 -10px 24px var(--shade); }
+  :root[data-redesign] .filter-show-bar .filter-show { position: static; margin: 0; box-shadow: var(--shadow-button); }
+  :root[data-redesign] .reading-layout:not(.reading-layout--detail) .story-card--featured { padding: 22px; }
+  :root[data-redesign] .reading-layout:not(.reading-layout--detail) .story-card--featured:not(.story-card--pending) .report-figure { grid-template-columns: 120px minmax(0, 1fr); }
+  :root[data-redesign] .reading-layout:not(.reading-layout--detail) .story-card--featured h3 { font-size: 23px; }
+
+  /* Full-width CJK glyphs read larger; a slightly smaller story headline needs fewer forced breaks. */
+  :root[data-redesign] .reading-layout--detail .story-card h1:is(:lang(zh), :lang(ko), :lang(ja)) { font-size: 26px; }
+
+  /* Phone masthead: short visible labels under the Write and Sign in icons. */
+  :root[data-redesign] .masthead .masthead-links .write-story-link { flex-direction: column; gap: 1px; width: auto; min-width: 44px; height: 44px; padding: 3px 5px 2px; }
+  :root[data-redesign] .masthead .masthead-links .write-story-link .icon { width: 18px; height: 18px; }
+  :root[data-redesign] .masthead-link-short { display: block; font-size: 11px; font-weight: 700; line-height: 1.2; letter-spacing: 0; white-space: nowrap; }
+  :root[data-redesign] .sign-in-link:not([data-signed-in]) .short-signed-in, :root[data-redesign] .sign-in-link[data-signed-in] .short-signed-out { display: none; }
+}
+@media (max-width: 480px) {
+  /* The full-screen phone viewer is opaque so the page never shows through. */
+  :root[data-redesign] .image-viewer { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }

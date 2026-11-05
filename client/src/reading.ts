@@ -80,6 +80,7 @@
       return { day, order, stories, date: stories[0]?.date || '', grid: day.querySelector('.story-grid'), timestamp: Math.max(0, ...stories.map(article => article.timestamp)) };
     });
     let previousSort: string | null = null;
+    let rangeInvalid = false;
     const dateFormatter = new Intl.DateTimeFormat('en', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' });
     const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) &&
       !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) &&
@@ -165,6 +166,7 @@
       const customDates = filters?.querySelector<HTMLElement>('[data-custom-dates]');
       if (customDates) customDates.hidden = !custom;
       const invalid = custom && state.from && state.to && state.from > state.to;
+      rangeInvalid = Boolean(invalid);
       (['from', 'to'] as const).forEach(name => {
         const field = fields[name];
         if (field) {
@@ -226,7 +228,10 @@
       if (resetButton && resetButton.dataset.labelSearch && resetButton.dataset.labelFilters) {
         resetButton.textContent = activeCount ? resetButton.dataset.labelFilters : resetButton.dataset.labelSearch;
       }
-      if (showButton && showButton.dataset.template) {
+      if (showButton && invalid && showButton.dataset.labelFix) {
+        // "Show 0 stories" would hide the real problem; offer to fix the dates instead.
+        showButton.textContent = showButton.dataset.labelFix;
+      } else if (showButton && showButton.dataset.template) {
         const label = count === 1 && showButton.dataset.templateOne ? showButton.dataset.templateOne : showButton.dataset.template;
         showButton.textContent = label.replace('{count}', String(count));
       }
@@ -269,6 +274,13 @@
     listen(document.querySelector('[data-filters-reset]'), 'click', reset);
     listen(document.querySelector('[data-search-reset]'), 'click', reset);
     listen(showButton, 'click', () => {
+      if (rangeInvalid) {
+        // Keep the panel open and take the reader to the first date to correct.
+        const field = fields.from || fields.to;
+        field?.focus({ preventScroll: true });
+        field?.scrollIntoView({ block: 'center', behavior: 'auto' });
+        return;
+      }
       // Close the phone panel and continue reading at the matching stories.
       if (filters) filters.open = false;
       const results = document.querySelector<HTMLElement>('#news');

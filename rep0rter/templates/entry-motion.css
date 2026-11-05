@@ -128,9 +128,19 @@ html[data-brand-exiting] body::before { transition: opacity 240ms ease-out; }
   [data-brand-original] { visibility: visible; }
 }
 
-/* New interface (beta): the page renders, blurred, beneath the brand moment. */
+/* New interface (beta): the page stays readable beneath a light veil while the
+   brand plays in the masthead. It grows in place and settles into the header, so
+   it never travels across the hero text. The scale follows the script's veil
+   progress (1 at the start, 0 when docked); the script's centring is replaced. */
 html[data-redesign][data-brand-entering] body::before {
-  background: radial-gradient(ellipse at 50% 46%, color-mix(in srgb, var(--surface) 80%, transparent), transparent 65%), color-mix(in srgb, var(--canvas) 62%, transparent);
-  -webkit-backdrop-filter: blur(14px) saturate(1.05);
-  backdrop-filter: blur(14px) saturate(1.05);
+  background: radial-gradient(ellipse at 22% 4%, color-mix(in srgb, var(--surface) 70%, transparent), transparent 45%), color-mix(in srgb, var(--canvas) 22%, transparent);
+  -webkit-backdrop-filter: blur(.6px);
+  backdrop-filter: blur(.6px);
 }
+html[data-redesign] .brand-entry-clone {
+  transform: none !important;
+  scale: calc(1 + (var(--brand-hold-scale, 1.9) - 1) * var(--brand-veil-opacity, 0));
+}
+html[data-redesign][data-brand-exiting] .brand-entry-clone { transition: opacity 240ms ease-out, scale 240ms ease-out; }
+html[data-redesign] .brand-entry-face::before { background: color-mix(in srgb, var(--surface) 94%, transparent); }
+@media (max-width: 640px) { html[data-redesign] { --brand-hold-scale: 1.6; } }

@@ -118,3 +118,7 @@
   :root[data-redesign] .account-page .project-form > p { font-size: 14px; line-height: 1.6; }
   :root[data-redesign] .account-page > footer > .account-footer-navigation { display: flex; margin: 0 0 16px; }
 }
+/* Phones: the header scrolls away so it never covers form actions such as Publish. */
+@media (max-width: 640px) {
+  :root[data-redesign] .account-page > header.site-header { position: static; }
+}

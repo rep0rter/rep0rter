@@ -413,3 +413,13 @@ for _language, _values in {
     'ko': ('소식 {count}개 보기', '소식 1개 보기'),
 }.items():
     COPY[_language].update(zip(('show_results', 'show_results_one'), _values))
+
+
+# Phone filter fix action and short masthead labels shown under phone icons.
+for _language, _values in {
+    'en': ('Fix the dates', 'Write', 'Sign in', 'Account'),
+    'zh-TW': ('修正日期', '撰寫', '登入', '帳號'),
+    'ja': ('日付を修正', '書く', 'ログイン', 'アカウント'),
+    'ko': ('날짜 고치기', '쓰기', '로그인', '계정'),
+}.items():
+    COPY[_language].update(zip(('fix_dates', 'write_short', 'sign_in_short', 'account_short'), _values))

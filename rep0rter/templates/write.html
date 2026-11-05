@@ -19,7 +19,7 @@
     {% if preview.take_part %}<p class="project-preview"><strong>{{ account_copy.take_part }}</strong><br>{{ preview.take_part }}</p>{% endif %}
     <p class="meta">{{ preview.author }} · {{ preview.event_date }}</p>
     <div class="hashtag-list">{% for tag in preview.hashtags %}<span class="hashtag">#{{ tag }}</span>{% endfor %}</div>
-    {% if preview.evidence %}<p class="meta">{{ account_copy.evidence }}: {% for link in preview.evidence %}<a href="{{ link }}" rel="noopener">{{ account_copy.link }} {{ loop.index }}</a>{% endfor %}</p>{% else %}<p class="form-help">{{ account_copy.no_evidence }}</p>{% endif %}
+    {% if preview.evidence %}<p class="meta">{{ account_copy.evidence }}: {% for link in preview.evidence %}{% set host = link.split('//', 1)[-1].split('/', 1)[0].split('?', 1)[0].split('#', 1)[0].lower() %}{% if host.startswith('www.') %}{% set host = host[4:] %}{% endif %}{% if not loop.first %}, {% endif %}<a href="{{ link }}" rel="noopener" title="{{ link }}">{{ host or (account_copy.link ~ ' ' ~ loop.index) }}</a>{% endfor %}</p>{% else %}<p class="form-help">{{ account_copy.no_evidence }}</p>{% endif %}
     {% if preview.original %}<details class="original-source"><summary>{{ account_copy.show_original }}</summary><blockquote dir="auto">{{ preview.original }}</blockquote></details>{% endif %}
   </section>
   {% endif %}
