@@ -448,3 +448,29 @@ for _language, _values in {
 }.items():
     ACCOUNT_COPY[_language].update(how_title=_values[0], how_steps=list(_values[1:4]),
                                    news_how_title=_values[4], news_how_steps=list(_values[5:8]))
+
+
+for _language, _values in {
+    'en': ('How project posts work',
+           ('Publish', 'Your post joins the community feed and RSS right away, labelled as an owner submission.'),
+           ('Translations', 'Other editions show a notice until their translation is ready.'),
+           ('Keep it current', 'Set up automatic project news to post new releases for you.'),
+           'You have no automatic project news yet. Set up your first project below.'),
+    'zh-TW': ('專案投稿流程',
+              ('發布', '投稿會立即出現在社群消息列表與 RSS，並標示為擁有者投稿。'),
+              ('翻譯', '其他語言版本在翻譯完成前會顯示提示。'),
+              ('持續更新', '設定自動專案消息，新版本發布時會自動貼文。'),
+              '你還沒有設定自動專案消息。可以在下方建立第一個專案。'),
+    'ja': ('プロジェクト投稿の流れ',
+           ('公開', '投稿はすぐにニュース一覧と RSS に「オーナーによる投稿」として表示されます。'),
+           ('翻訳', '翻訳が整うまで、他の言語版には案内が表示されます。'),
+           ('最新に保つ', '自動プロジェクトニュースを設定すると、新しいリリースを自動で投稿します。'),
+           '自動プロジェクトニュースはまだありません。下で最初のプロジェクトを設定しましょう。'),
+    'ko': ('프로젝트 게시 과정',
+           ('게시', '게시물은 바로 커뮤니티 소식 목록과 RSS에 소유자 게시물로 표시됩니다.'),
+           ('번역', '번역이 준비될 때까지 다른 언어판에는 안내가 표시됩니다.'),
+           ('최신 유지', '자동 프로젝트 소식을 설정하면 새 릴리스를 자동으로 게시합니다.'),
+           '아직 자동 프로젝트 소식이 없습니다. 아래에서 첫 프로젝트를 설정해 보세요.'),
+}.items():
+    ACCOUNT_COPY[_language].update(project_how_title=_values[0], project_how_steps=list(_values[1:4]),
+                                   no_projects=_values[4])

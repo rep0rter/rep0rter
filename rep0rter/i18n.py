@@ -379,3 +379,17 @@ for _language, _label in {'en': 'More from', 'zh-TW': '更多來自', 'ja': 'さ
 for _language, (_tag, _full) in {'en': ('Original', 'Open full size'), 'zh-TW': ('原文・未翻譯', '開啟原尺寸'),
                                  'ja': ('原文・未翻訳', '原寸で開く'), 'ko': ('원문 · 번역 전', '원본 크기로 열기')}.items():
     COPY[_language].update(original_tag=_tag, open_full=_full)
+
+
+for _language, _values in {
+    'en': ('{count} stories for “{query}”', '1 story for “{query}”', 'Latest version', 'Revision {revision} of {total}',
+           'Earlier versions'),
+    'zh-TW': ('「{query}」找到 {count} 則消息', '「{query}」找到 1 則消息', '最新版本', '第 {revision} 版，共 {total} 版',
+              '較早的版本'),
+    'ja': ('「{query}」の検索結果 {count} 件', '「{query}」の検索結果 1 件', '最新版', '{total} 版中 第 {revision} 版',
+           '以前の版'),
+    'ko': ('“{query}” 검색 결과 {count}개', '“{query}” 검색 결과 1개', '최신 버전', '전체 {total}개 중 {revision}번째 버전',
+           '이전 버전'),
+}.items():
+    COPY[_language].update(zip(('search_results_query', 'search_results_query_one', 'latest_version',
+                               'revision_of', 'earlier_versions'), _values))

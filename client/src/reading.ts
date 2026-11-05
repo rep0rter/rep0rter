@@ -45,6 +45,9 @@
     const filters = document.querySelector<HTMLDetailsElement>('[data-filters]');
     const countBadge = document.querySelector<HTMLElement>('[data-filter-count]');
     const error = document.querySelector<HTMLElement>('[data-filter-error]');
+    let resetButton: HTMLElement | null = null;
+    try { resetButton = document.querySelector<HTMLElement>('[data-search-reset]'); }
+    catch { /* Optional label switch. */ }
     let filterAlert: HTMLElement | null = null;
     try { filterAlert = document.querySelector<HTMLElement>('[data-filter-alert]'); }
     catch { /* Optional summary badge; minimal DOMs may not support it. */ }
@@ -207,9 +210,15 @@
       clear.hidden = !input.value;
       // An invalid range is explained by its own error, not as "no matching stories".
       status.hidden = Boolean(invalid) || (!terms.length && !activeCount);
-      status.textContent = count === 1 && status.dataset.resultTemplateOne
-        ? status.dataset.resultTemplateOne
-        : status.dataset.resultTemplate!.replace('{count}', String(count));
+      // Repeat the query so readers can see what the results are for.
+      const query = input.value.trim();
+      const template = query && status.dataset.queryTemplate
+        ? (count === 1 && status.dataset.queryTemplateOne ? status.dataset.queryTemplateOne : status.dataset.queryTemplate)
+        : (count === 1 && status.dataset.resultTemplateOne ? status.dataset.resultTemplateOne : status.dataset.resultTemplate!);
+      status.textContent = template.replace('{count}', String(count)).replace('{query}', query);
+      if (resetButton && resetButton.dataset.labelSearch && resetButton.dataset.labelFilters) {
+        resetButton.textContent = activeCount ? resetButton.dataset.labelFilters : resetButton.dataset.labelSearch;
+      }
       empty.hidden = count !== 0 || Boolean(invalid);
       // Let a lone visible story span its day's grid instead of half of it.
       days.forEach(({ grid, stories }) => {

@@ -122,10 +122,10 @@
           <div class="filter-bottom"><p>{{ copy.filter_scope }}<br>{{ copy.topics_auto }}</p><button class="button button-secondary" type="button" data-filters-reset>{{ copy.reset_filters }}</button></div>
         </div>
       </details>
-      <p class="search-status" id="search-status" role="status" aria-live="polite" data-result-template="{{ copy.search_results }}" data-result-template-one="{{ copy.search_results_one }}" hidden></p>
+      <p class="search-status" id="search-status" role="status" aria-live="polite" data-result-template="{{ copy.search_results }}" data-result-template-one="{{ copy.search_results_one }}" data-query-template="{{ copy.search_results_query }}" data-query-template-one="{{ copy.search_results_query_one }}" hidden></p>
       {% endif %}
       {% if not items %}<div class="empty-state">{{ ui.icon('chat') }}<h2>{{ copy.empty_title }}</h2><p>{{ copy.empty }}</p></div>{% endif %}
-      <div class="empty-state" data-no-results hidden>{{ ui.icon('search') }}<h2>{{ copy.no_results }}</h2><p>{{ copy.search_help }}</p><button class="button button-secondary" type="button" data-search-reset>{{ copy.reset_filters }}</button></div>
+      <div class="empty-state" data-no-results hidden>{{ ui.icon('search') }}<h2>{{ copy.no_results }}</h2><p>{{ copy.search_help }}</p><button class="button button-secondary" type="button" data-search-reset data-label-search="{{ copy.clear_search }}" data-label-filters="{{ copy.reset_filters }}">{{ copy.reset_filters }}</button></div>
       <div class="story-days{% if page_kind in ('tag', 'source') %} story-timeline{% endif %}">
       {% for day, day_items in days.items() %}
       {% set first_day = loop.first %}

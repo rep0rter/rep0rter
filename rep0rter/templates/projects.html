@@ -9,6 +9,7 @@
   <div class="account-bar"><span>{{ account_copy.signed_in }} {{ owner.name }}</span><form action="{{ url_for('logout') }}" method="post"><input type="hidden" name="ui_language" value="{{ account_language }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="quiet-button">{{ account_copy.sign_out }}</button></form></div>
   {% if error %}<p class="form-notice" role="alert">{{ error }}</p>{% endif %}
   {% if saved_notice %}<p class="form-notice" role="status">{{ account_copy.saved }} {{ account_copy.auto_enabled if values.get('enabled') else account_copy.auto_paused }}</p>{% endif %}
+  {% if not projects and not saved %}<p class="form-notice form-notice--empty">{{ account_copy.no_projects }}</p>{% endif %}
   {% if projects %}<section aria-label="{{ account_copy.your_projects }}"><h2>{{ account_copy.your_projects }}</h2><ul class="project-list">
   {% for project in projects %}<li><a href="{{ url_for('managed_project', project_id=project.id, lang=account_language) }}">{{ project.title }}</a><span>{{ account_copy.auto_every.format(hours=project.interval_hours) if project.enabled else account_copy.paused }}</span>{% if project.last_error %}<p class="form-help">{{ project.last_error }}</p>{% endif %}</li>{% endfor %}
   </ul></section>{% endif %}

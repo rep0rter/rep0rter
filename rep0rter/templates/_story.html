@@ -3,7 +3,7 @@
 <article id="{{ it.post.id }}" class="story-card{% if featured %} story-card--featured{% endif %}{% if pending %} story-card--pending{% endif %}" style="view-transition-name: report-{{ it.post.id }}" data-post-id="{{ it.post.id }}" data-date="{{ it.day }}" data-timestamp="{{ it.event.ts if timeline else it.post.published_at }}" data-author="{{ it.filter_author }}" data-author-label="{{ it.filter_author_label }}" data-source="{{ it.filter_source }}" data-source-label="{{ source_name }}" data-topics='{{ it.filter_topics | tojson }}' data-search="{{ it.search_text }}">
   <div class="story-top">
     <a class="channel" href="{{ prefix }}{{ it.source_path }}{{ page_name(language) }}"><span class="source-dot" data-source="{{ it.event.source }}" aria-hidden="true"></span>{{ source_name }}</a>
-    {% if detail %}<time class="story-date" datetime="{{ it.event_iso }}">{{ it.event_local }}</time>{% else %}<a class="permalink" href="{{ prefix }}{{ it.story_path }}" aria-label="{{ copy.view_details }}: {{ it.headline }}"><span>{{ copy.view_details }}</span>{{ ui.icon('external') }}</a>{% endif %}
+    {% if detail %}<span class="story-when"><time class="story-date" datetime="{{ it.event_iso }}">{{ it.event_local }}</time>{% if it.story.versions | length > 1 and not it.latest_path %}<span class="revision-chip">{{ copy.latest_version }} · {{ copy.revision_of.format(revision=it.story.revision, total=it.story.versions | length) }} · <a href="#history-{{ it.post.id }}">{{ copy.earlier_versions }}</a></span>{% endif %}</span>{% else %}<a class="permalink" href="{{ prefix }}{{ it.story_path }}" aria-label="{{ copy.view_details }}: {{ it.headline }}"><span>{{ copy.view_details }}</span>{{ ui.icon('external') }}</a>{% endif %}
   </div>
   {% if it.event.meta.get('self_reported') %}<p class="story-badge">{{ copy.self_reported }}{% if it.event.meta.get('project_name') %} · {{ it.event.meta.project_name }}{% endif %}{% if not it.source_url %} · {{ copy.no_evidence }}{% endif %}</p>{% elif it.event.meta.get('owner_submitted') %}<p class="story-badge">{{ copy.owner_submission }}</p>{% endif %}
   {% if it.content_warning %}<p class="content-warning">{{ it.content_warning }}</p>{% endif %}
@@ -31,7 +31,7 @@
     </figure>{% endif %}
   </div>
   {% if detail %}
-  <div class="story-history">
+  <div class="story-history" id="history-{{ it.post.id }}">
     <p class="story-follow"><a href="{{ prefix }}{{ it.source_path }}{{ page_name(language) }}">{{ copy.more_from }} {{ source_name }} {{ ui.icon('arrow') }}</a></p>
     <p class="meta">{{ copy.reported }} {{ it.published_local }}{% if it.story.revision > 1 %} · {{ copy.revision }} {{ it.story.revision }}{% endif %}</p>
     {% if it.story.versions | length > 1 %}<nav class="links" aria-label="{{ copy.revision }}">{% for version in it.story.versions %}<a href="../{{ version.id }}/{{ page_name(language) }}">{{ copy.revision }} {{ version.revision }}</a>{% endfor %}</nav>{% endif %}

@@ -654,8 +654,12 @@ html[data-brand-entering] main, html[data-brand-entering] .site-footer { opacity
 
 /* Image and dialog failures carry an error tone and a retry action. */
 .image-viewer-retry { display: none; }
-.image-viewer[data-image-state="error"] .image-viewer-status { color: var(--danger-text); background: var(--danger-bg); font-weight: 600; align-content: center; gap: 16px; padding-bottom: 88px; }
-.image-viewer[data-image-state="error"] .image-viewer-retry { display: inline-flex; position: absolute; left: 50%; bottom: 32px; transform: translateX(-50%); z-index: 1; min-height: 44px; }
+/* A compact, centred error block: icon, message, then the retry right below it. */
+.image-viewer[data-image-state="error"] .image-viewer-stage { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; min-height: 240px; padding: 32px 20px; background: var(--recess); }
+.image-viewer[data-image-state="error"] .image-viewer-card { display: none; }
+.image-viewer[data-image-state="error"] .image-viewer-status { position: static; inset: auto; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 0; background: none; color: var(--danger-text); font-size: 15px; font-weight: 600; }
+.image-viewer[data-image-state="error"] .image-viewer-status::before { content: "!"; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: var(--danger-bg); border: 1px solid var(--danger-line); font-size: 20px; font-weight: 700; }
+.image-viewer[data-image-state="error"] .image-viewer-retry { display: inline-flex; min-height: 44px; }
 .login-status [role=status]::before, .image-viewer[data-image-state="loading"] .image-viewer-status::before { content: ""; display: inline-block; width: 18px; height: 18px; margin-inline-end: 12px; vertical-align: -4px; border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%; animation: busy-spin .8s linear infinite; }
 .login-status { display: grid; align-content: center; }
 .login-status::after { content: ""; display: block; height: 52px; margin-top: 8px; border-radius: var(--radius-control); background: linear-gradient(90deg, var(--recess), var(--surface), var(--recess)); background-size: 200% 100%; animation: skeleton 1.4s ease-in-out infinite; }
@@ -702,3 +706,20 @@ html[data-brand-entering] main, html[data-brand-entering] .site-footer { opacity
   .search-filters > summary { flex-wrap: wrap; }
   .search-filters > summary > .filter-alert { order: 5; flex-basis: 100%; margin: 2px 0 0 30px; padding: 6px 12px; border-radius: 12px; }
 }
+
+/* Latest revision is marked next to the date, mirroring the superseded notice. */
+.story-when { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px 12px; }
+.revision-chip { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 600; }
+.revision-chip a { color: inherit; }
+/* Search results restate the query prominently. */
+:root[data-search-active="true"] .search-status { color: var(--ink); font-size: 18px; font-weight: 700; }
+.account-page .form-notice--empty { background: var(--surface); border-style: dashed; color: var(--muted); }
+@media (max-width: 640px) {
+  .reading-layout--detail .story-when { justify-content: flex-start; flex-basis: 100%; }
+}
+@media (max-width: 480px) {
+  /* Phone viewer: image right under the title bar, actions directly below it. */
+  .image-viewer-stage { flex: 0 0 auto; align-content: start; margin-top: 8px; }
+  .image-viewer[data-image-state="error"] .image-viewer-stage { flex: 0 0 auto; }
+}
+.image-viewer[data-image-state="error"] [data-viewer-full] { display: none; }
