@@ -31,7 +31,7 @@
     <section class="ppt-slide ppt-cover" id="slide-1" data-duration="20" aria-labelledby="title-1" data-label="Community updates, connected">
       <div class="ppt-cover-copy">
         <p class="ppt-kicker" data-reveal>01 / The idea</p>
-        <h1 id="title-1" data-reveal>Community updates.<br><em>Connected.</em></h1>
+        <h1 id="title-1" data-reveal>Community updates.<br> <em>Connected.</em></h1>
         <p class="ppt-lead" data-reveal>One place to follow what civic tech communities are building, sharing, and learning.</p>
         <p class="ppt-caption" data-reveal>Across communities. Across languages. Closer to the source.</p>
       </div>
@@ -44,7 +44,7 @@
     </section>
 
     <section class="ppt-slide" id="slide-2" data-duration="25" aria-labelledby="title-2" data-label="Communities across borders">
-      <div class="ppt-section-head"><p class="ppt-kicker" data-reveal>02 / The communities</p><h2 id="title-2" data-reveal>Good ideas travel.<br><em>Updates should, too.</em></h2><p class="ppt-community-intro" data-reveal>Updates from three civic tech communities, together in one timeline.</p></div>
+      <div class="ppt-section-head"><p class="ppt-kicker" data-reveal>02 / The communities</p><h2 id="title-2" data-reveal>Good ideas travel.<br> <em>Updates should, too.</em></h2><p class="ppt-community-intro" data-reveal>Updates from three civic tech communities, together in one timeline.</p></div>
       <div class="ppt-communities" data-reveal>
         <article><span class="ppt-community-index">TW / 01</span><h3>g0v</h3><p>Taiwan</p><a href="https://g0v.tw/" target="_blank" rel="noopener">Explore the community <span aria-hidden="true">↗</span></a></article>
         <article><span class="ppt-community-index">JP / 02</span><h3>Code for Japan</h3><p>Japan</p><a href="https://www.code4japan.org/" target="_blank" rel="noopener">Explore the community <span aria-hidden="true">↗</span></a></article>
@@ -54,7 +54,7 @@
     </section>
 
     <section class="ppt-slide ppt-showcase" id="slide-3" data-duration="45" aria-labelledby="title-3" data-label="The reader experience">
-      <div class="ppt-showcase-copy"><p class="ppt-kicker" data-reveal>03 / The experience</p><h2 id="title-3" data-reveal>Less catching up.<br><em>More joining in.</em></h2><p class="ppt-lead" data-reveal>A readable timeline of community updates, with a path back to the original conversation.</p><div class="ppt-demo-label" data-reveal><span></span> The reader, live</div><div class="ppt-demo-steps" data-reveal><p><span data-demo-count>01 / 04</span><strong data-demo-label>Latest updates</strong></p><p class="ppt-demo-hint">Use ← → to explore this demo</p></div></div>
+      <div class="ppt-showcase-copy"><p class="ppt-kicker" data-reveal>03 / The experience</p><h2 id="title-3" data-reveal>Less catching up.<br> <em>More joining in.</em></h2><p class="ppt-lead" data-reveal>A readable timeline of community updates, with a path back to the original conversation.</p><div class="ppt-demo-label" data-reveal><span></span> The reader, live</div><div class="ppt-demo-steps" data-reveal><p><span data-demo-count>01 / 04</span><strong data-demo-label>Latest updates</strong></p><p class="ppt-demo-hint">Use ← → to explore this demo</p></div></div>
       <figure class="ppt-browser" data-reveal>
         <div class="ppt-browser-bar"><div aria-hidden="true"><i></i><i></i><i></i></div><span>rep0rter / community updates</span><span aria-hidden="true">↗</span></div>
         <div class="ppt-browser-viewport"><iframe data-src="{{ ppt_base }}/index.html?lang=EN#news" loading="lazy" title="Live rep0rter demonstration controlled by presentation arrow keys" tabindex="-1" inert aria-hidden="true"></iframe><div class="ppt-preview-loading">Loading the community timeline…</div></div>
@@ -87,7 +87,7 @@
     </section>
 
     <section class="ppt-slide ppt-closing" id="slide-6" data-duration="25" aria-labelledby="title-6" data-label="The people and the invitation">
-      <div class="ppt-closing-copy"><p class="ppt-kicker" data-reveal>06 / The people</p><h2 id="title-6" data-reveal>Built by people.<br><em>For participation.</em></h2><p class="ppt-lead" data-reveal>Bring an update. Find a project.<br>Start a conversation.</p><a class="ppt-join" href="{{ ppt_base }}/index.html?lang=EN#news" target="_blank" rel="noopener" data-reveal>Explore rep0rter <span aria-hidden="true">↗</span></a></div>
+      <div class="ppt-closing-copy"><p class="ppt-kicker" data-reveal>06 / The people</p><h2 id="title-6" data-reveal>Built by people.<br> <em>For participation.</em></h2><p class="ppt-lead" data-reveal>Bring an update. Find a project.<br>Start a conversation.</p><a class="ppt-join" href="{{ ppt_base }}/index.html?lang=EN#news" target="_blank" rel="noopener" data-reveal>Explore rep0rter <span aria-hidden="true">↗</span></a></div>
       <div class="ppt-team-panel" data-reveal><p class="ppt-small-label">The team</p>
         {% if ppt_team %}<ul class="ppt-team">{% for member in ppt_team %}<li><div>{% if member.url %}<a href="{{ member.url }}" target="_blank" rel="noopener">{{ member.name }}</a>{% else %}<strong>{{ member.name }}</strong>{% endif %}<span>{{ member.role }}</span></div><span aria-hidden="true">↗</span></li>{% endfor %}</ul>{% else %}<h3>A community effort</h3><p>Made possible by the people building rep0rter and the communities sharing their work.</p>{% endif %}
         <p class="ppt-team-invite">The next connection could start with you.</p>{% if ppt_team and ppt_team[0].url %}<a class="ppt-credits-source" href="{{ ppt_team[0].url }}" target="_blank" rel="noopener" data-team-source>Project notes ↗</a>{% endif %}

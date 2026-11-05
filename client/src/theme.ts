@@ -9,6 +9,21 @@
   }
 
   const root = document.documentElement;
+  // Modal scroll locks pad the page by the scrollbar width so their scrim
+  // reaches the window edge. Measured in the root's own (possibly zoomed) pixels.
+  const measureScrollbar = () => {
+    try {
+      if (root.dataset.loginOpen !== undefined || root.classList.contains('image-viewer-open')) return;
+      const zoom = Number.parseFloat(getComputedStyle(root).zoom) || 1;
+      const width = Math.max(0, innerWidth - root.clientWidth * zoom) / zoom;
+      root.style.setProperty('--scrollbar-width', `${width}px`);
+    } catch { /* Cosmetic; appearance must still apply. */ }
+  };
+  try {
+    measureScrollbar();
+    addEventListener('resize', measureScrollbar);
+    addEventListener('DOMContentLoaded', measureScrollbar);
+  } catch { /* Minimal environments lack window events. */ }
   // The circle and glyph animation overlap; either owner may finish first.
   const scrollOwners = new Set<object>();
   const scrollKeys = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End', ' ']);

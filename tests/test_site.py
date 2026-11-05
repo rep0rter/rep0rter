@@ -580,7 +580,8 @@ def test_reading_is_available_without_javascript_and_controls_are_labeled(publis
             assert trigger['data-theme-' + mode] == copy['theme_' + mode]
             assert controls.select_one(f'[data-theme-choice="{mode}"]').get_text(strip=True) == copy['theme_' + mode]
         assert not doc.select("article[hidden], .day[hidden]")
-        assert all(article.select_one("h3").get_text().strip() for article in doc.select("article"))
+        # Story pages promote the report headline to the page's h1.
+        assert all(article.select_one("h1, h3").get_text().strip() for article in doc.select("article"))
         if "posts" in path.parts:
             assert doc.select_one("[data-search-form]") is None
             continue
@@ -881,7 +882,12 @@ def test_facet_metadata_stays_in_removable_articles_and_selects_start_empty(publ
             assert article['data-author-label'] == event.author_name
             assert article['data-author']
             assert article['data-source']
-            assert article['data-date'] == article.find_parent('section', class_='day').time['datetime']
+            day_heading = article.find_parent('section', class_='day').select_one('.day-heading time')
+            # Story pages show the event date inside the article instead of a day heading.
+            if day_heading:
+                assert article['data-date'] == day_heading['datetime']
+            else:
+                assert 'posts' in path.parts and article.select_one('.story-date')['datetime']
             assert isinstance(json.loads(article['data-topics']), list)
         if 'posts' in path.parts:
             assert doc.select_one('[data-filters]') is None

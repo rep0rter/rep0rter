@@ -332,3 +332,23 @@ for _language, _values in {
         'login_read', 'login_close', 'login_loading', 'login_error', 'login_retry',
         'login_fallback', 'login_signed_in', 'login_next', 'login_projects',
         'login_logout', 'login_unavailable', 'login_later'), _values))
+
+
+# Reader feedback after publishing, signed-in header label and singular counts.
+for _language, _values in {
+    'en': ('Your account', 'Your story is live', 'Your project is live',
+           'It now appears in the community feed and its RSS edition.', 'Back to the feed', 'Write another story',
+           '1 story', '1 story found'),
+    'zh-TW': ('你的帳號', '你的報導已發布', '你的專案已發布',
+              '現在已出現在社群消息列表與 RSS 中。', '回到消息列表', '再寫一篇',
+              '1 篇報導', '找到 1 則消息'),
+    'ja': ('アカウント', '記事が公開されました', 'プロジェクトが公開されました',
+           'コミュニティのニュース一覧と RSS に表示されています。', 'ニュース一覧へ戻る', 'もう一本書く',
+           '1 件の記事', '1 件のニュースが見つかりました'),
+    'ko': ('내 계정', '기사가 게시되었습니다', '프로젝트가 게시되었습니다',
+           '이제 커뮤니티 소식 목록과 RSS에 표시됩니다.', '소식 목록으로 돌아가기', '한 편 더 쓰기',
+           '소식 1개', '소식 1개를 찾았습니다'),
+}.items():
+    COPY[_language].update(zip(('account_label', 'published_story', 'published_project', 'published_body',
+                               'published_feed', 'published_write', 'story_count_one', 'search_results_one'),
+                              _values))

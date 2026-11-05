@@ -29,7 +29,7 @@
       <input id="author" name="author" value="{{ values.get('author', owner.name) }}" required maxlength="100" autocomplete="nickname">
       <label class="owner-confirmation"><input type="checkbox" name="owner_confirmed" value="yes" required{% if values.get('owner_confirmed') == 'yes' %} checked{% endif %}> <span>{{ account_copy.project_consent }}</span></label>
       <p class="form-help">{{ account_copy.project_limit }}</p>
-      <button type="submit">{{ account_copy.retry_project if saved_post else account_copy.publish_project }}</button>
+      <button type="submit" data-busy-label="{{ account_copy.busy_publish }}">{{ account_copy.retry_project if saved_post else account_copy.publish_project }}</button>
     </form>
   </article>
 {% endblock %}

@@ -400,3 +400,12 @@ ACCOUNT_COPY['en']['language_error'] = 'Could not change the language. Your draf
 ACCOUNT_COPY['zh-TW']['language_error'] = '無法切換語言。你的草稿仍保留在這裡，請再試一次。'
 ACCOUNT_COPY['ja']['language_error'] = '言語を切り替えられませんでした。下書きはそのままです。もう一度お試しください。'
 ACCOUNT_COPY['ko']['language_error'] = '언어를 변경하지 못했습니다. 작성 중인 내용은 그대로 있습니다. 다시 시도해 주세요.'
+
+# Labels shown on the pressed button while a request is in flight.
+for _language, (_publish, _preview, _save) in {
+    'en': ('Publishing…', 'Preparing preview…', 'Saving…'),
+    'zh-TW': ('發布中…', '準備預覽中…', '儲存中…'),
+    'ja': ('公開しています…', 'プレビューを準備しています…', '保存しています…'),
+    'ko': ('게시하는 중…', '미리보기를 준비하는 중…', '저장하는 중…'),
+}.items():
+    ACCOUNT_COPY[_language].update(busy_publish=_publish, busy_preview=_preview, busy_save=_save)

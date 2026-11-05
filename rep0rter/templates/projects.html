@@ -31,7 +31,7 @@
       <label class="owner-confirmation"><input type="checkbox" name="enabled" value="yes"{% if values.get('enabled') in (1, 'yes') %} checked{% endif %}><span>{{ account_copy.enable_auto }}</span></label>
       <p class="form-help">{{ account_copy.auto_help }}</p>
       <label class="owner-confirmation"><input type="checkbox" name="owner_confirmed" value="yes" required{% if values.get('owner_confirmed') == 'yes' %} checked{% endif %}><span>{{ account_copy.auto_consent }}</span></label>
-      <div class="form-actions"><button type="submit" name="action" value="preview" class="quiet-button">{{ account_copy.preview_example }}</button><button type="submit" name="action" value="save">{{ account_copy.save_settings }}</button></div>
+      <div class="form-actions"><button type="submit" name="action" value="preview" class="quiet-button" data-busy-label="{{ account_copy.busy_preview }}">{{ account_copy.preview_example }}</button><button type="submit" name="action" value="save" data-busy-label="{{ account_copy.busy_save }}">{{ account_copy.save_settings }}</button></div>
     </form>
   </article>
 {% endblock %}

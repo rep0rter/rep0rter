@@ -27,13 +27,12 @@ SITES = {
     },
     "themarkup": {
         "home": "https://themarkup.org/",
-        "search": "https://themarkup.org/search?q=open+data",
-        "search-no-results": "https://themarkup.org/search?q=zzqxzzqx",
+        "search": "https://themarkup.org/search?s=open+data",
+        "search-no-results": "https://themarkup.org/search?s=zzqxzzqx",
         "newsletter": "https://themarkup.org/newsletters",
     },
     "semafor": {
         "home": "https://www.semafor.com/",
-        "search": "https://www.semafor.com/search?q=open%20data",
         "newsletter": "https://www.semafor.com/newsletters",
         "article": "https://www.semafor.com/article/11/04/2026/trumps-politics-meet-reality",
     },
@@ -59,9 +58,8 @@ def main():
         browser = playwright.chromium.launch()
         for site, pages in SITES.items():
             for size, options in SIZES.items():
-                context = browser.new_context(**options, locale="en-US",
-                                              user_agent=None if size == "desktop" else
-                                              "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1")
+                # Playwright's default UA; a spoofed phone UA triggers bot walls.
+                context = browser.new_context(**options, locale="en-US")
                 page = context.new_page()
                 article = None
                 for state, url in pages.items():

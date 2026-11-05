@@ -208,9 +208,12 @@
             document.documentElement.dataset.searchActive =
                 String(Boolean(terms.length || summarised.some(name => state[name] !== defaults[name])));
             clear.hidden = !input.value;
-            status.hidden = !terms.length && !activeCount;
-            status.textContent = status.dataset.resultTemplate.replace('{count}', String(count));
-            empty.hidden = count !== 0;
+            // An invalid range is explained by its own error, not as "no matching stories".
+            status.hidden = Boolean(invalid) || (!terms.length && !activeCount);
+            status.textContent = count === 1 && status.dataset.resultTemplateOne
+                ? status.dataset.resultTemplateOne
+                : status.dataset.resultTemplate.replace('{count}', String(count));
+            empty.hidden = count !== 0 || Boolean(invalid);
             if (persist)
                 writeURL(state);
         };

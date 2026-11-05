@@ -2,6 +2,8 @@
 .account-page { min-height: 100svh; }
 .account-page > header, .account-page > main, .account-page > footer { width: min(100% - 48px, 920px); }
 .account-page > header.site-header { padding-block: 16px; }
+/* One header width across reader and account pages. */
+.account-page > header.site-header { width: min(100% - 64px, 1200px); }
 .account-page .masthead { --nav-depth: 1; display: flex; flex-direction: row; flex-wrap: nowrap; align-items: center; min-height: 76px; gap: 16px; margin: 0; padding: 12px 20px; }
 .account-page .wordmark { min-width: 0; }
 .account-page .wordmark img { flex: 0 0 auto; }
@@ -29,7 +31,7 @@
 .account-page .form-actions { gap: 12px; }
 .account-page .form-actions button { flex: 0 1 auto; }
 .account-page .form-notice { line-height: 1.7; }
-.account-page .form-notice[role=alert] { background: var(--warning-bg); color: var(--warning-text); }
+.account-page .form-notice[role=alert] { border-color: var(--danger-line); background: var(--danger-bg); color: var(--danger-text); }
 .account-page .project-list li > a { font-weight: 600; }
 .account-page .project-list li > span { display: inline-block; margin-left: 16px; }
 .account-page > footer { padding-block: 24px 40px; margin-top: 32px; }
@@ -42,7 +44,7 @@
   .account-page .quiet-button:hover { background: var(--accent-soft); }
 }
 @media (max-width: 600px) {
-  .account-page > header, .account-page > main, .account-page > footer { width: calc(100% - 32px); }
+  .account-page > header, .account-page > main, .account-page > footer, .account-page > header.site-header { width: calc(100% - 32px); }
   .account-page .masthead { min-height: 68px; padding: 10px 14px; gap: 10px; }
   .account-page .wordmark { font-size: 23px; }
   .account-page .wordmark small { font-size: 10px; }

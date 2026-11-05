@@ -21,6 +21,8 @@
 .login-read { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 20px; font-size: 14px; text-decoration: none; }
 .login-read:hover { text-decoration: underline; }
 .login-notice { margin-block: 20px; padding: 16px; border-radius: 20px; border: 1px solid var(--line); background: var(--accent-soft); }
+.login-notice[role=alert], .login-status [role=alert] { border: 1px solid var(--danger-line); border-left-width: 5px; background: var(--danger-bg); color: var(--danger-text); font-weight: 600; }
+.login-status [role=alert] { padding: 14px 16px; border-radius: 16px; }
 .login-status { padding: 28px 32px 40px; min-height: 180px; }
 .login-status p { margin-bottom: 20px; }
 .login-status-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }

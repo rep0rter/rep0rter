@@ -3,6 +3,14 @@
 (() => {
     const root = document.documentElement;
     const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+    // Large screens zoom the root; layout rects are reported in zoomed device
+    // pixels, while inline styles are applied before zoom. Convert back.
+    const zoom = () => Number.parseFloat(getComputedStyle(root).zoom) || 1;
+    const rect = (element) => {
+        const box = element.getBoundingClientRect();
+        const factor = zoom();
+        return { left: box.left / factor, top: box.top / factor, width: box.width / factor, height: box.height / factor };
+    };
     let cancelEntry = () => { };
     const prepareEntry = () => {
         if (!root.hasAttribute('data-brand-entry') || reduced.matches)
@@ -168,7 +176,7 @@
                         finish();
                         return;
                     }
-                    const box = original.getBoundingClientRect();
+                    const box = rect(original);
                     if (box.width <= 0 || box.height <= 0 || box.top < 0) {
                         finish();
                         return;
@@ -204,12 +212,12 @@
                     original.setAttribute('data-brand-original', '');
                     document.body.append(layer);
                     root.dataset.brandEntering = 'active';
-                    const visibleWidth = layer.getBoundingClientRect().width;
-                    const noteHeight = introOnlyNote ? note.getBoundingClientRect().height : 0;
+                    const visibleWidth = rect(layer).width;
+                    const noteHeight = introOnlyNote ? rect(note).height : 0;
                     // Include the optical surface's 18px gutters in the mobile safe area.
                     const scale = Math.max(1, Math.min(3.6, (root.clientWidth - 48) / (visibleWidth + 36)));
                     const x = (root.clientWidth - visibleWidth * scale) / 2 - box.left;
-                    const y = (innerHeight - box.height * scale) / 2 - box.top;
+                    const y = (innerHeight / zoom() - box.height * scale) / 2 - box.top;
                     const paint = (value) => {
                         if (!layer || !original?.isConnected) {
                             finish();
@@ -280,11 +288,11 @@
         let expanded = details.open;
         let motion = null;
         let velocity = 0;
-        let height = details.getBoundingClientRect().height;
+        let height = rect(details).height;
         let target = height;
         let timeout = 0;
-        const naturalHeight = () => summary.getBoundingClientRect().height +
-            (expanded ? panel.getBoundingClientRect().height : 0) +
+        const naturalHeight = () => rect(summary).height +
+            (expanded ? rect(panel).height : 0) +
             parseFloat(getComputedStyle(details).borderTopWidth) + parseFloat(getComputedStyle(details).borderBottomWidth);
         const clearStyles = () => {
             details.style.removeProperty('height');
@@ -300,10 +308,10 @@
             details.open = expanded;
             clearStyles();
             summary.setAttribute('aria-expanded', String(expanded));
-            height = details.getBoundingClientRect().height;
+            height = rect(details).height;
             target = height;
         };
-        const animate = (open, from = details.getBoundingClientRect().height) => {
+        const animate = (open, from = rect(details).height) => {
             expanded = open;
             motion?.cancel();
             clearTimeout(timeout);
@@ -320,8 +328,8 @@
             target = naturalHeight();
             details.style.height = `${height}px`;
             timeout = setTimeout(settle, 1200);
-            const collapsed = summary.getBoundingClientRect().height + 2;
-            const full = panel.getBoundingClientRect().height;
+            const collapsed = rect(summary).height + 2;
+            const full = rect(panel).height;
             motion = window.Rep0rterMotion.spring({ from, to: target, velocity,
                 onUpdate(value, speed) {
                     height = value;
