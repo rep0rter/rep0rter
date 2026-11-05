@@ -738,8 +738,8 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
   .summary, .take-part, blockquote { font-size: 18px; }
   :root .reading-layout:not(.reading-layout--detail) .report-figure { width: min(100%, 300px); }
   /* Timeline cards and lone full-width cards share the lead card's layout: copy beside its report thumbnail. */
-  :root :is(.story-timeline, .story-grid--single, .story-grid[data-visible="1"]) .story-card .story-content { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 28%); align-items: start; gap: 36px; }
-  :root :is(.story-timeline, .story-grid--single, .story-grid[data-visible="1"]) .story-card .report-figure { width: 100%; margin-top: 6px; }
+  :root :is(.story-timeline, .story-grid--single, .story-grid[data-visible="1"]) .story-card:not(.reading-layout--detail .story-card) .story-content { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 28%); align-items: start; gap: 36px; }
+  :root :is(.story-timeline, .story-grid--single, .story-grid[data-visible="1"]) .story-card:not(.reading-layout--detail .story-card) .report-figure { width: 100%; margin-top: 6px; }
   :root .reading-layout--detail .story-card { padding: 52px 64px 56px; }
   :root .reading-layout--detail .story-card h1 { font-size: 52px; }
   :root .reading-layout--detail .summary { font-size: 21px; }
