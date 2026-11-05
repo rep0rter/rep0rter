@@ -370,3 +370,7 @@ for _language, _label in {'en': 'Owner-submitted projects', 'zh-TW': '社群自�
 
 for _language, _label in {'en': 'Original', 'zh-TW': '原文', 'ja': '原文', 'ko': '원문'}.items():
     COPY[_language]['original_tag'] = _label
+
+
+for _language, _label in {'en': 'More from', 'zh-TW': '更多來自', 'ja': 'さらに読む：', 'ko': '더 보기:'}.items():
+    COPY[_language]['more_from'] = _label

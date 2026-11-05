@@ -32,6 +32,7 @@
   </div>
   {% if detail %}
   <div class="story-history">
+    <p class="story-follow"><a href="{{ prefix }}{{ it.source_path }}{{ page_name(language) }}">{{ copy.more_from }} {{ source_name }} {{ ui.icon('arrow') }}</a></p>
     <p class="meta">{{ copy.reported }} {{ it.published_local }}{% if it.story.revision > 1 %} · {{ copy.revision }} {{ it.story.revision }}{% endif %}</p>
     {% if it.story.versions | length > 1 %}<nav class="links" aria-label="{{ copy.revision }}">{% for version in it.story.versions %}<a href="../{{ version.id }}/{{ page_name(language) }}">{{ copy.revision }} {{ version.revision }}</a>{% endfor %}</nav>{% endif %}
     {% if it.story.sources | length > 1 %}<p class="meta">{{ copy.sources }}: {% for source in it.story.sources %}<a href="{{ source.url }}" rel="noopener">{{ source.name }}</a>{% endfor %}</p>{% endif %}

@@ -101,7 +101,14 @@
       status.dataset.languageStatus = '';
       status.className = 'language-status';
       status.setAttribute('role', 'status');
-      document.body.append(status);
+      // Sit in the flow under the header, pushing content down instead of covering it.
+      let header: Element | null = null;
+      try { header = document.querySelector('body > .site-header'); } catch { /* minimal DOMs */ }
+      if (header) {
+        header.after(status);
+        const zoom = Number.parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
+        status.style.top = `${header.getBoundingClientRect().height / zoom - 8}px`;
+      } else document.body.append(status);
     }
     if (status) { status.textContent = message; status.hidden = !message; }
     // A failed switch offers its own retry instead of only describing one.
