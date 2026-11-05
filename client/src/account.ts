@@ -313,11 +313,22 @@
       notice.append(document.createElement('br'), jump);
     }
   };
+  const formButtons = (form: HTMLFormElement) =>
+    Array.from(form.elements).filter((element): element is HTMLButtonElement => element instanceof HTMLButtonElement);
+  // The preview's Edit link moves to the first field and puts the cursor there.
+  document.addEventListener('click', event => {
+    const link = (event.target as Element | null)?.closest<HTMLAnchorElement>('a[data-edit-story]');
+    const field = link ? document.getElementById(decodeURIComponent(new URL(link.href).hash.slice(1))) : null;
+    if (!field || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    field.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    field.focus({ preventScroll: true });
+  });
   const accountPage = () => {
     if (!document.body.classList.contains('account-page')) return;
     // Arriving on a form again means the last attempt did not publish.
     store(storage => storage.removeItem(publishedKey));
-    const signedIn = Boolean(document.querySelector('.account-bar, .login-identity'));
+    const signedIn = Boolean(document.querySelector('.sign-in-link[data-signed-in], .login-identity'));
     try {
       if (signedIn) localStorage.setItem(accountKey, '1');
       else if (document.querySelector('[data-login-form]')) localStorage.removeItem(accountKey);
@@ -340,9 +351,10 @@
       })));
     }
     // Disable after the browser has captured the submitter's name and value.
+    // form.elements includes buttons outside the form tied to it by form="…".
     setTimeout(() => {
       form.setAttribute('aria-busy', 'true');
-      form.querySelectorAll('button').forEach(button => { button.disabled = true; });
+      formButtons(form).forEach(button => { button.disabled = true; });
       const label = submitter?.dataset.busyLabel;
       if (submitter && label) {
         submitter.dataset.busy = '';
@@ -358,7 +370,7 @@
     if (!event.persisted) return;
     document.querySelectorAll<HTMLFormElement>('form[aria-busy="true"]').forEach(form => {
       form.removeAttribute('aria-busy');
-      form.querySelectorAll('button').forEach(button => { button.disabled = false; });
+      formButtons(form).forEach(button => { button.disabled = false; });
     });
   });
   const readerPage = () => {

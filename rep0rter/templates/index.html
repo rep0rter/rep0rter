@@ -64,10 +64,12 @@
     {% if tag %}<a class="button button-secondary" href="{{ prefix }}write?lang={{ language }}&amp;tag={{ tag | urlencode }}">{{ ui.icon('write') }} {{ copy.write_story }}</a>{% endif %}
     </div>
   </section>
+  {% elif page_kind == 'home' %}
+  {# The heading sits above the layout so wide screens can place the hashtag row directly beneath it. #}
+  <h1 class="feed-title">{{ copy.title }}</h1>
   {% endif %}
   <div class="reading-layout{% if detail %} reading-layout--detail{% elif not popular_tags %} reading-layout--single{% endif %}">
     <div class="feed-column" id="news" tabindex="-1">
-      {% if page_kind == 'home' %}<h1 class="feed-title">{{ copy.title }}</h1>{% endif %}
       {% if not detail %}
       <details class="search-filters" data-filters hidden>
         <summary>{{ ui.icon('search') }}<span>{{ copy.filters }}</span><span class="filter-count" data-filter-count hidden></span><span class="filter-alert" data-filter-alert hidden>{{ copy.invalid_range }}</span>{{ ui.icon('down') }}</summary>

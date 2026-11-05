@@ -1,4 +1,5 @@
 {% extends "_account_base.html" %}
+{% set active_page = 'write' %}
 {% block page_title %}{{ account_copy.write_title }}{% endblock %}
 {% block heading %}{{ account_copy.write_title }}{% endblock %}
 {% block navigation %}<a href="/?lang={{ account_language }}">{{ ui.icon('back') }}<span>{{ account_copy.back_feed }}</span></a><a href="/submit?lang={{ account_language }}">{{ ui.icon('chat') }}<span>{{ account_copy.post_project }}</span></a><a href="/projects?lang={{ account_language }}">{{ ui.icon('rss') }}<span>{{ account_copy.manage_news }}</span></a>{% endblock %}
@@ -15,6 +16,7 @@
     {% if preview.evidence %}<p class="meta">{{ account_copy.evidence }}: {% for link in preview.evidence %}{% set host = link.split('//', 1)[-1].split('/', 1)[0].split('?', 1)[0].split('#', 1)[0].lower() %}{% if host.startswith('www.') %}{% set host = host[4:] %}{% endif %}{% if not loop.first %}, {% endif %}<a href="{{ link }}" rel="noopener" title="{{ link }}">{{ host or (account_copy.link ~ ' ' ~ loop.index) }}</a>{% endfor %}</p>{% else %}<p class="form-help">{{ account_copy.no_evidence }}</p>{% endif %}
     {% if preview.original %}<details class="original-source"><summary>{{ account_copy.show_original }}</summary><blockquote dir="auto">{{ preview.original }}</blockquote></details>{% endif %}
   </section>
+  <div class="preview-actions"><a class="button button-secondary" href="#project_name" data-edit-story>{{ ui.icon('write') }}{{ account_copy.edit_story }}</a><button type="submit" form="story-form" name="action" value="publish" data-busy-label="{{ account_copy.busy_publish }}">{{ account_copy.retry_story if saved_post else account_copy.publish_story }}</button></div>
   {% endif %}
   <article class="project-form">
     <p>{{ account_copy.english_notice }}</p>

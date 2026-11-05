@@ -16,6 +16,12 @@ html[data-language-updating] * { overflow-anchor: none; }
 @media (max-width: 640px) {
   :root .site-header + [data-language-status].language-status { padding: 8px 14px; font-size: 13px; }
 }
+@media (min-width: 1700px) {
+  .language-status, :root .site-header + [data-language-status].language-status { font-size: 15px; }
+}
+@media (min-width: 2200px) {
+  .language-status, :root .site-header + [data-language-status].language-status { font-size: 16px; }
+}
 @media (prefers-reduced-motion: reduce) {
   :root .site-header + [data-language-status].language-status[data-state=loading]::before { animation-duration: 2.4s; }
 }

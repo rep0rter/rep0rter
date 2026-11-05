@@ -35,7 +35,8 @@
       style.id = 'ppt-embedded-navigation';
       // The presentation owns the crossfade. Native iframe navigation snapshots
       // can race when arrow presses replace a still-running navigation.
-      style.textContent = '@view-transition { navigation: none; }';
+      // The #news jump target needs no focus ring inside a non-interactive demo.
+      style.textContent = '@view-transition { navigation: none; } #news:focus, #news:target { outline: none; }';
       doc.head.append(style);
       // Commit the opt-out before assigning the next iframe URL.
       void doc.documentElement.offsetWidth;
@@ -90,7 +91,10 @@
         source.dispatchEvent(change);
       }
       const anchor = demoStep === 1 ? filters : doc.querySelector<HTMLElement>('#news');
-      if (anchor) win.scrollTo({ top: Math.max(0, anchor.getBoundingClientRect().top + win.scrollY - 130), behavior: 'instant' });
+      // Start each view just below the embedded reader's sticky masthead, whatever its height.
+      const header = doc.querySelector<HTMLElement>('.site-header');
+      const clearance = header && win.getComputedStyle(header).position === 'sticky' ? header.getBoundingClientRect().height + 8 : 16;
+      if (anchor) win.scrollTo({ top: Math.max(0, anchor.getBoundingClientRect().top + win.scrollY - clearance), behavior: 'instant' });
       revealTimer = window.setTimeout(() => {
         if (current !== 2) return;
         browser?.classList.add('is-loaded');

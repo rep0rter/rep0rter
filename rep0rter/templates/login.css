@@ -6,6 +6,9 @@
 .login-toolbar { position: absolute; top: 12px; inset-inline-end: 12px; z-index: 1; display: flex; }
 .login-close { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--line); border-radius: 50%; color: var(--ink); background: var(--glass-clear); transition: transform var(--spring), background var(--motion); }
 .login-close:hover { background: var(--surface); }
+/* Account pages style bare buttons; the dialog's close button keeps its own look there. */
+.account-page .login-close, .account-page .login-close:hover { min-height: 44px; padding: 0; border: 1px solid var(--line); border-radius: 50%; color: var(--ink); background: var(--glass-clear); box-shadow: none; }
+.account-page .login-dialog button.button-secondary { padding: 14px 23px; border-color: var(--line); background: var(--glass); color: var(--ink); font-size: 14px; font-weight: 700; }
 .login-close:active, .login-google:active { transform: scale(.97); }
 .login-card { padding: 32px; text-align: start; }
 .login-dialog .login-card h1 { padding-inline-end: 44px; }

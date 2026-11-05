@@ -139,8 +139,21 @@ html[data-brand-entering] body::before {
 }
 html .brand-entry-clone {
   transform: none !important;
-  scale: calc(1 + (var(--brand-hold-scale, 1.9) - 1) * var(--brand-veil-opacity, 0));
+  /* 1.7: the enlarged lockup and its glass stay clear of the page heading below the masthead. */
+  scale: calc(1 + (var(--brand-hold-scale, 1.7) - 1) * var(--brand-veil-opacity, 0));
 }
 html[data-brand-exiting] .brand-entry-clone { transition: opacity 240ms ease-out, scale 240ms ease-out; }
 html .brand-entry-face::before { background: color-mix(in srgb, var(--surface) 94%, transparent); }
 @media (max-width: 640px) { html { --brand-hold-scale: 1.6; } }
+
+/* The brand moment owns the masthead: the enlarged lockup grows over the space
+   the search and header actions use, so they stay hidden until it has docked
+   and then fade in. No frame shows the lockup over other text or controls. */
+html[data-brand-entering] .masthead-search, html[data-brand-entering] .masthead-actions { opacity: 0; visibility: hidden; }
+@media (prefers-reduced-motion: no-preference) {
+  .masthead-search, .masthead-actions { transition: opacity 280ms ease-out; }
+}
+/* Skip and Don’t show again float over the veiled page: a solid surface keeps them legible. */
+.brand-entry-controls button { background: var(--surface); box-shadow: var(--shadow-button); }
+@media (min-width: 1700px) { .brand-entry-controls button { font-size: 15px; } }
+@media (min-width: 2200px) { .brand-entry-controls button { font-size: 16px; } }

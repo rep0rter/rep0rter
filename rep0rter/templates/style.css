@@ -17,7 +17,8 @@
   --glass-clear: light-dark(rgb(255 255 255 / .52), rgb(35 43 54 / .64));
   --recess: light-dark(rgb(219 227 237 / .48), rgb(10 17 27 / .4));
   --ink: light-dark(#202b39, #f2f5fa);
-  --muted: light-dark(#536172, #b8c5d5);
+  /* Secondary text stays well above 4.5:1 on canvas, cards, recesses and tag chips. */
+  --muted: light-dark(#475466, #c5d0dd);
   --accent: light-dark(#315c8f, #abcaf3);
   --accent-soft: light-dark(#dfe8f4, #293d56);
   --line: light-dark(rgb(52 74 103 / .14), rgb(183 204 229 / .17));
@@ -145,7 +146,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 /* Reading layout keeps the same chronological DOM order at every size. */
 .reading-layout { display: grid; grid-template-columns: minmax(0, 1fr) 264px; align-items: start; gap: 36px; padding-top: 32px; }
 .reading-layout--single { grid-template-columns: minmax(0, 1fr); }
-.feed-title { margin: 0 0 24px; font-size: clamp(2rem, 3.2vw, 2.6rem); font-weight: 700; line-height: 1.15; text-wrap: balance; }
+.page-home .reading-layout { padding-top: 24px; }
+.feed-title { margin: 32px 0 0; font-size: clamp(2rem, 3.2vw, 2.6rem); font-weight: 700; line-height: 1.15; text-wrap: balance; }
 .feed-column { min-width: 0; scroll-margin-top: 28px; }
 .feed-column:focus-visible { outline: 3px solid var(--focus); outline-offset: 8px; }
 .search-bar { position: relative; margin-bottom: 28px; }
@@ -380,7 +382,8 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
   .site-footer { margin-top: 32px; }
   .page-intro { padding: 20px 4px 0; }
   .reading-layout { padding-top: 24px; }
-  .feed-title { font-size: 28px; margin-bottom: 18px; }
+  .feed-title { font-size: 28px; margin-top: 24px; }
+  .page-home .reading-layout { padding-top: 18px; }
   .withdrawal-card { margin-top: 38px; }
 }
 @media (max-width: 360px) {
@@ -703,58 +706,80 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
 }
 
 /* ===== Wide screens: real widths and type sizes instead of scaling the page. =====
-   The shell grows, measures stay comfortable (story copy ≤ 70ch), and helper,
-   meta and footer text never drops below 13–14px. */
+   Screenshots and monitors at these widths are read 1:1, so sizes are set for
+   them directly: body text 18px (19px from 2200px) and metadata, footer and
+   helper text 15px (16px). The hashtag aside becomes one row under the page
+   heading so the feed uses the whole content width; no empty side column. */
 @media (min-width: 1700px) {
-  :root { --shell: min(100% - 96px, 1440px); --header-clearance: 140px; }
-  body { font-size: 17px; }
-  .reading-layout { grid-template-columns: minmax(0, 1fr) 300px; gap: 48px; }
-  .reading-layout--single { grid-template-columns: minmax(0, 1fr); }
+  :root { --shell: min(100% - 128px, 1600px); --header-clearance: 140px; --story-width: 1200px; }
+  body { font-size: 18px; }
   .masthead { min-height: 88px; padding: 14px 24px; }
-  .wordmark { font-size: 27px; }
-  .masthead .search-field input, .write-story-link, .preference-option { font-size: 15px; }
-  .feed-title { font-size: 44px; }
-  .story-grid { gap: 28px; }
-  .story-card { padding: 30px; }
-  .story-card h3 { font-size: 24px; }
-  :root .reading-layout:not(.reading-layout--detail) .story-card--featured { padding: 34px; }
-  :root .reading-layout:not(.reading-layout--detail) .story-card--featured h3 { font-size: 30px; }
-  .summary { font-size: 16.5px; }
-  .story-meta, .take-part { font-size: 16px; }
-  :root .reading-layout:not(.reading-layout--detail) .report-figure { width: min(100%, 280px); }
-  :root { --story-width: 1180px; }
-  :root .image-viewer-footer p, :root .image-viewer-footer .button { font-size: 14px; }
-  :root .reading-layout--detail .story-card { padding: 52px 64px 56px; }
-  :root .reading-layout--detail .story-card h1 { font-size: 50px; }
-  :root .reading-layout--detail .summary { font-size: 20px; }
-  .hashtag-discovery h2 { font-size: 20px; }
+  .wordmark { font-size: 28px; }
+  .masthead-search { max-width: 960px; }
+  .masthead .search-field input { font-size: 17px; }
+  .write-story-link, .preference-option, .button, .filter-panel select, .filter-panel input { font-size: 16px; }
+  .feed-title { font-size: 46px; }
   .page-intro h1 { font-size: 52px; }
-  /* Helper, meta and footer text: a 14px floor (13px for the smallest counters). */
-  :root .meta, :root .meta a, :root .byline, :root .channel, :root .day-heading, :root figcaption,
-  :root .footer-status, :root .site-footer, :root .links a, :root .back-link, :root .timeline-count,
-  :root .filter-panel label, :root .search-filters > summary, :root .translation-note, :root .revision-notice,
-  :root .content-warning, :root :is(.story-badge, .hashtag), :root .previous-summary > summary,
-  :root .search-status, :root .filter-bottom .button { font-size: 14px; }
-  :root .day-count, :root .hashtag span, :root .filter-count, :root .original-tag { font-size: 13px; }
-  :root .reading-layout--detail .story-card .report-figure figcaption { font-size: 14px; }
+
+  /* Hashtags: a compact row beneath the heading, read and focused before the feed. */
+  .reading-layout, .reading-layout--single { grid-template-columns: minmax(0, 1fr); gap: 28px; reading-flow: grid-rows; }
+  .reading-aside { grid-row: 1; }
+  /* Scrolling to the filters tucks the heading and hashtag row fully under the masthead. */
+  :root .search-filters { scroll-margin-top: var(--header-clearance); }
+  .hashtag-discovery { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+  .hashtag-discovery h2 { font-size: 16px; font-weight: 600; letter-spacing: 0; color: var(--muted); }
+  .hashtag-discovery .hashtag-list { margin: 0; }
+
+  .story-grid { gap: 28px; }
+  .story-card { padding: 32px; }
+  .story-card h3 { font-size: 25px; }
+  :root .reading-layout:not(.reading-layout--detail) .story-card--featured { padding: 36px; }
+  :root .reading-layout:not(.reading-layout--detail) .story-card--featured h3 { font-size: 32px; }
+  .summary, .take-part, blockquote { font-size: 18px; }
+  :root .reading-layout:not(.reading-layout--detail) .report-figure { width: min(100%, 300px); }
+  /* Timeline cards and lone full-width cards share the lead card's layout: copy beside its report thumbnail. */
+  :root :is(.story-timeline, .story-grid--single, .story-grid[data-visible="1"]) .story-card .story-content { display: grid; grid-template-columns: minmax(0, 1fr) minmax(240px, 28%); align-items: start; gap: 36px; }
+  :root :is(.story-timeline, .story-grid--single, .story-grid[data-visible="1"]) .story-card .report-figure { width: 100%; margin-top: 6px; }
+  :root .reading-layout--detail .story-card { padding: 52px 64px 56px; }
+  :root .reading-layout--detail .story-card h1 { font-size: 52px; }
+  :root .reading-layout--detail .summary { font-size: 21px; }
+
+  /* Metadata, helper and footer text: a 15px floor. */
+  :root .meta, :root .meta a, :root .byline, :root .channel, :root .day-heading, :root .day-count, :root figcaption,
+  :root .reading-layout--detail .story-card .report-figure figcaption, :root .footer-status, :root .site-footer,
+  :root .links a, :root .back-link, :root .timeline-count, :root .filter-panel label, :root .search-filters > summary,
+  :root .translation-note, :root .revision-notice, :root .content-warning, :root :is(.story-badge, .hashtag),
+  :root .hashtag span, :root .filter-count, :root .filter-alert, :root .original-tag, :root .previous-summary > summary,
+  :root .search-status, :root .filter-bottom .button, :root .eyebrow, :root .preference-trigger, :root .empty-state p,
+  :root .image-viewer-footer p, :root .image-viewer-footer .button, :root .image-viewer-status, :root .publish-banner p,
+  :root .publish-banner nav a, :root .source-update-status, :root .empty-state .empty-delayed { font-size: 15px; }
+  :root[data-search-active="true"] .search-status { font-size: 20px; }
 }
 @media (min-width: 2200px) {
-  :root { --shell: min(100% - 128px, 1600px); }
-  body { font-size: 18px; }
-  .reading-layout { grid-template-columns: minmax(0, 1fr) 320px; gap: 56px; }
-  .reading-layout--single { grid-template-columns: minmax(0, 1fr); }
-  .feed-title { font-size: 48px; }
-  .story-card h3 { font-size: 26px; }
-  :root .reading-layout:not(.reading-layout--detail) .story-card--featured h3 { font-size: 32px; }
-  .summary { font-size: 17px; }
-  .story-meta, .take-part { font-size: 17px; }
-  :root .reading-layout:not(.reading-layout--detail) .report-figure { width: min(100%, 300px); }
-  :root { --story-width: 1280px; }
-  :root .reading-layout--detail .story-card h1 { font-size: 56px; }
-  :root .reading-layout--detail .summary { font-size: 21px; }
-  :root .meta, :root .meta a, :root .byline, :root .channel, :root .day-heading, :root figcaption,
-  :root .footer-status, :root .site-footer, :root .links a, :root .back-link, :root .timeline-count,
+  :root { --shell: min(100% - 192px, 2080px); --story-width: 1320px; }
+  body { font-size: 19px; }
+  .wordmark { font-size: 30px; }
+  .masthead .search-field input { font-size: 18px; }
+  .write-story-link, .preference-option, .button, .filter-panel select, .filter-panel input { font-size: 17px; }
+  .feed-title { font-size: 52px; }
+  .page-intro h1 { font-size: 58px; }
+  .hashtag-discovery h2 { font-size: 17px; }
+  /* The feed fills the width: up to three columns, lead story across all of them. */
+  .story-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr)); gap: 32px; }
+  .story-timeline .story-grid { grid-template-columns: minmax(0, 1fr); }
+  .story-card h3 { font-size: 27px; }
+  :root .reading-layout:not(.reading-layout--detail) .story-card--featured h3 { font-size: 36px; }
+  .summary, .take-part, blockquote { font-size: 19px; }
+  :root .reading-layout:not(.reading-layout--detail) .report-figure { width: min(100%, 320px); }
+  :root .reading-layout--detail .story-card h1 { font-size: 58px; }
+  :root .reading-layout--detail .summary { font-size: 22px; }
+  :root .meta, :root .meta a, :root .byline, :root .channel, :root .day-heading, :root .day-count, :root figcaption,
+  :root .reading-layout--detail .story-card .report-figure figcaption, :root .footer-status, :root .site-footer,
+  :root .links a, :root .back-link, :root .timeline-count, :root .filter-panel label, :root .search-filters > summary,
   :root .translation-note, :root .revision-notice, :root .content-warning, :root :is(.story-badge, .hashtag),
-  :root .reading-layout--detail .story-card .report-figure figcaption { font-size: 15px; }
-  :root .day-count, :root .hashtag span, :root .filter-count, :root .original-tag { font-size: 14px; }
+  :root .hashtag span, :root .filter-count, :root .filter-alert, :root .original-tag, :root .previous-summary > summary,
+  :root .search-status, :root .filter-bottom .button, :root .eyebrow, :root .preference-trigger, :root .empty-state p,
+  :root .image-viewer-footer p, :root .image-viewer-footer .button, :root .image-viewer-status, :root .publish-banner p,
+  :root .publish-banner nav a, :root .source-update-status, :root .empty-state .empty-delayed { font-size: 16px; }
+  :root[data-search-active="true"] .search-status { font-size: 21px; }
 }

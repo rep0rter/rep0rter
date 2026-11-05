@@ -1,4 +1,5 @@
 {% extends "_account_base.html" %}
+{% set active_page = 'projects' %}
 {% block page_title %}{{ account_copy.project_news }}{% endblock %}
 {% block heading %}{{ account_copy.project_news }}{% endblock %}
 {% block navigation %}<a href="/?lang={{ account_language }}">{{ ui.icon('back') }}<span>{{ account_copy.back_feed }}</span></a><a href="/submit?lang={{ account_language }}">{{ ui.icon('chat') }}<span>{{ account_copy.one_off }}</span></a>{% if project_id %}<a href="/projects?lang={{ account_language }}">{{ ui.icon('spark') }}<span>{{ account_copy.add_project }}</span></a>{% endif %}{% endblock %}
