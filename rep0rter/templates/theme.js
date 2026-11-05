@@ -19,51 +19,13 @@
         }
         catch { /* Cosmetic; appearance must still apply. */ }
     };
-    // Beta switch for the new interface: a local, per-browser preference that
-    // only toggles data-redesign; content, privacy and withdrawals are identical.
-    const redesignKey = 'rep0rter-redesign';
+    // Interim review mechanism: a local flag selects the new interface until it
+    // replaces the default. There is no visitor-facing switch.
     try {
-        if (localStorage.getItem(redesignKey) === '1')
+        if (localStorage.getItem('rep0rter-redesign') === '1')
             root.dataset.redesign = '';
     }
     catch { /* Storage blocked: the default interface stays. */ }
-    const syncRedesign = () => {
-        try {
-            const on = root.dataset.redesign !== undefined;
-            document.querySelectorAll('[data-redesign-toggle]').forEach(button => {
-                button.hidden = false;
-                button.setAttribute('aria-pressed', String(on));
-                const state = button.querySelector('[data-redesign-state]');
-                if (state)
-                    state.textContent = (on ? button.dataset.on : button.dataset.off) || '';
-            });
-        }
-        catch { /* Minimal environments. */ }
-    };
-    try {
-        document.addEventListener('click', event => {
-            const button = event.target?.closest?.('[data-redesign-toggle]');
-            if (!button)
-                return;
-            const on = root.dataset.redesign === undefined;
-            if (on)
-                root.dataset.redesign = '';
-            else
-                delete root.dataset.redesign;
-            try {
-                if (on)
-                    localStorage.setItem(redesignKey, '1');
-                else
-                    localStorage.removeItem(redesignKey);
-            }
-            catch { /* This page still switches. */ }
-            syncRedesign();
-            measureScrollbar();
-        });
-        addEventListener('DOMContentLoaded', syncRedesign);
-        document.addEventListener('rep0rter:language-applied', syncRedesign);
-    }
-    catch { /* Minimal environments lack document events. */ }
     try {
         measureScrollbar();
         addEventListener('resize', measureScrollbar);

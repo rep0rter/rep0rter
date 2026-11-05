@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check reader and account pages with the New interface (beta) switch off and on.
+"""Check reader and account pages with the interim new-interface flag off and on.
 
 Requires Playwright + Chromium and a local preview from
 scripts/design-review/preview.py (fictional data). Never contacts production.
@@ -39,12 +39,12 @@ def main():
                     state = page.evaluate("""() => ({
                       on: document.documentElement.hasAttribute('data-redesign'),
                       overflow: document.documentElement.scrollWidth > innerWidth + 1,
-                      toggle: [...document.querySelectorAll('[data-redesign-toggle]')].map(b => [b.hidden, b.getAttribute('aria-pressed')]),
+                      toggle: document.querySelectorAll('[data-redesign-toggle]').length,
                       h1: document.querySelectorAll('h1').length})""")
                     assert state['on'] is redesign, (path, state)
                     assert not state['overflow'], (path, width, redesign)
                     assert state['h1'] == 1, (path, state)
-                    assert all(not hidden and pressed == str(redesign).lower() for hidden, pressed in state['toggle']), (path, state)
+                    assert state['toggle'] == 0, (path, state)
                 # Core interactions behave the same in both interfaces.
                 page.goto(base + '/', wait_until='networkidle')
                 page.fill('#story-search', 'map')
@@ -63,13 +63,8 @@ def main():
                 page.wait_for_timeout(500)
                 assert page.locator('#image-viewer').evaluate('d => d.open')
                 page.keyboard.press('Escape')
-                # The switch flips live and persists across a reload.
-                page.locator('[data-redesign-toggle]').click()
-                assert page.evaluate("document.documentElement.hasAttribute('data-redesign')") is (not redesign)
-                page.reload(wait_until='networkidle')
-                assert page.evaluate("document.documentElement.hasAttribute('data-redesign')") is (not redesign)
                 assert not errors, errors
-                checks.append(f"{'on ' if redesign else 'off'} {width}x{height}: {len(PAGES)} pages, search, filters, viewer, switch")
+                checks.append(f"{'on ' if redesign else 'off'} {width}x{height}: {len(PAGES)} pages, search, filters, viewer")
                 context.close()
         browser.close()
     print('\n'.join(checks))

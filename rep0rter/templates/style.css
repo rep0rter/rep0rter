@@ -642,12 +642,8 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
 .filter-panel > .filter-error { margin: 0 0 16px; }
 .filter-alert { display: none; }
 
-/* Beta switch: variant markup and the footer control. */
+/* Interim variant markup (removed when the new interface becomes the only one). */
 :root:not([data-redesign]) .redesign-only, :root[data-redesign] .legacy-only { display: none !important; }
-.redesign-toggle { display: inline-flex; align-items: center; gap: 10px; min-height: 44px; margin-top: 18px; padding: 8px 16px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--glass); color: var(--ink); font: 600 13px/1.5 var(--font-body); cursor: pointer; }
-.redesign-toggle .redesign-state { padding: 1px 8px; border-radius: 999px; background: var(--recess); color: var(--muted); font-size: 12px; }
-.redesign-toggle[aria-pressed="true"] .redesign-state { background: var(--accent); color: #fff; }
-.account-page .redesign-toggle { margin-top: 12px; padding: 8px 16px; border: 1px solid var(--line); background: var(--glass); color: var(--ink); font: 600 13px/1.5 var(--font-body); box-shadow: none; }
 @media (prefers-reduced-motion: reduce) { .busy-spinner, .login-status::after, .login-status [role=status]::before { animation: none; } }
 
 /* ===== New interface (beta): layout and interaction changes behind data-redesign. ===== */

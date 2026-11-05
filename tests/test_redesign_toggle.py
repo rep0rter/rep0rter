@@ -1,4 +1,4 @@
-"""The New interface (beta) switch: off by default, local only, privacy-neutral."""
+"""Interim new-interface flag: local only, no visitor switch, privacy-neutral."""
 
 import json
 import shutil
@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from bs4 import BeautifulSoup
 
-from rep0rter.i18n import COPY, LANGUAGES, page_name
+from rep0rter.i18n import LANGUAGES, page_name
 from rep0rter.publishers import site
 from rep0rter.policy import add_rule, redact
 from tests.test_site import published_site  # noqa: F401  (shared fixture)
@@ -46,13 +46,12 @@ process.stdout.write(JSON.stringify('redesign' in root.dataset));
     assert json.loads(result.stdout) is expected
 
 
-def test_every_edition_ships_the_hidden_switch_and_both_story_variants(published_site):
+def test_every_edition_ships_both_story_variants_without_a_visitor_switch(published_site):
     _, cfg, _, entries, _ = published_site
     for language in LANGUAGES:
         home = html(cfg.site_dir / page_name(language))
-        toggle = home.select_one('[data-redesign-toggle]')
-        assert toggle and toggle.has_attr('hidden') and toggle['aria-pressed'] == 'false'
-        assert COPY[language]['redesign_label'] in toggle.get_text()
+        # No visitor-facing switch: the new interface will replace the default.
+        assert not home.select('[data-redesign-toggle]')
         story = html(cfg.site_dir / 'posts' / str(entries[-1][0].id) / page_name(language))
         assert story.select_one('.detail-intro .legacy-only .page-intro-title')
         article = story.select_one('article')

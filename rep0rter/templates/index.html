@@ -169,7 +169,6 @@
   <p class="footer-explanation">{{ copy.footer }}</p>
   <div class="footer-status"><p>{{ stats }}<br>{{ copy.updated }} {{ generated_local }}{% if last_healthy %}<br>{{ copy.healthy }} {{ last_healthy }}{% endif %}</p><p>{{ copy.optout }} <a href="https://g0v-slack-archive.g0v.ronny.tw/index/channel/C069ARZJNE9">#rep0rter {{ ui.icon('external') }}</a></p></div>
   {% if not collection_complete %}<p class="source-update-status">{{ copy.collection_delayed }}</p>{% endif %}
-  <button type="button" class="redesign-toggle" data-redesign-toggle aria-pressed="false" data-on="{{ copy.redesign_on }}" data-off="{{ copy.redesign_off }}" hidden><span>{{ copy.redesign_label }}</span><span class="redesign-state" data-redesign-state>{{ copy.redesign_off }}</span></button>
 </footer>
 </body>
 </html>
