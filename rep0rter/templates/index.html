@@ -121,6 +121,7 @@
             <label>{{ copy.date_to }}<input type="date" data-filter="to" aria-describedby="filter-error"></label>
           </div>
           <div class="filter-bottom"><p>{{ copy.filter_scope }}<br>{{ copy.topics_auto }}</p><button class="button button-secondary" type="button" data-filters-reset>{{ copy.reset_filters }}</button></div>
+          <button class="button button-primary filter-show redesign-only" type="button" data-filters-show data-template="{{ copy.show_results }}" data-template-one="{{ copy.show_results_one }}">{{ copy.show_results_one if items | length == 1 else copy.show_results | replace('{count}', items | length | string) }}</button>
         </div>
       </details>
       <p class="search-status" id="search-status" role="status" aria-live="polite" data-result-template="{{ copy.search_results }}" data-result-template-one="{{ copy.search_results_one }}" data-query-template="{{ copy.search_results_query }}" data-query-template-one="{{ copy.search_results_query_one }}" hidden></p>

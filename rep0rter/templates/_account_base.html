@@ -35,6 +35,6 @@
   {% endblock %}
   {% block content %}{% endblock %}
 </main>
-<footer><p>{% block footer %}{{ account_copy.stories_footer }}{% endblock %}</p><button type="button" class="redesign-toggle" data-redesign-toggle aria-pressed="false" data-on="{{ copy.redesign_on }}" data-off="{{ copy.redesign_off }}" hidden><span>{{ copy.redesign_label }}</span><span class="redesign-state" data-redesign-state>{{ copy.redesign_off }}</span></button></footer>
+<footer>{% set footer_links = self.navigation() %}{% if footer_links|trim %}<nav class="account-navigation account-footer-navigation" aria-label="{{ account_copy.more_links }}">{{ footer_links }}</nav>{% endif %}<p>{% block footer %}{{ account_copy.stories_footer }}{% endblock %}</p><button type="button" class="redesign-toggle" data-redesign-toggle aria-pressed="false" data-on="{{ copy.redesign_on }}" data-off="{{ copy.redesign_off }}" hidden><span>{{ copy.redesign_label }}</span><span class="redesign-state" data-redesign-state>{{ copy.redesign_off }}</span></button></footer>
 </body>
 </html>

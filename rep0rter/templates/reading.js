@@ -46,6 +46,11 @@
             filterAlert = document.querySelector('[data-filter-alert]');
         }
         catch { /* Optional summary badge; minimal DOMs may not support it. */ }
+        let showButton = null;
+        try {
+            showButton = document.querySelector('[data-filters-show]');
+        }
+        catch { /* Optional phone shortcut from the open panel to its results. */ }
         const filterNames = ['period', 'from', 'to', 'topic', 'author', 'source', 'sort'];
         const fields = Object.fromEntries(filterNames
             .map(name => [name, filters?.querySelector(`[data-filter="${name}"]`) ?? null]));
@@ -238,6 +243,10 @@
             if (resetButton && resetButton.dataset.labelSearch && resetButton.dataset.labelFilters) {
                 resetButton.textContent = activeCount ? resetButton.dataset.labelFilters : resetButton.dataset.labelSearch;
             }
+            if (showButton && showButton.dataset.template) {
+                const label = count === 1 && showButton.dataset.templateOne ? showButton.dataset.templateOne : showButton.dataset.template;
+                showButton.textContent = label.replace('{count}', String(count));
+            }
             empty.hidden = count !== 0 || Boolean(invalid);
             // Let a lone visible story span its day's grid instead of half of it.
             days.forEach(({ grid, stories }) => {
@@ -284,6 +293,14 @@
         Object.values(fields).forEach(field => listen(field, 'change', () => update()));
         listen(document.querySelector('[data-filters-reset]'), 'click', reset);
         listen(document.querySelector('[data-search-reset]'), 'click', reset);
+        listen(showButton, 'click', () => {
+            // Close the phone panel and continue reading at the matching stories.
+            if (filters)
+                filters.open = false;
+            const results = document.querySelector('#news');
+            results?.focus({ preventScroll: true });
+            (filters || results)?.scrollIntoView({ block: 'start', behavior: 'auto' });
+        });
         listen(window, 'popstate', () => { readURL(); update(false); });
     };
     document.addEventListener('rep0rter:before-language', () => dispose());

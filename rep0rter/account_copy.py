@@ -474,3 +474,9 @@ for _language, _values in {
 }.items():
     ACCOUNT_COPY[_language].update(project_how_title=_values[0], project_how_steps=list(_values[1:4]),
                                    no_projects=_values[4])
+
+# Phones with the new interface repeat the page links in the footer.
+ACCOUNT_COPY['en']['more_links'] = 'More account links'
+ACCOUNT_COPY['zh-TW']['more_links'] = '更多帳號連結'
+ACCOUNT_COPY['ja']['more_links'] = 'アカウントのその他のリンク'
+ACCOUNT_COPY['ko']['more_links'] = '계정 링크 더 보기'

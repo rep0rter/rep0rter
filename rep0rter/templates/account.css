@@ -75,6 +75,7 @@
 }
 
 .account-page > footer > p:empty { display: none; }
+.account-page > footer > .account-footer-navigation { display: none; }
 
 /* ===== New interface (beta): account layout changes behind data-redesign. ===== */
 :root[data-redesign] .account-page > header.site-header { width: min(100% - 64px, 1200px); }
@@ -92,7 +93,7 @@
 .account-aside span { color: var(--muted); font-size: 14px; line-height: 1.6; }
 :root[data-redesign] .account-page.login-page main { width: min(560px, calc(100% - 32px)); }
 @media (max-width: 1100px) {
-  :root[data-redesign] .account-page:has(.account-aside) > main { display: flex; flex-direction: column; width: min(100% - 48px, 920px); }
+  :root[data-redesign] .account-page:has(.account-aside) > main { display: flex; flex-direction: column; align-items: stretch; width: min(100% - 48px, 920px); }
   :root[data-redesign] .account-page main > aside.account-aside { position: static; margin-top: 24px; order: 99; }
 }
 @media (max-width: 600px) {
@@ -109,4 +110,11 @@
   :root[data-redesign] .account-navigation a { flex: 0 0 auto; min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--glass-clear); text-decoration: none; font-size: 13px; }
   :root[data-redesign] .account-page .account-bar { padding: 8px 8px 8px 14px; margin-bottom: 16px; font-size: 13px; }
   :root[data-redesign] .account-page .account-bar button { min-height: 44px; padding: 8px 14px; }
+  /* Keep only the way back above the form; the full link set moves to the footer. */
+  :root[data-redesign] .account-page:has(.project-form) .account-intro { padding-block: 12px 10px; }
+  :root[data-redesign] .account-page:has(.project-form) .account-intro .account-navigation a:not(:first-child) { display: none; }
+  :root[data-redesign] .account-page:has(.project-form) .account-bar { padding-block: 4px; margin-bottom: 12px; }
+  :root[data-redesign] .account-page .project-form > h2 { margin-bottom: 8px; }
+  :root[data-redesign] .account-page .project-form > p { font-size: 14px; line-height: 1.6; }
+  :root[data-redesign] .account-page > footer > .account-footer-navigation { display: flex; margin: 0 0 16px; }
 }

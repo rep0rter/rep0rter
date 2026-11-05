@@ -412,3 +412,13 @@ for _language, _values in {
     'ko': ('새 화면 (베타)', '켜짐', '꺼짐'),
 }.items():
     COPY[_language].update(zip(('redesign_label', 'redesign_on', 'redesign_off'), _values))
+
+
+# Phone filter panel: close it and jump to the matching stories.
+for _language, _values in {
+    'en': ('Show {count} stories', 'Show 1 story'),
+    'zh-TW': ('顯示 {count} 則消息', '顯示 1 則消息'),
+    'ja': ('{count} 件のニュースを表示', '1 件のニュースを表示'),
+    'ko': ('소식 {count}개 보기', '소식 1개 보기'),
+}.items():
+    COPY[_language].update(zip(('show_results', 'show_results_one'), _values))

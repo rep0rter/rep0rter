@@ -678,7 +678,7 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
 :root[data-redesign] .story-card:not(.story-card--featured) .report-figure { display: grid; grid-template-columns: minmax(120px, 200px) minmax(0, 1fr); align-items: center; gap: 4px 16px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
 :root[data-redesign] .story-card:not(.story-card--featured) .report-figure .image-link, :root[data-redesign] .story-card:not(.story-card--featured) .report-figure .source-card { border-radius: 12px; }
 :root[data-redesign] .story-card:not(.story-card--featured) .report-figure figcaption { flex-direction: column; align-items: flex-start; padding-top: 0; font-size: 13px; }
-:root[data-redesign] .story-card--pending h1, :root[data-redesign] .story-card--pending h3, :root[data-redesign] .story-card--pending h3 a { color: var(--muted); font-style: italic; }
+:root[data-redesign] .story-card--pending h1, :root[data-redesign] .story-card--pending h3, :root[data-redesign] .story-card--pending h3 a { color: var(--muted); }
 :root[data-redesign] .story-card--pending .report-figure { display: none; }
 
 /* Search and filters. */
@@ -691,9 +691,9 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
 /* Language status sits in the flow under the header instead of over a story. */
 :root[data-redesign] .site-header + .language-status { position: sticky; z-index: 9; left: auto; bottom: auto; transform: none; width: min(100% - 64px, 1200px); max-width: none; margin: 0 auto 16px; border-radius: 16px; pointer-events: auto; }
 
-/* Story pages: one focused reading column; the headline leads; compact report thumbnail. */
-:root[data-redesign] .reading-layout--detail { grid-template-columns: minmax(0, 880px); justify-content: center; }
-:root[data-redesign] .page-story .detail-intro { width: min(100%, 880px); margin-inline: auto; padding: 28px 0 20px; }
+/* Story pages: the story spans the content width; the headline leads; compact report thumbnail. */
+:root[data-redesign] .reading-layout--detail { grid-template-columns: minmax(0, 1fr); }
+:root[data-redesign] .page-story .detail-intro { width: 100%; padding: 28px 0 20px; }
 :root[data-redesign] .detail-intro .back-link { margin-bottom: 0; }
 :root[data-redesign] .reading-layout--detail .story-card h1 { font-size: clamp(1.9rem, 3vw, 2.8rem); margin: 4px 0 16px; line-height: 1.2; text-wrap: balance; }
 :root[data-redesign] .reading-layout--detail .story-top { margin-top: -4px; }
@@ -709,6 +709,29 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
 .story-when { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px 12px; }
 .revision-chip { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 13px; font-weight: 600; }
 .revision-chip a { color: inherit; }
+/* Detail rail: report image, hashtags and the source link; legacy keeps its single flow. */
+:root:not([data-redesign]) .story-rail { display: contents; }
+:root[data-redesign] .story-rail { min-width: 0; }
+:root[data-redesign] .story-tags-rail { display: none; }
+:root[data-redesign] .story-follow { margin-top: 8px; }
+@media (min-width: 1100px) {
+  :root[data-redesign] .reading-layout--detail .story-content { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); align-items: start; gap: 48px; }
+  :root[data-redesign] .reading-layout--detail .story-rail { display: grid; align-content: start; gap: 20px; padding-inline-start: 32px; border-inline-start: 1px solid var(--line); }
+  :root[data-redesign] .reading-layout--detail .story-card .report-figure { display: block; margin: 0; padding: 0; border: 0; }
+  :root[data-redesign] .reading-layout--detail .story-card--pending .report-figure { display: none; }
+  :root[data-redesign] .reading-layout--detail .story-card .report-figure figcaption { flex-direction: row; align-items: center; justify-content: space-between; }
+  :root[data-redesign] .reading-layout--detail .story-tags-inline { display: none; }
+  :root[data-redesign] .reading-layout--detail .story-tags-rail { display: flex; margin: 0; }
+  :root[data-redesign] .reading-layout--detail .story-rail .story-follow { margin: 0; padding-top: 16px; border-top: 1px solid var(--line); }
+}
+
+/* Headlines break at balanced lines; Japanese keeps phrases together. */
+:root[data-redesign] :is(h1, h2, h3) { text-wrap: balance; }
+:root[data-redesign] :is(h1, h2, h3):lang(ja) { word-break: auto-phrase; }
+
+/* Phone filter panel: a sticky shortcut back to the results. */
+:root[data-redesign] .filter-show { display: none; }
+
 .story-follow a { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-weight: 700; text-decoration: none; }
 .story-follow a:hover { text-decoration: underline; }
 :root[data-redesign] .publish-banner nav a { padding: 0 16px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--surface); text-decoration: none; }
@@ -727,6 +750,7 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
   :root[data-redesign] .story-card:not(.story-card--featured) .report-figure { grid-template-columns: 120px minmax(0, 1fr); }
   :root[data-redesign] .site-header + .language-status { width: calc(100% - 36px); padding: 12px 16px; }
   :root[data-redesign] .search-filters > summary { flex-wrap: wrap; }
+  :root[data-redesign] .filter-show { position: sticky; z-index: 2; bottom: calc(12px + env(safe-area-inset-bottom)); display: flex; justify-content: center; width: 100%; min-height: 52px; margin-top: 18px; font-size: 15px; font-weight: 700; box-shadow: 0 8px 24px var(--shade); }
   :root[data-redesign] .search-filters > summary > .filter-alert { order: 5; flex-basis: 100%; margin: 2px 0 0 30px; padding: 6px 12px; border-radius: 12px; }
   :root[data-redesign] .reading-layout--detail .story-top { flex-wrap: wrap; row-gap: 0; }
   :root[data-redesign] .reading-layout--detail .story-when { justify-content: flex-start; flex-basis: 100%; }
