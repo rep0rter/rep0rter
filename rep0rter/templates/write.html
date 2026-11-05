@@ -1,15 +1,8 @@
 {% extends "_account_base.html" %}
 {% block page_title %}{{ account_copy.write_title }}{% endblock %}
-{% block edition %}{{ account_copy.community_stories }}{% endblock %}
 {% block heading %}{{ account_copy.write_title }}{% endblock %}
-{% block intro %}{{ account_copy.write_intro }}{% endblock %}
 {% block navigation %}<a href="/?lang={{ account_language }}">{{ ui.icon('back') }}<span>{{ account_copy.back_feed }}</span></a><a href="/submit?lang={{ account_language }}">{{ ui.icon('chat') }}<span>{{ account_copy.post_project }}</span></a><a href="/projects?lang={{ account_language }}">{{ ui.icon('rss') }}<span>{{ account_copy.manage_news }}</span></a>{% endblock %}
 {% block content %}
-  <aside class="account-aside" aria-labelledby="how-title"><h2 id="how-title">{{ account_copy.how_title }}</h2><ol>{% for name, text in account_copy.how_steps %}<li><strong>{{ name }}</strong><span>{{ text }}</span></li>{% endfor %}</ol></aside>
-
-  <div class="account-bar"><span>{{ account_copy.signed_in }} {{ owner.name }}</span>
-    <form action="{{ url_for('logout') }}" method="post"><input type="hidden" name="ui_language" value="{{ account_language }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="quiet-button">{{ account_copy.sign_out }}</button></form>
-  </div>
   {% if error %}<div class="form-notice{% if saved_post %} form-notice--warning{% endif %}" role="alert"><p>{{ error }}</p>{% if saved_post %}<button type="submit" form="story-form" name="action" value="publish" data-busy-label="{{ account_copy.busy_publish }}">{{ account_copy.retry_story }}</button>{% endif %}</div>{% endif %}
   {% if preview %}
   <section class="story-preview" aria-labelledby="preview-title">
@@ -24,7 +17,6 @@
   </section>
   {% endif %}
   <article class="project-form">
-    <h2>{{ account_copy.your_update }}</h2>
     <p>{{ account_copy.english_notice }}</p>
     <form action="{{ url_for('write_story') }}" method="post" id="story-form">
       <input type="hidden" name="ui_language" value="{{ account_language }}"><input type="hidden" name="csrf" value="{{ csrf }}">
@@ -50,9 +42,8 @@
       <label for="author">{{ account_copy.author }}</label>
       <input id="author" name="author" value="{{ values.get('author', owner.name) }}" required maxlength="100" autocomplete="nickname">
       <label class="owner-confirmation"><input type="checkbox" name="owner_confirmed" value="yes" required{% if values.get('owner_confirmed') == 'yes' %} checked{% endif %}><span>{{ account_copy.story_consent }}</span></label>
-      <p class="form-help">{{ account_copy.story_limit }}</p>
       <div class="form-actions"><button type="submit" name="action" value="preview" class="quiet-button" data-busy-label="{{ account_copy.busy_preview }}">{{ account_copy.preview_story }}</button><button type="submit" name="action" value="publish" data-busy-label="{{ account_copy.busy_publish }}">{{ account_copy.retry_story if saved_post else account_copy.publish_story }}</button></div>
+      <p class="form-help form-fine-print">{{ account_copy.story_limit }}</p>
     </form>
   </article>
 {% endblock %}
-{% block footer %}{{ account_copy.stories_footer }}{% endblock %}

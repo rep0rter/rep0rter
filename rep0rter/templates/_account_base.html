@@ -20,21 +20,19 @@
 <div class="ambient" aria-hidden="true"><span></span><span></span><span></span></div>
 <header class="site-header">
   <div class="masthead">
-    <a class="wordmark" href="/?lang={{ account_language }}">{% if branding %}<img src="/{{ branding.logo }}" alt="" width="44" height="44">{% endif %}<span>{{ cfg.site_title }}<small>{% block brand_note %}{{ copy.brand_note }}{% endblock %}</small></span></a>
+    <a class="wordmark" href="/?lang={{ account_language }}">{% if branding %}<img src="/{{ branding.logo }}" alt="" width="44" height="44">{% endif %}<span>{{ cfg.site_title }}</span></a>
     <div class="account-header-actions">{{ ui.language_links(copy, account_language, languages, account_page_name, compact=true) }}{{ ui.appearance(copy) }}</div>
   </div>
 </header>
 <main id="main" tabindex="-1">
   {% block introduction %}
   <div class="account-intro">
-    <p class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>{% block edition %}YOUR ACCOUNT{% endblock %}</p>
     <h1>{% block heading %}{% endblock %}</h1>
-    <p class="tagline">{% block intro %}{% endblock %}</p>
     <nav class="account-navigation" aria-label="{{ account_copy.community_nav }}">{% block navigation %}{% endblock %}</nav>
+    {% if owner %}<div class="account-bar"><span>{{ account_copy.signed_in }} {{ owner.name }}</span><form action="{{ url_for('logout') }}" method="post"><input type="hidden" name="ui_language" value="{{ account_language }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="quiet-button">{{ account_copy.sign_out }}</button></form></div>{% endif %}
   </div>
   {% endblock %}
   {% block content %}{% endblock %}
 </main>
-<footer>{% set footer_links = self.navigation() %}{% if footer_links|trim %}<nav class="account-navigation account-footer-navigation" aria-label="{{ account_copy.more_links }}">{{ footer_links }}</nav>{% endif %}<p>{% block footer %}{{ account_copy.stories_footer }}{% endblock %}</p></footer>
 </body>
 </html>

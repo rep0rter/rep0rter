@@ -423,3 +423,9 @@ for _language, _values in {
     'ko': ('날짜 고치기', '쓰기', '로그인', '계정'),
 }.items():
     COPY[_language].update(zip(('fix_dates', 'write_short', 'sign_in_short', 'account_short'), _values))
+
+
+# One neutral source label for stories and projects people submit themselves.
+for _language, _label in {'en': 'Community submissions', 'zh-TW': '社群投稿',
+                          'ja': 'コミュニティからの投稿', 'ko': '커뮤니티 기고'}.items():
+    COPY[_language]['community_submissions'] = _label

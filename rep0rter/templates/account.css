@@ -1,71 +1,121 @@
-/* Account pages share the feed's material and appearance controller. */
+/* Account pages share the feed's material and appearance controller.
+   One column: heading, navigation and account line, then the form. */
 .account-page { min-height: 100svh; }
-.account-page > header, .account-page > main, .account-page > footer { width: min(100% - 48px, 920px); }
+.account-page > header, .account-page > main { width: min(100% - 48px, 880px); }
 .account-page > header.site-header { padding-block: 16px; }
+.account-page > main { padding-bottom: 64px; }
 .account-page .masthead { --nav-depth: 1; display: flex; flex-direction: row; flex-wrap: nowrap; align-items: center; min-height: 76px; gap: 16px; margin: 0; padding: 12px 20px; }
 .account-page .wordmark { min-width: 0; }
 .account-page .wordmark img { flex: 0 0 auto; }
-.account-navigation .icon { flex: 0 0 auto; }
 .account-page .wordmark small { display: block; }
 .account-header-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; margin-left: auto; }
-.account-page .account-intro { padding: 40px 8px 32px; }
-.account-page .account-intro h1 { margin-top: 18px; max-width: 740px; font-size: clamp(30px, 4.7vw, 46px); text-wrap: balance; }
-.account-page .tagline { max-width: 660px; font-size: 16px; }
-.account-navigation { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 22px; }
-.account-navigation a { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--accent); font-size: 14px; font-weight: 600; text-decoration-thickness: 1px; }
+
+/* Heading row: the title, with the signed-in account at its end; links below. */
+.account-page .account-intro { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px 32px; padding: 40px 4px 28px; }
+.account-page .account-intro h1 { grid-column: 1; grid-row: 1; max-width: none; font-size: clamp(32px, 4.4vw, 44px); text-wrap: balance; }
+.account-page .account-intro > .account-navigation { grid-column: 1 / -1; grid-row: 2; }
+.account-page .account-intro > .account-bar { grid-column: 2; grid-row: 1; }
+.account-navigation { display: flex; flex-wrap: wrap; gap: 0 24px; }
+.account-navigation a { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; color: var(--accent); font-size: 14px; font-weight: 600; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+.account-navigation .icon { flex: 0 0 auto; }
+.account-page .account-bar { display: flex; align-items: center; gap: 0 12px; margin: 0; padding: 0; border: 0; background: none; color: var(--muted); font-size: 14px; }
+.account-page .account-bar form { flex-shrink: 0; }
+.account-page .account-bar button { min-height: 44px; padding: 8px 4px; border: 0; background: transparent; color: var(--accent); font-size: 14px; font-weight: 600; box-shadow: none; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+
+/* Cards and form controls. */
 .account-page main > article, .account-page main > section { position: relative; background: var(--glass); -webkit-backdrop-filter: blur(20px) saturate(1.1); backdrop-filter: blur(20px) saturate(1.1); }
 .account-page .project-form > p { max-width: 68ch; color: var(--muted); }
+.account-page .project-form > form:first-child > label:first-of-type { margin-top: 0; }
 .account-page .project-form label { line-height: 1.6; }
 .account-page .project-form textarea { line-height: 1.75; }
 .account-page .project-form input:not([type=hidden]):not([type=checkbox]), .account-page .project-form textarea, .account-page .project-form select { background: var(--recess); transition: border-color var(--motion), background var(--motion); }
 .account-page .project-form input:focus, .account-page .project-form textarea:focus, .account-page .project-form select:focus { border-color: var(--accent); background: var(--surface); }
 .account-page button { transition: transform var(--spring), background var(--motion), box-shadow var(--motion); }
 .account-page button:active { transform: scale(.975); }
-.account-page .account-bar { padding: 16px 20px; border: 1px solid var(--line); border-radius: var(--radius-nested); background: var(--glass-clear); color: var(--muted); font-size: 14px; }
-.account-page .account-bar form { flex-shrink: 0; }
-.account-page .account-bar button { padding: 10px 16px; font-size: 14px; }
-.account-page .project-form .owner-confirmation { padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--glass-clear); }
+.account-page .project-form .owner-confirmation { margin-top: 32px; padding: 16px; border: 1px solid var(--line); border-radius: var(--radius-control); background: var(--glass-clear); }
+.account-page .project-form .owner-confirmation + .owner-confirmation { margin-top: 12px; }
 .account-page .owner-confirmation input { margin-top: 2px; }
 .account-page .form-actions { gap: 12px; }
 .account-page .form-actions button { flex: 0 1 auto; }
+/* The one place for publishing terms: under the action they apply to. */
+.account-page .form-fine-print { max-width: 68ch; margin-top: 16px; font-size: 13px; line-height: 1.7; }
 .account-page .form-notice { line-height: 1.7; }
 .account-page .form-notice[role=alert] { border-color: var(--danger-line); background: var(--danger-bg); color: var(--danger-text); }
 .account-page .project-list li > a { font-weight: 600; }
 .account-page .project-list li > span { display: inline-block; margin-left: 16px; }
-.account-page > footer { padding-block: 24px 40px; margin-top: 32px; }
+.account-page.login-page main { width: min(560px, calc(100% - 32px)); }
+
 /* Override legacy account-wide buttons only for the shared appearance menu. */
 .account-page .preference-option { display: flex; min-height: 44px; padding: 11px 12px; border: 0; background: transparent; color: var(--ink); font: 400 13px/1.5 var(--font-body); box-shadow: none; }
 .account-page .preference-option[aria-pressed=true] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
 @media (hover: hover) {
   .account-page button:hover { box-shadow: var(--shadow-lift); }
+  .account-page .account-bar button:hover { background: transparent; box-shadow: none; text-decoration-thickness: 2px; }
   .account-page .preference-option:hover { background: var(--accent-soft); color: var(--accent); box-shadow: none; }
   .account-page .quiet-button:hover { background: var(--accent-soft); }
 }
+
+/* 1440p and other large desktops: real widths and type, not page zoom. */
+@media (min-width: 1800px) {
+  .account-page > header, .account-page > main { width: min(100% - 96px, 1120px); }
+  .account-page > header.site-header { padding-block: 28px; }
+  .account-page .masthead { min-height: 96px; padding: 16px 28px; gap: 20px; }
+  .account-page .wordmark { gap: 14px; font-size: 31px; }
+  .account-page .wordmark img { width: 54px; height: 54px; }
+  .account-page .wordmark small { font-size: 13px; letter-spacing: .02em; }
+  .account-header-actions { gap: 12px; }
+  .account-page .preference-trigger { min-width: 56px; min-height: 56px; padding: 0 16px; gap: 8px; border-radius: 24px; font-size: 15px; }
+  .account-page .preference-trigger .icon, .account-page .language-trigger > .icon { width: 22px; height: 22px; }
+  .account-page .preference-panel { font-size: 16px; }
+  .account-page .preference-option { min-height: 52px; font-size: 16px; }
+  .account-page > main { font-size: 19px; padding-bottom: 112px; }
+  .account-page .account-intro { padding: 64px 4px 40px; gap: 16px 48px; }
+  .account-page .account-intro h1 { font-size: 64px; }
+  .account-navigation { gap: 0 36px; }
+  .account-navigation a, .account-page .account-bar, .account-page .account-bar button { font-size: 17px; }
+  .account-navigation a { gap: 10px; min-height: 52px; }
+  .account-navigation .icon { width: 22px; height: 22px; }
+  .account-page main > article, .account-page main > section { padding: 56px 64px; margin-bottom: 32px; }
+  .account-page h2 { font-size: 34px; }
+  .account-page h3 { font-size: 26px; }
+  .account-page .project-form label { margin-top: 32px; font-size: 18px; }
+  .account-page .project-form input:not([type=hidden]):not([type=checkbox]), .account-page .project-form textarea, .account-page .project-form select { min-height: 64px; margin-top: 12px; padding: 16px 22px; font-size: 19px; }
+  .account-page .form-help, .account-page .field-error, .account-page .project-list li > span { font-size: 16px; }
+  .account-page .project-form .owner-confirmation { margin-top: 40px; padding: 22px 24px; gap: 16px; font-size: 17px; }
+  .account-page .owner-confirmation input { width: 24px; height: 24px; }
+  .account-page .project-form button, .account-page .form-notice > button { min-height: 60px; margin-top: 32px; padding: 16px 32px; font-size: 19px; }
+  .account-page .form-notice > button { margin-top: 16px; }
+  .account-page .form-actions button { margin-top: 0; }
+  .account-page .form-actions { margin-top: 32px; gap: 16px; }
+  .account-page .form-fine-print { margin-top: 20px; font-size: 16px; }
+  .account-page .form-notice { padding: 28px 32px; }
+  .account-page .story-preview .eyebrow { font-size: 13px; }
+  :root .account-page .story-preview .story-badge, .account-page .story-preview .hashtag { font-size: 15px; }
+  .account-page .story-preview .meta, .account-page .story-preview .meta a { font-size: 15px; }
+}
+
 @media (max-width: 600px) {
-  .account-page > header, .account-page > main, .account-page > footer { width: calc(100% - 32px); }
+  .account-page > header, .account-page > main { width: calc(100% - 32px); }
   .account-page .masthead { min-height: 68px; padding: 10px 14px; gap: 10px; }
   .account-page .wordmark { font-size: 23px; }
   .account-page .wordmark small { font-size: 10px; }
-  .account-page .account-intro { padding: 24px 4px; }
-  .account-navigation { gap: 4px 20px; margin-top: 16px; }
   .account-page main > article, .account-page main > section { padding: 24px 20px; border-radius: 28px; }
-  .account-page .account-bar { padding: 12px 16px; gap: 8px 16px; }
   .account-page .form-actions { flex-direction: column; gap: 12px; margin-top: 24px; }
   .account-page .form-actions button { width: 100%; margin-top: 0; }
   .account-page .project-list li > span { display: block; margin-left: 0; }
 }
-@media (prefers-reduced-motion: reduce) {
-  .account-page button, .account-page .project-form input, .account-page .project-form textarea, .account-page .project-form select { transition: none; }
-  .account-page button:active { transform: none; }
+/* Phones: the title, then the links and the account line, then the first field. */
+@media (max-width: 640px) {
+  :root .account-page > header.site-header { position: static; }
+  .account-page .account-intro { display: block; padding: 16px 4px 16px; }
+  .account-page .account-intro h1 { font-size: 30px; }
+  .account-navigation { gap: 0 20px; margin-top: 6px; }
+  .account-navigation a { font-size: 14px; }
+  .account-page .account-bar { flex-wrap: wrap; font-size: 13px; }
+  .account-page .account-bar > span { flex: 1 1 auto; }
+  .account-page .account-bar button { font-size: 13px; }
+  .account-page .project-form > p { font-size: 14px; line-height: 1.6; }
 }
-@media (prefers-reduced-transparency: reduce) {
-  .account-page main > article, .account-page main > section, .account-page .account-bar { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
-}
-@media (forced-colors: active) {
-  .account-page main > article, .account-page main > section, .account-page .account-bar, .account-page .project-form .owner-confirmation, .account-page .form-notice, .account-page .preference-option, .account-page .project-form input:not([type=hidden]), .account-page .project-form textarea, .account-page .project-form select { background: Canvas; color: CanvasText; border: 1px solid CanvasText; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
-  .account-page .preference-option[aria-pressed=true] { color: HighlightText; background: Highlight; }
-}
-
 @media (max-width: 420px) {
   .account-page .wordmark img { width: 32px; height: 32px; }
   .account-page .wordmark small { display: none; }
@@ -73,51 +123,15 @@
   .account-header-actions { gap: 4px; }
   .account-page .masthead { padding-inline: 10px; }
 }
-
-.account-page > footer > p:empty { display: none; }
-.account-page > footer > .account-footer-navigation { display: none; }
-
-/* ===== Account layout: header grid, side panel and phone forms. ===== */
-:root .account-page > header.site-header { width: min(100% - 64px, 1200px); }
-:root .account-page:has(.account-aside) > main { width: min(100% - 64px, 1200px); display: grid; grid-template-columns: minmax(0, 1fr) 340px; column-gap: 40px; align-items: start; }
-:root .account-page:has(.account-aside) > main > * { grid-column: 1; }
-:root .account-page:has(.account-aside) > main > .account-intro { grid-column: 1 / -1; }
-:root .account-page:has(.account-aside) > footer { width: min(100% - 64px, 1200px); }
-:root .account-page main > aside.account-aside { grid-column: 2; grid-row: 2 / span 8; position: sticky; top: 132px; padding: 28px; margin: 0; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-card); }
-.account-aside h2 { margin-bottom: 18px; font-size: 20px; }
-.account-aside ol { display: grid; gap: 18px; margin: 0; padding: 0; list-style: none; counter-reset: step; }
-.account-aside li { display: grid; grid-template-columns: 32px 1fr; gap: 2px 12px; counter-increment: step; }
-.account-aside li::before { content: counter(step); grid-row: span 2; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 700; }
-.account-aside strong { font-size: 15px; }
-.account-aside span { color: var(--muted); font-size: 14px; line-height: 1.6; }
-:root .account-page.login-page main { width: min(560px, calc(100% - 32px)); }
-@media (max-width: 1100px) {
-  :root .account-page:has(.account-aside) > main { display: flex; flex-direction: column; align-items: stretch; width: min(100% - 48px, 920px); }
-  :root .account-page main > aside.account-aside { position: static; margin-top: 24px; order: 99; }
+@media (prefers-reduced-motion: reduce) {
+  .account-page button, .account-page .project-form input, .account-page .project-form textarea, .account-page .project-form select { transition: none; }
+  .account-page button:active { transform: none; }
 }
-@media (max-width: 600px) {
-  :root .account-page > header.site-header, :root .account-page:has(.account-aside) > main,
-  :root .account-page:has(.account-aside) > footer { width: calc(100% - 32px); }
+@media (prefers-reduced-transparency: reduce) {
+  .account-page main > article, .account-page main > section { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
 }
-/* Forms on phones: reach the first field sooner. */
-@media (max-width: 640px) {
-  :root .account-page .account-intro { padding: 16px 4px 12px; }
-  :root .account-page .account-intro h1 { margin-top: 10px; font-size: 30px; }
-  :root .account-page .account-intro .tagline { margin-top: 8px; font-size: 15px; line-height: 1.6; }
-  :root .account-page:has(.project-form) .account-intro .tagline { display: none; }
-  :root .account-navigation { flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-  :root .account-navigation a { flex: 0 0 auto; min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--glass-clear); text-decoration: none; font-size: 13px; }
-  :root .account-page .account-bar { padding: 8px 8px 8px 14px; margin-bottom: 16px; font-size: 13px; }
-  :root .account-page .account-bar button { min-height: 44px; padding: 8px 14px; }
-  /* Keep only the way back above the form; the full link set moves to the footer. */
-  :root .account-page:has(.project-form) .account-intro { padding-block: 12px 10px; }
-  :root .account-page:has(.project-form) .account-intro .account-navigation a:not(:first-child) { display: none; }
-  :root .account-page:has(.project-form) .account-bar { padding-block: 4px; margin-bottom: 12px; }
-  :root .account-page .project-form > h2 { margin-bottom: 8px; }
-  :root .account-page .project-form > p { font-size: 14px; line-height: 1.6; }
-  :root .account-page > footer > .account-footer-navigation { display: flex; margin: 0 0 16px; }
-}
-/* Phones: the header scrolls away so it never covers form actions such as Publish. */
-@media (max-width: 640px) {
-  :root .account-page > header.site-header { position: static; }
+@media (forced-colors: active) {
+  .account-page main > article, .account-page main > section, .account-page .project-form .owner-confirmation, .account-page .form-notice, .account-page .preference-option, .account-page .project-form input:not([type=hidden]), .account-page .project-form textarea, .account-page .project-form select { background: Canvas; color: CanvasText; border: 1px solid CanvasText; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .account-page .account-bar button { color: LinkText; border: 0; }
+  .account-page .preference-option[aria-pressed=true] { color: HighlightText; background: Highlight; }
 }

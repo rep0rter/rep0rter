@@ -5,14 +5,16 @@ html[data-language-updating] * { overflow-anchor: none; }
 .language-status[data-state=error] { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; border-color: var(--danger-line); border-left-width: 5px; background: var(--danger-bg); color: var(--danger-text); font-weight: 600; pointer-events: auto; }
 .language-retry { min-height: 44px; padding: 8px 16px; border: 1px solid currentColor; border-radius: 16px; background: var(--surface); color: inherit; font-weight: 700; }
 
-/* New interface: overlay the status just below the sticky header (top is set by
-   language.js) so loading never shifts the page; compact, opaque, content width. */
-:root .site-header + [data-language-status].language-status { position: fixed; z-index: 9; top: 72px; left: 50%; bottom: auto; transform: translateX(-50%); display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; box-sizing: border-box; width: min(100% - 64px, 1200px); max-width: none; margin: 0; padding: 8px 16px; border-radius: 14px; background: var(--surface); font-size: 14px; line-height: 1.4; pointer-events: none; }
-:root .site-header + [data-language-status].language-status[data-state=error] { padding-block: 6px; background: var(--danger-bg); pointer-events: auto; }
+/* Under a site header the status joins the page flow: it pushes the page down
+   instead of covering it, and sticks just below the header while scrolled (the
+   sticky offset is set by language.js). Same width as the page content. */
+:root .site-header + [data-language-status].language-status { position: sticky; z-index: 9; top: 84px; left: auto; bottom: auto; transform: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; box-sizing: border-box; width: var(--shell, min(100% - 64px, 1200px)); max-width: none; margin: 0 auto 12px; padding: 10px 16px; border-radius: 14px; background: var(--surface); font-size: 14px; line-height: 1.4; pointer-events: auto; }
+:root .site-header + [data-language-status].language-status[hidden] { display: none; }
+:root .site-header + [data-language-status].language-status[data-state=error] { padding-block: 6px; background: var(--danger-bg); }
 :root .site-header + [data-language-status].language-status[data-state=loading]::before { content: ""; flex: 0 0 auto; width: 14px; height: 14px; border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%; animation: busy-spin .8s linear infinite; }
 @keyframes busy-spin { to { transform: rotate(360deg); } }
 @media (max-width: 640px) {
-  :root .site-header + [data-language-status].language-status { width: calc(100% - 36px); padding: 8px 14px; font-size: 13px; }
+  :root .site-header + [data-language-status].language-status { padding: 8px 14px; font-size: 13px; }
 }
 @media (prefers-reduced-motion: reduce) {
   :root .site-header + [data-language-status].language-status[data-state=loading]::before { animation-duration: 2.4s; }

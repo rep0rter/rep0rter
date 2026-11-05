@@ -2,14 +2,17 @@
 // Apply the saved appearance before CSS paints. Storage is optional.
 (() => {
     const root = document.documentElement;
-    // Modal scroll locks pad the page by the scrollbar width so their scrim
-    // reaches the window edge. Measured in the root's own (possibly zoomed) pixels.
+    // Modal scroll locks drop the reserved scrollbar gutter so their scrim
+    // reaches the window edge, and pad the page by the gutter's width so nothing
+    // shifts. The root's layout box is measured: clientWidth can report the full
+    // window while a hidden scrollbar's stable gutter is still reserved.
     const measureScrollbar = () => {
         try {
             if (root.dataset.loginOpen !== undefined || root.classList.contains('image-viewer-open'))
                 return;
             const zoom = Number.parseFloat(getComputedStyle(root).zoom) || 1;
-            const width = Math.max(0, innerWidth - root.clientWidth * zoom) / zoom;
+            const layout = Math.min(root.clientWidth, root.getBoundingClientRect().width / zoom);
+            const width = Math.max(0, innerWidth / zoom - layout);
             root.style.setProperty('--scrollbar-width', `${width}px`);
             // Overlay scrollbars take no space; leave the gutter alone so nothing shifts.
             if (width > 0.5)

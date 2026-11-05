@@ -101,14 +101,18 @@
       status.dataset.languageStatus = '';
       status.className = 'language-status';
       status.setAttribute('role', 'status');
-      // The status overlays just below the sticky header.
+      // The status joins the page flow directly under the sticky header: it
+      // pushes the page down instead of covering it, and sticks below the
+      // header while the reader is scrolled.
       let header: Element | null = null;
       try { header = document.querySelector('body > .site-header'); }
       catch { /* minimal DOMs */ }
       if (header) {
         header.after(status);
-        const zoom = Number.parseFloat(getComputedStyle(document.documentElement).zoom) || 1;
-        status.style.top = `${header.getBoundingClientRect().height / zoom - 8}px`;
+        try {
+          const sticky = getComputedStyle(header).position === 'sticky';
+          status.style.top = sticky ? `${header.getBoundingClientRect().height - 12}px` : '0px';
+        } catch { /* The stylesheet's offset still applies. */ }
       } else document.body.append(status);
     }
     if (status) { status.textContent = message; status.hidden = !message; }
@@ -145,11 +149,12 @@
     } catch { return fallback; }
   }
   const retryLabels: Record<Locale, string> = { en: 'Try again', 'zh-TW': '再試一次', ja: '再試行', ko: '다시 시도' };
+  // The retry button follows the failure message, so the text does not repeat it.
   const messages: Record<Locale, [string, string]> = {
-    en: ['Loading language…', 'Could not load this language. Your current page is unchanged. Try again.'],
-    'zh-TW': ['正在切換語言…', '目前無法載入此語言，原頁面已保留。請稍後再試。'],
-    ja: ['言語を読み込み中…', '言語を読み込めませんでした。現在のページは保持されています。もう一度お試しください。'],
-    ko: ['언어를 불러오는 중…', '언어를 불러오지 못했습니다. 현재 페이지는 유지됩니다. 다시 시도해 주세요.'],
+    en: ['Loading language…', 'Could not load this language. Your current page is unchanged.'],
+    'zh-TW': ['正在切換語言…', '目前無法載入此語言，原頁面已保留。'],
+    ja: ['言語を読み込み中…', '言語を読み込めませんでした。現在のページは保持されています。'],
+    ko: ['언어를 불러오는 중…', '언어를 불러오지 못했습니다. 현재 페이지는 유지됩니다.'],
   };
   function key(element: Element): string {
     if (element.id) return `#${CSS.escape(element.id)}`;
@@ -166,7 +171,7 @@
   }
   function capture(): Position {
     const top = Math.max(0, document.querySelector('.site-header')?.getBoundingClientRect().bottom || 0);
-    const candidates = [...document.querySelectorAll('main h1, main h2, article h3, article .summary, article blockquote, main .hero-intro, .latest-item h3, .latest-summary, footer p')]
+    const candidates = [...document.querySelectorAll('main h1, main h2, article h3, article .summary, article blockquote, footer p')]
       .filter(element => { const r = element.getBoundingClientRect(); return r.width && r.height && r.bottom > top && r.top < innerHeight; });
     const anchor = candidates.sort((a, b) => Math.abs(a.getBoundingClientRect().top - top) - Math.abs(b.getBoundingClientRect().top - top))[0];
     return {
