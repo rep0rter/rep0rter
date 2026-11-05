@@ -67,9 +67,9 @@
       <ol class="latest-news-list">
         {% for it in recent %}
         <li class="latest-item{% if loop.first %} latest-item--lead{% endif %}" data-preview-post-id="{{ it.post.id }}">
-          <p class="latest-meta"><span>{{ it.source_label }}</span><time datetime="{{ it.day }}">{{ it.published_local }}</time></p>
-          {% if it.content_warning %}<p class="translation-note">{{ it.content_warning }}</p>{% endif %}
-          {% if it.event.meta.get('owner_submitted') %}<p class="translation-note">{{ copy.owner_submission }}</p>{% endif %}
+          <p class="latest-meta"><span>{{ copy.owner_projects if it.container and it.container.source == 'project' else it.source_label }}</span><time datetime="{{ it.day }}">{{ it.published_local }}</time></p>
+          {% if it.content_warning %}<p class="content-warning">{{ it.content_warning }}</p>{% endif %}
+          {% if it.event.meta.get('owner_submitted') %}<p class="story-badge">{{ copy.owner_submission }}</p>{% endif %}
           <h3 lang="{{ language if it.translated or language == 'en' else 'und' }}"><a href="{{ prefix }}{{ it.story_path }}">{{ it.headline }}</a></h3>
           {% if loop.first %}<p class="latest-summary" lang="{{ language if it.translated or language == 'en' else 'und' }}">{{ it.summary }}</p>{% endif %}
           {% if not it.translated and language != 'en' %}<p class="translation-note">{{ copy.missing }}</p>{% endif %}
@@ -156,6 +156,7 @@
         <span class="image-viewer-glare" aria-hidden="true"></span>
       </div>
       <p class="image-viewer-status" data-viewer-status role="status" data-loading="{{ copy.image_loading }}" data-error="{{ copy.image_error }}"></p>
+      <button type="button" class="button button-secondary image-viewer-retry" data-viewer-retry>{{ copy.login_retry }}</button>
     </div>
     <div class="image-viewer-footer"><p data-viewer-caption></p><a class="button button-secondary" data-viewer-download download>{{ ui.icon('download') }} {{ copy.download }}</a></div>
   </div>

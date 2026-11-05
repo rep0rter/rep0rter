@@ -361,3 +361,8 @@ for _language, _values in {
     'ko': ('지금 읽을 수 있는 언어:', '다른 프로젝트 올리기'),
 }.items():
     COPY[_language].update(zip(('read_in', 'published_project_again'), _values))
+
+
+for _language, _label in {'en': 'Owner-submitted projects', 'zh-TW': '社群自行投稿',
+                          'ja': 'オーナーによる投稿', 'ko': '직접 올린 프로젝트'}.items():
+    COPY[_language]['owner_projects'] = _label

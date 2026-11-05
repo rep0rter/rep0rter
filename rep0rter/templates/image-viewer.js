@@ -201,6 +201,17 @@
             imageState('ready'); });
         listen(image, 'error', () => { if (viewer.open && image.getAttribute('src'))
             imageState('error'); });
+        const retry = viewer.querySelector('[data-viewer-retry]');
+        listen(retry, 'click', () => {
+            const source = image.getAttribute('src');
+            if (!viewer.open || !source)
+                return;
+            imageState('loading');
+            image.removeAttribute('src');
+            image.src = source;
+            if (image.complete)
+                imageState(image.naturalWidth ? 'ready' : 'error');
+        });
         listen(close, 'click', dismiss);
         listen(viewer, 'cancel', event => { event.preventDefault(); dismiss(); });
         const isOutside = (event) => {

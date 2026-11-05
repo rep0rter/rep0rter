@@ -13,7 +13,7 @@
   {% if preview %}
   <section class="story-preview" aria-labelledby="preview-title">
     <p class="eyebrow" id="preview-title">{{ account_copy.preview_unpublished }}</p>
-    <p class="translation-note">{{ account_copy.self_reported }}{% if preview.project_name %} · {{ preview.project_name }}{% endif %}</p>
+    <p class="story-badge">{{ account_copy.self_reported }}{% if preview.project_name %} · {{ preview.project_name }}{% endif %}</p>
     <h2>{{ preview.title }}</h2><p class="project-preview">{{ preview.description }}</p>
     {% if preview.take_part %}<p class="project-preview"><strong>{{ account_copy.take_part }}</strong><br>{{ preview.take_part }}</p>{% endif %}
     <p class="meta">{{ preview.author }} · {{ preview.event_date }}</p>
