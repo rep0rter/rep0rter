@@ -5,6 +5,7 @@
 {% block intro %}{{ account_copy.submit_intro }}{% endblock %}
 {% block navigation %}<a href="/?lang={{ account_language }}">{{ ui.icon('back') }}<span>{{ account_copy.back_feed }}</span></a><a href="/write?lang={{ account_language }}">{{ ui.icon('chat') }}<span>{{ account_copy.write_title }}</span></a><a href="/projects?lang={{ account_language }}">{{ ui.icon('rss') }}<span>{{ account_copy.manage_news }}</span></a>{% endblock %}
 {% block content %}
+  <aside class="account-aside" aria-labelledby="how-title"><h2 id="how-title">{{ account_copy.how_title }}</h2><ol>{% for name, text in account_copy.how_steps %}<li><strong>{{ name }}</strong><span>{{ text }}</span></li>{% endfor %}</ol></aside>
 
   <div class="account-bar"><span>{{ account_copy.signed_in }} {{ owner.name }}</span>
     <form action="{{ url_for('logout') }}" method="post"><input type="hidden" name="ui_language" value="{{ account_language }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit" class="quiet-button">{{ account_copy.sign_out }}</button></form>

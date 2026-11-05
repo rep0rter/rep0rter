@@ -45,6 +45,9 @@
     const filters = document.querySelector<HTMLDetailsElement>('[data-filters]');
     const countBadge = document.querySelector<HTMLElement>('[data-filter-count]');
     const error = document.querySelector<HTMLElement>('[data-filter-error]');
+    let filterAlert: HTMLElement | null = null;
+    try { filterAlert = document.querySelector<HTMLElement>('[data-filter-alert]'); }
+    catch { /* Optional summary badge; minimal DOMs may not support it. */ }
     const filterNames: FilterName[] = ['period', 'from', 'to', 'topic', 'author', 'source', 'sort'];
     const fields = Object.fromEntries(filterNames
       .map(name => [name, filters?.querySelector<Field>(`[data-filter="${name}"]`) ?? null])
@@ -161,6 +164,7 @@
         }
       });
       if (error) error.hidden = !invalid;
+      if (filterAlert) filterAlert.hidden = !invalid;
       // Calendar days are based on the publication timezone, including today.
       const dateParts: Partial<Record<string, string>> =
         Object.fromEntries(dateFormatter.formatToParts(new Date()).map(part => [part.type, part.value]));

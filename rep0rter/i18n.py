@@ -93,7 +93,7 @@ COPY = {
         "subscribe_title": "在習慣的地方讀消息", "subscribe_body": "將 RSS 加入你的閱讀器，接收這個語言版本的更新。",
         "aside_note": "摘要協助你掌握重點；完整內容請以原文為準。",
         "resources": "相關資源", "back_home": "回到所有消息", "replies": "回覆數", "view_image": "檢視圖卡", "close_image": "關閉圖片",
-        "image_loading": "圖片載入中…", "image_error": "圖片暫時無法載入，請關閉後重試。",
+        "image_loading": "圖片載入中…", "image_error": "圖片暫時無法載入。",
     },
     "ko": {
         "presentation": "3분 소개",
@@ -124,7 +124,7 @@ COPY = {
         "subscribe_title": "익숙한 곳에서 읽으세요", "subscribe_body": "RSS를 리더에 추가하면 이 언어로 새 소식을 받아볼 수 있습니다.",
         "aside_note": "요약은 핵심을 파악하는 데 도움을 줍니다. 전체 내용은 원문을 확인하세요.",
         "resources": "관련 자료", "back_home": "모든 소식으로", "replies": "답글 수", "view_image": "이미지 보기", "close_image": "이미지 닫기",
-        "image_loading": "이미지 불러오는 중…", "image_error": "이미지를 불러올 수 없습니다. 닫은 후 다시 시도해 주세요.",
+        "image_loading": "이미지 불러오는 중…", "image_error": "이미지를 불러올 수 없습니다.",
     },
     "ja": {
         "presentation": "3分でわかる紹介",
@@ -155,7 +155,7 @@ COPY = {
         "subscribe_title": "いつもの場所で読もう", "subscribe_body": "RSS をリーダーに追加すると、この言語の新着ニュースを受け取れます。",
         "aside_note": "要約は内容をつかむためのものです。詳しい内容は原文をご確認ください。",
         "resources": "関連リンク", "back_home": "すべてのニュースへ", "replies": "返信数", "view_image": "画像を見る", "close_image": "画像を閉じる",
-        "image_loading": "画像を読み込み中…", "image_error": "画像を読み込めませんでした。閉じてからもう一度お試しください。",
+        "image_loading": "画像を読み込み中…", "image_error": "画像を読み込めませんでした。",
     },
     "en": {
         "presentation": "3-minute overview",
@@ -190,7 +190,7 @@ COPY = {
         "subscribe_title": "Read where you like", "subscribe_body": "Add this RSS feed to your reader for updates in your chosen language.",
         "aside_note": "Summaries help you find the essentials. Refer to the original for the full story.",
         "resources": "Resources", "back_home": "Back to all stories", "replies": "Replies", "view_image": "View image", "close_image": "Close image",
-        "image_loading": "Loading image…", "image_error": "The image could not load. Close and try again.",
+        "image_loading": "Loading image…", "image_error": "The image could not load.",
     },
 }
 
@@ -305,7 +305,7 @@ for _language, _values in {
            'Sign-in could not load. Please try again.', 'Try again', 'Open sign-in page',
            'You’re signed in', 'Choose what you would like to do next.', 'Manage project news',
            'Sign out', 'Sign-in is not available yet', 'Please check back soon.'),
-    'zh-TW': ('歡迎回到 rep0rter', '你的社群，下一則故事。',
+    'zh-TW': ('歡迎來到 rep0rter', '你的社群，下一則故事。',
               '登入後，分享近況或管理你的專案消息。', '使用 Google 繼續',
               '你的電子郵件不會公開。所有內容都會在你確認後才發布。',
               '繼續閱讀', '關閉登入視窗', '正在準備安全登入…',
@@ -374,3 +374,8 @@ for _language, _label in {'en': 'Original', 'zh-TW': '原文', 'ja': '原文', '
 
 for _language, _label in {'en': 'More from', 'zh-TW': '更多來自', 'ja': 'さらに読む：', 'ko': '더 보기:'}.items():
     COPY[_language]['more_from'] = _label
+
+
+for _language, (_tag, _full) in {'en': ('Original', 'Open full size'), 'zh-TW': ('原文・未翻譯', '開啟原尺寸'),
+                                 'ja': ('原文・未翻訳', '原寸で開く'), 'ko': ('원문 · 번역 전', '원본 크기로 열기')}.items():
+    COPY[_language].update(original_tag=_tag, open_full=_full)

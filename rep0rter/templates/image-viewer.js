@@ -113,6 +113,9 @@
                 imageState('loading');
                 image.src = opener.dataset.imageSrc;
                 download.href = opener.dataset.imageSrc;
+                const full = viewer.querySelector('[data-viewer-full]');
+                if (full)
+                    full.href = opener.dataset.imageSrc;
                 if (image.complete)
                     imageState(image.naturalWidth ? 'ready' : 'error');
                 if (image.decode)
@@ -186,6 +189,9 @@
                 image.alt = thumbnail.alt;
                 caption.textContent = thumbnail.alt;
                 download.href = button.dataset.imageSrc;
+                const full = viewer.querySelector('[data-viewer-full]');
+                if (full)
+                    full.href = button.dataset.imageSrc;
                 image.src = button.dataset.imageSrc;
                 root.classList.add('image-viewer-open');
                 viewer.showModal();

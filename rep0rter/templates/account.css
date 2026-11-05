@@ -86,3 +86,24 @@
   .account-page .account-bar { padding: 8px 8px 8px 14px; margin-bottom: 16px; font-size: 13px; }
   .account-page .account-bar button { min-height: 40px; padding: 8px 14px; }
 }
+
+/* Wide form pages align with the header grid and add a side panel on how it works. */
+.account-page:has(.account-aside) > main { width: min(100% - 64px, 1200px); display: grid; grid-template-columns: minmax(0, 1fr) 340px; column-gap: 40px; align-items: start; }
+.account-page:has(.account-aside) > main > * { grid-column: 1; }
+.account-page:has(.account-aside) > main > .account-intro { grid-column: 1 / -1; }
+.account-page:has(.account-aside) > footer { width: min(100% - 64px, 1200px); }
+.account-page main > aside.account-aside { grid-column: 2; grid-row: 2 / span 8; position: sticky; top: 132px; padding: 28px; margin: 0; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-card); }
+.account-aside h2 { margin-bottom: 18px; font-size: 20px; }
+.account-aside ol { display: grid; gap: 18px; margin: 0; padding: 0; list-style: none; counter-reset: step; }
+.account-aside li { display: grid; grid-template-columns: 32px 1fr; gap: 2px 12px; counter-increment: step; }
+.account-aside li::before { content: counter(step); grid-row: span 2; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.account-aside strong { font-size: 15px; }
+.account-aside span { color: var(--muted); font-size: 14px; line-height: 1.6; }
+@media (max-width: 1100px) {
+  .account-page:has(.account-aside) > main { display: flex; flex-direction: column; width: min(100% - 48px, 920px); }
+  .account-page main > aside.account-aside { position: static; margin-top: 24px; }
+  .account-page:has(.account-aside) > main > aside.account-aside { order: 99; }
+}
+@media (max-width: 600px) { .account-page:has(.account-aside) > main, .account-page:has(.account-aside) > footer { width: calc(100% - 32px); } }
+/* A larger sign-in card on wide screens. */
+.account-page.login-page main { width: min(560px, calc(100% - 32px)); }

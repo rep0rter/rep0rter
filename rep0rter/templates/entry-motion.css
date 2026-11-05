@@ -4,7 +4,10 @@ html[data-brand-entering] body::before {
   position: fixed;
   inset: 0;
   z-index: 10000;
-  background: radial-gradient(ellipse at 50% 46%, var(--surface), transparent 65%), var(--canvas);
+  /* The page renders, blurred, beneath the brand moment instead of a blank canvas. */
+  background: radial-gradient(ellipse at 50% 46%, color-mix(in srgb, var(--surface) 80%, transparent), transparent 65%), color-mix(in srgb, var(--canvas) 62%, transparent);
+  -webkit-backdrop-filter: blur(14px) saturate(1.05);
+  backdrop-filter: blur(14px) saturate(1.05);
   opacity: var(--brand-veil-opacity, 1);
   pointer-events: auto;
 }

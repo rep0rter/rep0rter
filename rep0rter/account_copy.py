@@ -409,3 +409,42 @@ for _language, (_publish, _preview, _save) in {
     'ko': ('게시하는 중…', '미리보기를 준비하는 중…', '저장하는 중…'),
 }.items():
     ACCOUNT_COPY[_language].update(busy_publish=_publish, busy_preview=_preview, busy_save=_save)
+
+
+# Side panel explaining what happens after the primary action.
+for _language, _values in {
+    'en': ('How publishing works',
+           ('Preview', 'Check how your story will look. Nothing is public yet.'),
+           ('Publish', 'It joins the community feed and RSS right away, labelled self-reported.'),
+           ('Translations', 'Other editions show a notice until their translation is ready.'),
+           'How project news works',
+           ('Connect', 'Point to GitHub releases or a public RSS feed.'),
+           ('Check', 'rep0rter checks on your schedule and fills in your templates.'),
+           ('Control', 'Pause at any time; every post links back to its source.')),
+    'zh-TW': ('發布流程',
+              ('預覽', '先確認報導呈現的樣子，此時尚未公開。'),
+              ('發布', '立即出現在社群消息列表與 RSS，並標示為自行投稿。'),
+              ('翻譯', '其他語言版本在翻譯完成前會顯示提示。'),
+              '專案消息如何運作',
+              ('連結', '指定 GitHub releases 或公開 RSS。'),
+              ('檢查', 'rep0rter 依你設定的頻率檢查，並套用你的範本。'),
+              ('掌控', '隨時可以暫停；每則消息都連回原始來源。')),
+    'ja': ('公開の流れ',
+           ('プレビュー', '表示を確認できます。まだ公開されません。'),
+           ('公開', 'すぐにニュース一覧と RSS に「本人による投稿」として表示されます。'),
+           ('翻訳', '翻訳が整うまで、他の言語版には案内が表示されます。'),
+           'プロジェクトニュースの仕組み',
+           ('接続', 'GitHub リリースまたは公開 RSS を指定します。'),
+           ('確認', 'rep0rter が設定した頻度で確認し、テンプレートに当てはめます。'),
+           ('管理', 'いつでも一時停止できます。各投稿は元の情報源にリンクします。')),
+    'ko': ('게시 과정',
+           ('미리보기', '기사가 어떻게 보일지 확인합니다. 아직 공개되지 않습니다.'),
+           ('게시', '바로 커뮤니티 소식 목록과 RSS에 직접 작성한 소식으로 표시됩니다.'),
+           ('번역', '번역이 준비될 때까지 다른 언어판에는 안내가 표시됩니다.'),
+           '프로젝트 소식 작동 방식',
+           ('연결', 'GitHub 릴리스나 공개 RSS 피드를 지정합니다.'),
+           ('확인', 'rep0rter가 설정한 주기로 확인하고 템플릿을 채웁니다.'),
+           ('관리', '언제든 일시 중지할 수 있으며, 모든 소식은 원본으로 연결됩니다.')),
+}.items():
+    ACCOUNT_COPY[_language].update(how_title=_values[0], how_steps=list(_values[1:4]),
+                                   news_how_title=_values[4], news_how_steps=list(_values[5:8]))
