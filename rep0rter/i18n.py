@@ -448,3 +448,8 @@ for _language, _values in {
 for _language, _label in {'en': 'Write the first story', 'zh-TW': '撰寫第一則消息',
                           'ja': '最初のニュースを書く', 'ko': '첫 소식 쓰기'}.items():
     COPY[_language]['write_first'] = _label
+
+
+# One name for the way back to the feed, matching the story pages' back link.
+for _language in COPY:
+    COPY[_language]['published_feed'] = COPY[_language]['back_home']

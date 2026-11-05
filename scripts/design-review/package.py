@@ -69,10 +69,15 @@ def main():
     parser.add_argument("--mapping", type=Path, required=True)
     parser.add_argument("--brief", default="docs/design-review/brief.md", help="brief copied into the folder as brief.md")
     parser.add_argument("--seed", type=int)
+    parser.add_argument("--letters", help="reuse a round's mapping, e.g. baseline=B,new=C,reference=A")
     args = parser.parse_args()
-    letters = ["A", "B", "C"]
-    random.Random(args.seed).shuffle(letters)
-    mapping = dict(zip(("baseline", "new", "reference"), letters))
+    if args.letters:
+        mapping = dict(pair.split("=") for pair in args.letters.split(","))
+        assert sorted(mapping) == ["baseline", "new", "reference"] and sorted(mapping.values()) == ["A", "B", "C"]
+    else:
+        letters = ["A", "B", "C"]
+        random.Random(args.seed).shuffle(letters)
+        mapping = dict(zip(("baseline", "new", "reference"), letters))
     review = args.out
     if review.exists():
         shutil.rmtree(review)
