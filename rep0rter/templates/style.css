@@ -635,7 +635,9 @@ html[data-brand-entering] main, html[data-brand-entering] .site-footer { opacity
 .translation-links a { margin-inline-start: 8px; font-weight: 700; color: inherit; }
 
 /* The withdrawal notice is a single centred column with no sticky header. */
-.withdrawal-page .site-header { background: none; width: min(100% - 40px, 660px); }
+.withdrawal-page .site-header { background: none; }
+.withdrawal-page .site-header .masthead { flex: 1; grid-template-columns: minmax(0, 1fr) auto; }
+.withdrawal-page .masthead-actions { grid-column: 2; }
 
 /* Pending English stories read as placeholders, not as headlines. */
 .story-card--pending h1, .story-card--pending h3, .story-card--pending h3 a { color: var(--muted); font-style: italic; }
@@ -661,4 +663,19 @@ html[data-brand-entering] main, html[data-brand-entering] .site-footer { opacity
 @keyframes skeleton { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @media (max-width: 640px) {
   .story-card:not(.story-card--featured) .report-figure { grid-template-columns: 120px minmax(0, 1fr); }
+}
+
+.original-tag { display: inline-block; margin-inline-start: 8px; padding: 0 8px; border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 12px; font-weight: 600; vertical-align: 2px; }
+
+@media (max-width: 640px) {
+  /* Language status docks as a full-width bar instead of floating over a story. */
+  .language-status { left: 0; right: 0; bottom: 0; width: auto; max-width: none; transform: none; border-radius: 20px 20px 0 0; padding: 14px 18px calc(14px + env(safe-area-inset-bottom)); }
+}
+@media (max-width: 480px) {
+  /* The image viewer uses the whole phone screen so the card is as large as it can be. */
+  .image-viewer { width: 100%; min-width: 0; max-width: 100%; height: 100dvh; max-height: 100dvh; margin: 0; border: 0; border-radius: 0; }
+  .image-viewer-panel { display: flex; flex-direction: column; min-height: 100%; padding: 12px 8px calc(12px + env(safe-area-inset-bottom)); }
+  .image-viewer-toolbar { padding-inline: 8px; }
+  .image-viewer-stage { flex: 1; display: grid; align-content: center; padding: 0; background: transparent; }
+  .image-viewer-footer { padding: 12px 8px 0; border-top: 1px solid var(--line); }
 }

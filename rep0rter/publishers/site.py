@@ -318,7 +318,7 @@ def _build(store: Store, cfg: Config, limit: int = 300) -> Path:
         for row in store.conn.execute('SELECT post_id FROM retractions'):
             for filename in (page_name(language), *page_aliases(language)):
                 _write(cfg.site_dir / 'posts' / str(row['post_id']) / filename,
-                       env.get_template('withdrawn.html').render(language=language,copy=COPY[language],languages=LANGUAGES,page_name=page_name))
+                       env.get_template('withdrawn.html').render(language=language,copy=COPY[language],languages=LANGUAGES,page_name=page_name,branding=ctx['branding'],cfg=cfg))
     # No stored time reliably covers later translation backfills, so omit lastmod.
     base_url = cfg.site_url.rstrip("/") + "/"
     _write(cfg.site_dir / 'sitemap.xml', env.get_template('sitemap.xml').render(

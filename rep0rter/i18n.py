@@ -366,3 +366,7 @@ for _language, _values in {
 for _language, _label in {'en': 'Owner-submitted projects', 'zh-TW': '社群自行投稿',
                           'ja': 'オーナーによる投稿', 'ko': '직접 올린 프로젝트'}.items():
     COPY[_language]['owner_projects'] = _label
+
+
+for _language, _label in {'en': 'Original', 'zh-TW': '原文', 'ja': '原文', 'ko': '원문'}.items():
+    COPY[_language]['original_tag'] = _label
