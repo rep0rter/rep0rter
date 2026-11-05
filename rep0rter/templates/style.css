@@ -274,11 +274,12 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
   min-width: min(280px, calc(100% - 24px)); max-width: none;
   max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px);
   padding: 0; border: 1px solid var(--line); border-radius: 32px;
-  background: var(--glass); color: var(--ink); box-shadow: var(--shadow-lift);
-  -webkit-backdrop-filter: blur(24px) saturate(1.12); backdrop-filter: blur(24px) saturate(1.12);
+  /* An opaque surface: page text never shows through the viewer; only the backdrop blurs. */
+  background: var(--surface); color: var(--ink); box-shadow: var(--shadow-lift);
   overscroll-behavior: contain;
 }
-.image-viewer::backdrop { background: rgb(8 14 23 / calc(.56 * var(--viewer-depth, 0))); }
+.image-viewer::backdrop { background: rgb(8 14 23 / calc(.56 * var(--viewer-depth, 0)));
+  -webkit-backdrop-filter: blur(calc(6px * var(--viewer-depth, 0))); backdrop-filter: blur(calc(6px * var(--viewer-depth, 0))); }
 .image-viewer-panel { border-radius: inherit; corner-shape: inherit; padding: clamp(16px, 2.5vw, 28px); }
 .image-viewer-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 12px; }
 .image-viewer-toolbar h2 { font-size: 18px; font-weight: 600; }
@@ -642,8 +643,9 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
   :root .reading-layout:not(.reading-layout--detail) .report-figure { width: min(100%, 180px); }
   :root .reading-layout--detail .story-card { padding: 24px 20px 28px; }
   :root .reading-layout--detail .story-card .report-figure { margin-top: 24px; }
-  :root .publish-banner nav { flex-wrap: nowrap; gap: 8px; }
-  :root .publish-banner nav a { flex: 1 1 0; justify-content: center; text-align: center; font-size: 13px; padding: 0 10px; }
+  /* Phones: the actions span the banner and stack, so no label wraps inside its pill. */
+  :root .publish-banner nav { grid-column: 1 / -1; flex-direction: column; flex-wrap: nowrap; gap: 8px; margin-top: 12px; }
+  :root .publish-banner nav a { justify-content: center; text-align: center; white-space: nowrap; font-size: 14px; padding: 0 16px; }
 }
 @media (max-width: 480px) {
   /* Phone viewer uses the whole screen: image centred, actions within thumb reach. */
@@ -665,14 +667,25 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
 :root .reading-layout--detail .story-card h1:is(:lang(zh), :lang(ko)) { text-wrap: pretty; word-break: keep-all; }
 
 /* Story history: revisions as clear pill links; the one being read is filled. */
-:root .story-history .links { gap: 8px; margin-top: 10px; }
-:root .story-history .links a { justify-content: center; min-height: 44px; padding: 0 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--accent); font-size: 13px; font-weight: 700; box-shadow: var(--shadow-button); }
-:root .story-history .links a[aria-current] { border-color: transparent; background: var(--accent); color: light-dark(#fff, #11161e); box-shadow: none; }
+/* Story revisions: a compact labelled control beside the source label, above the headline. */
+:root .story-top { flex-wrap: wrap; row-gap: 4px; }
+:root .story-revisions { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-inline-start: auto; color: var(--muted); font-size: 13px; }
+:root .story-revisions-label { margin-inline-end: 2px; font-weight: 600; }
+:root .story-revisions-label::after { content: ":"; }
+:root .story-revisions a { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--accent); font-size: 13px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+:root .story-revisions a[aria-current] { border-color: transparent; background: var(--accent); color: light-dark(#fff, #11161e); }
 @media (hover: hover) and (pointer: fine) {
-  :root .story-history .links a:not([aria-current]):hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  :root .story-revisions a:not([aria-current]):hover { border-color: var(--accent); background: var(--accent-soft); }
 }
+@media (max-width: 640px) {
+  /* Phones: the control takes its own line under the source label rather than squeezing it. */
+  :root .story-revisions { margin-inline-start: 0; }
+}
+@media (min-width: 1700px) { :root .story-revisions, :root .story-revisions a { font-size: 16px; } }
+@media (min-width: 2200px) { :root .story-revisions, :root .story-revisions a { font-size: 18px; } }
 
 /* Empty site while collection is delayed: say so once, here (the footer then stays quiet). */
+:root .empty-state .empty-action { margin-top: 12px; }
 :root .empty-state .empty-delayed { display: inline-block; margin: 18px 0 0; padding: 10px 16px; border-radius: 16px; background: var(--warning-bg); color: var(--warning-text); font-size: 14px; }
 
 /* Phone filter bar: an opaque band that reserves its own space at the end of the panel. */
@@ -793,13 +806,16 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
 
 /* Feed cards on desktop: the report image is either a right-hand column beside the
    copy (cards wide enough for two columns, like the lead card) or the full card
-   width at the foot of the card; never a small floating thumbnail. Cards in a row
-   share a height so their images line up. Feed prose is capped near 70ch. */
+   width directly under the copy; never a small floating thumbnail. Cards size to
+   their own content, so no card carries an empty lower half; every image starts
+   the same distance below its story. Feed prose is capped near 70ch. */
 @media (min-width: 1100px) {
-  :root .reading-layout:not(.reading-layout--detail) .story-grid { align-items: stretch; }
+  :root .reading-layout:not(.reading-layout--detail) .story-grid { align-items: start; }
   :root .reading-layout:not(.reading-layout--detail) .story-card { container: story-card / inline-size; display: flex; flex-direction: column; }
-  :root .reading-layout:not(.reading-layout--detail) .story-content { display: flex; flex-direction: column; flex: 1 1 auto; }
-  :root .reading-layout:not(.reading-layout--detail) .report-figure { width: 100%; margin-top: auto; padding-top: 20px; }
+  :root .reading-layout:not(.reading-layout--detail) .story-content { display: flex; flex-direction: column; flex: 0 0 auto; }
+  :root .reading-layout:not(.reading-layout--detail) .report-figure { width: 100%; margin-top: 0; padding-top: 20px; }
+  /* A lone search or filter result: prose near 70ch plus the image column, as tall as its content. */
+  :root[data-search-active="true"] .reading-layout:not(.reading-layout--detail) .story-grid[data-visible="1"] > .story-card { max-width: calc(70ch + 620px); }
   :root .reading-layout:not(.reading-layout--detail) .story-copy > :is(.summary, .take-part, .previous-summary) { max-width: 70ch; }
   @container story-card (min-width: 760px) {
     :root .reading-layout:not(.reading-layout--detail) .story-card .story-content { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 32%); align-items: start; gap: 40px; }
@@ -808,6 +824,10 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
   /* Very wide cards: copy stops near 70ch, so the report image takes the rest instead of a gap. */
   @container story-card (min-width: 1400px) {
     :root .reading-layout:not(.reading-layout--detail) .story-card .story-content { grid-template-columns: minmax(0, 1fr) minmax(260px, 40%); gap: 56px; }
+  }
+  /* The capped lone result keeps a slimmer image column, so the image is no taller than the copy beside it. */
+  @container story-card (min-width: 760px) {
+    :root[data-search-active="true"] .reading-layout:not(.reading-layout--detail) .story-grid[data-visible="1"] > .story-card .story-content { grid-template-columns: minmax(0, 1fr) minmax(260px, 30%); }
   }
 }
 
@@ -822,4 +842,15 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
   :root .masthead { padding-inline: 6px; }
   :root .masthead :is(.masthead-links .write-story-link, .preference-trigger) { padding-inline: 1px; }
   :root .masthead :is(.masthead-link-short, .language-trigger > span) { font-size: 10px; }
+}
+
+/* A card left alone in the last row of a day (after the lead, or after full rows)
+   spans that row instead of leaving an empty band beside it. Two or more extra
+   cards keep the column grid. Feed only; story pages are unaffected. */
+@media (min-width: 900px) {
+  :root .reading-layout:not(.reading-layout--detail) .story-grid > .story-card--featured:nth-last-child(2) + .story-card { grid-column: 1 / -1; }
+}
+@media (min-width: 2200px) {
+  :root .reading-layout:not(.reading-layout--detail) .story-grid > .story-card--featured ~ .story-card:last-child:nth-child(3n + 2) { grid-column: 1 / -1; }
+  :root .reading-layout:not(.reading-layout--detail) .story-grid > .story-card:first-child:not(.story-card--featured) ~ .story-card:last-child:nth-child(3n + 1) { grid-column: 1 / -1; }
 }

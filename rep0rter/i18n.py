@@ -433,3 +433,18 @@ for _language, _label in {'en': 'Theme', 'zh-TW': '外觀', 'ja': '表示', 'ko'
 for _language, _label in {'en': 'Community submissions', 'zh-TW': '社群投稿',
                           'ja': 'コミュニティからの投稿', 'ko': '커뮤니티 기고'}.items():
     COPY[_language]['community_submissions'] = _label
+
+
+# Story revisions sit beside the source label: a short label, with the newest one marked.
+for _language, _values in {
+    'en': ('Revisions', 'latest'),
+    'zh-TW': ('修訂版本', '最新'),
+    'ja': ('改訂版', '最新'),
+    'ko': ('수정본', '최신'),
+}.items():
+    COPY[_language].update(zip(('revisions', 'latest_short'), _values))
+
+# The empty site offers one next step.
+for _language, _label in {'en': 'Write the first story', 'zh-TW': '撰寫第一則消息',
+                          'ja': '最初のニュースを書く', 'ko': '첫 소식 쓰기'}.items():
+    COPY[_language]['write_first'] = _label

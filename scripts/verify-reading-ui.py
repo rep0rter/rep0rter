@@ -65,13 +65,20 @@ def main():
             checks.append(f'{width}x{height}: IME candidates, Escape, cross-language search and calendar ordering')
             if width == 390:
                 page.evaluate("scrollTo({top:1000,behavior:'instant'})")
-                before = page.evaluate('({url:location.href,y:scrollY,lang:document.documentElement.lang})')
+                # The status bar takes its own space under the header; scroll anchoring then
+                # keeps the story being read in place, so compare what is on screen, not scrollY.
+                reading = """() => { const card = [...document.querySelectorAll('article[data-search]')]
+                  .find(a => a.getBoundingClientRect().bottom > 200); return {url: location.href,
+                  lang: document.documentElement.lang, id: card.id, top: Math.round(card.getBoundingClientRect().top)}; }"""
+                before = page.evaluate(reading)
                 stalled = []
                 page.route('**/index.ko.html', lambda route: stalled.append(route))
                 page.evaluate("void window.Rep0rterLanguage.change('ko')")
                 page.wait_for_function("document.documentElement.getAttribute('aria-busy') === 'true'")
                 page.wait_for_function("document.documentElement.getAttribute('aria-busy') !== 'true'", timeout=12000)
-                assert page.evaluate('({url:location.href,y:scrollY,lang:document.documentElement.lang})') == before
+                after = page.evaluate(reading)
+                assert {k: after[k] for k in ('url', 'lang', 'id')} == {k: before[k] for k in ('url', 'lang', 'id')}, (before, after)
+                assert abs(after['top'] - before['top']) <= 2, (before, after)
                 assert page.locator('[data-language-status]').is_visible()
                 for route in stalled:
                     route.abort()

@@ -188,7 +188,9 @@ def seed(data_dir: Path, *, port: int, empty: bool = False) -> None:
             container = Container(id="community:stories", source="community", name="Community stories")
             store.upsert_container(container)
             first = second = None
-            for revision, hours, date_text in ((1, 200, "November 14"), (2, 1.5, "November 21")):
+            # Each edition's fictional translation localises its own date.
+            for revision, hours, date_text, local in ((1, 200, "November 14", {"zh-TW": "11 月 14 日", "ja": "11月14日", "ko": "11월 14일"}),
+                                                      (2, 1.5, "November 21", {"zh-TW": "11 月 21 日", "ja": "11月21日", "ko": "11월 21일"})):
                 event = Event(id=f"community:story:{revision}", source="community", kind="message",
                               container_id=container.id, ts=NOW - hours * HOUR, author_id="author-Kuo",
                               author_name="Kuo Ya-chen", text=f"Disability-friendly venue guide sprint, {date_text}.",
@@ -200,12 +202,12 @@ def seed(data_dir: Path, *, port: int, empty: bool = False) -> None:
                 editions = {
                     "en": (f"Venue accessibility guide sprint moves to {date_text}",
                            f"The Venue Guide team will hold its accessibility data sprint on {date_text}, collecting entrance, toilet and elevator details for event venues."),
-                    "zh-TW": (f"場地無障礙指南衝刺改在 {date_text}",
-                              f"Venue Guide 團隊將在 {date_text} 舉辦無障礙資料衝刺，收集活動場地的入口、廁所與電梯資訊。"),
-                    "ja": (f"会場アクセシビリティガイドのスプリント、{date_text}に",
-                           f"Venue Guide チームが {date_text} に、会場の入口・トイレ・エレベーター情報を集めるスプリントを開きます。"),
-                    "ko": (f"행사장 접근성 가이드 스프린트, {date_text}로",
-                           f"Venue Guide 팀이 {date_text}에 행사장 출입구·화장실·엘리베이터 정보를 모으는 스프린트를 엽니다."),
+                    "zh-TW": (f"場地無障礙指南衝刺改在 {local['zh-TW']}",
+                              f"Venue Guide 團隊將在 {local['zh-TW']} 舉辦無障礙資料衝刺，收集活動場地的入口、廁所與電梯資訊。"),
+                    "ja": (f"会場アクセシビリティガイドのスプリント、{local['ja']}に",
+                           f"Venue Guide チームが {local['ja']} に、会場の入口・トイレ・エレベーター情報を集めるスプリントを開きます。"),
+                    "ko": (f"행사장 접근성 가이드 스프린트, {local['ko']}로",
+                           f"Venue Guide 팀이 {local['ko']}에 행사장 출입구·화장실·엘리베이터 정보를 모으는 스프린트를 엽니다."),
                 }
                 post = Post(event_id=event.id, published_at=NOW - hours * HOUR + 300, score=9,
                             headline=editions["en"][0], summary=editions["en"][1],

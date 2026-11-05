@@ -2,7 +2,7 @@
 {% set active_page = 'projects' %}
 {% block page_title %}{{ account_copy.project_news }}{% endblock %}
 {% block heading %}{{ account_copy.project_news }}{% endblock %}
-{% block navigation %}<a href="/?lang={{ account_language }}">{{ ui.icon('back') }}<span>{{ account_copy.back_feed }}</span></a><a href="/submit?lang={{ account_language }}">{{ ui.icon('chat') }}<span>{{ account_copy.one_off }}</span></a>{% if project_id %}<a href="/projects?lang={{ account_language }}">{{ ui.icon('spark') }}<span>{{ account_copy.add_project }}</span></a>{% endif %}{% endblock %}
+{% block navigation %}<a href="/?lang={{ account_language }}">{{ ui.icon('back') }}<span>{{ account_copy.back_feed }}</span></a><a href="/submit?lang={{ account_language }}">{{ ui.icon('chat') }}<span>{{ account_copy.post_project }}</span></a>{% if project_id %}<a href="/projects?lang={{ account_language }}">{{ ui.icon('spark') }}<span>{{ account_copy.add_project }}</span></a>{% endif %}{% endblock %}
 {% block content %}
   {% if error %}<p class="form-notice" role="alert">{{ error }}</p>{% endif %}
   {% if saved_notice %}<p class="form-notice" role="status">{{ account_copy.saved }} {{ account_copy.auto_enabled if values.get('enabled') else account_copy.auto_paused }}</p>{% endif %}

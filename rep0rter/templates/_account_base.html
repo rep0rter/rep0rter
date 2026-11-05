@@ -16,7 +16,7 @@
   <link rel="stylesheet" href="/login.css">
   {% block extra_head %}{% endblock %}
 </head>
-<body class="account-page {% block body_class %}{% endblock %}" data-account-language-error="{{ account_copy.language_error }}">
+<body class="account-page {% block body_class %}{% endblock %}" data-account-language-error="{{ account_copy.language_error }}" data-account-fix-field="{{ account_copy.fix_field }}">
 <a class="skip-link" href="#main">{% block skip_label %}{{ copy.skip_content }}{% endblock %}</a>
 <div class="ambient" aria-hidden="true"><span></span><span></span><span></span></div>
 {# The reader's masthead: one search, Write, the account entry, then language and appearance. #}

@@ -484,3 +484,9 @@ ACCOUNT_COPY['en']['more_links'] = 'More account links'
 ACCOUNT_COPY['zh-TW']['more_links'] = '更多帳號連結'
 ACCOUNT_COPY['ja']['more_links'] = 'アカウントのその他のリンク'
 ACCOUNT_COPY['ko']['more_links'] = '계정 링크 더 보기'
+
+# When a server error is shown beside its field, the banner only points to it.
+ACCOUNT_COPY['en']['fix_field'] = 'Fix 1 field below.'
+ACCOUNT_COPY['zh-TW']['fix_field'] = '請修正下方 1 個欄位。'
+ACCOUNT_COPY['ja']['fix_field'] = '下の 1 項目を修正してください。'
+ACCOUNT_COPY['ko']['fix_field'] = '아래 항목 1개를 수정해 주세요.'

@@ -232,6 +232,7 @@
         document.body.replaceChildren(...[...page.body.childNodes].map(node => document.importNode(node, true)));
         document.body.className = page.body.className;
         document.body.dataset.accountLanguageError = page.body.dataset.accountLanguageError || '';
+        document.body.dataset.accountFixField = page.body.dataset.accountFixField || '';
         root.lang = page.documentElement.lang;
         document.title = page.title;
         history.replaceState(history.state, '', url);
@@ -285,7 +286,8 @@
     const notice = document.querySelector<HTMLElement>('.account-page main > .form-notice[role=alert]');
     const form = document.querySelector<HTMLFormElement>('.project-form form');
     if (!notice || !form || form.querySelector('.field-error')) return;
-    const message = (notice.querySelector('p') || notice).textContent?.trim() || '';
+    const text = notice.querySelector('p') || notice;
+    const message = text.textContent?.trim() || '';
     const name = FIELD_ERRORS.find(([pattern]) => pattern.test(message))?.[1];
     const field = name ? form.querySelector<HTMLElement>(`[name="${name}"]`) : null;
     if (!field) return;
@@ -298,7 +300,8 @@
     field.setAttribute('aria-invalid', 'true');
     field.setAttribute('aria-describedby', [field.getAttribute('aria-describedby'), inline.id].filter(Boolean).join(' '));
     field.addEventListener('input', () => { field.removeAttribute('aria-invalid'); inline.remove(); }, { once: true });
-    // The banner sits above the form; link it to the field it is about.
+    // The banner sits above the form; link it to the field it is about. The
+    // full sentence now sits beside the field, so the banner only points there.
     const label = field.id ? form.querySelector(`label[for="${field.id}"]`)?.firstChild?.textContent?.trim() : '';
     if (label) {
       const jump = document.createElement('a');
@@ -310,7 +313,9 @@
         field.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
         field.focus({ preventScroll: true });
       });
-      notice.append(document.createElement('br'), jump);
+      const summary = document.body.dataset.accountFixField;
+      if (summary) text.replaceChildren(summary, ' ', jump);
+      else notice.append(document.createElement('br'), jump);
     }
   };
   const formButtons = (form: HTMLFormElement) =>

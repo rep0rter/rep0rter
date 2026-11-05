@@ -58,7 +58,7 @@
           ? previousFocus : original || document.querySelector<HTMLElement>('.masthead .wordmark');
         target?.focus({ preventScroll: true });
       }
-      window.removeEventListener('resize', finish);
+      window.removeEventListener('resize', resize);
       window.removeEventListener('pagehide', finish);
       document.removeEventListener('keydown', escape);
       document.removeEventListener('rep0rter:before-language', beforeLanguage);
@@ -86,9 +86,22 @@
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') leave(); };
     const beforeLanguage = () => { if (layer) finish(); };
     const motionPreference = () => { if (reduced.matches) finish(); };
+    // The brand stays in the logo's own masthead slot, so a resize (a phone's
+    // viewport settling, a toolbar showing) re-anchors it rather than ending it.
+    const resize = () => {
+      if (!layer || !original?.isConnected) return;
+      const box = rect(original);
+      if (box.width <= 0 || box.height <= 0 || box.top < 0) { finish(); return; }
+      const typography = getComputedStyle(original);
+      layer.style.left = `${box.left}px`;
+      layer.style.top = `${box.top}px`;
+      layer.style.height = `${box.height}px`;
+      layer.style.fontSize = typography.fontSize;
+      layer.style.gap = typography.gap;
+    };
     let failsafe = setTimeout(finish, 4500);
     cancelEntry = finish;
-    window.addEventListener('resize', finish);
+    window.addEventListener('resize', resize);
     window.addEventListener('pagehide', finish);
     document.addEventListener('keydown', escape);
     document.addEventListener('rep0rter:before-language', beforeLanguage);
@@ -139,6 +152,8 @@
           document.body.append(controls);
           try { controls.showModal(); }
           catch { finish(); return; }
+          // Focus the dialog itself: Tab reaches Skip, without a focus ring over the page at rest.
+          controls.focus({ preventScroll: true });
           original = document.querySelector<HTMLElement>('.masthead .wordmark');
           if (!original) { finish(); return; }
           const box = rect(original);

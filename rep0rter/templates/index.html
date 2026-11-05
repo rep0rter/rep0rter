@@ -92,7 +92,7 @@
       </details>
       <p class="search-status" id="search-status" role="status" aria-live="polite" data-result-template="{{ copy.search_results }}" data-result-template-one="{{ copy.search_results_one }}" data-query-template="{{ copy.search_results_query }}" data-query-template-one="{{ copy.search_results_query_one }}" hidden></p>
       {% endif %}
-      {% if not items %}<div class="empty-state"><h2>{{ copy.empty_title }}</h2><p>{{ copy.empty }}</p>{% if not collection_complete %}<p class="empty-delayed">{{ copy.collection_delayed }}</p>{% endif %}</div>{% endif %}
+      {% if not items %}<div class="empty-state"><h2>{{ copy.empty_title }}</h2><p>{{ copy.empty }}</p>{% if not collection_complete %}<p class="empty-delayed">{{ copy.collection_delayed }}</p>{% endif %}<div class="empty-action"><a class="button button-primary" href="{{ prefix }}write?lang={{ language }}">{{ ui.icon('write') }} {{ copy.write_first }}</a></div></div>{% endif %}
       {% if not detail %}<div class="empty-state" data-invalid-range hidden><h2>{{ copy.range_title }}</h2><p>{{ copy.range_body }}</p></div>{% endif %}
       <div class="empty-state" data-no-results hidden><h2>{{ copy.no_results }}</h2><p>{{ copy.search_help }}</p><button class="button button-secondary" type="button" data-search-reset data-label-search="{{ copy.clear_search }}" data-label-filters="{{ copy.reset_filters }}">{{ copy.reset_filters }}</button></div>
       <div class="story-days{% if page_kind in ('tag', 'source') %} story-timeline{% endif %}">

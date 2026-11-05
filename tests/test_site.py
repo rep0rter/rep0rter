@@ -1096,7 +1096,7 @@ def test_source_examples_do_not_leak_through_story_history(published_site):
     for page, _ in EDITIONS.values():
         doc = html(cfg.site_dir / "posts" / str(kept.id) / page)
         assert not doc.select_one(".revision-notice")
-        assert not doc.select_one(".story-history nav")
+        assert not doc.select_one(".story-revisions")
         assert not doc.find("a", href=sample.url)
         assert doc.select_one(f'.story-history a[href="{evidence.url}"]')
         assert not doc.find("a", href=f"../{removed.id}/{page}")
