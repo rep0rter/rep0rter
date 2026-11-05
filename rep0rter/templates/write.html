@@ -7,16 +7,15 @@
   {% if error %}<div class="form-notice{% if saved_post %} form-notice--warning{% endif %}" role="alert"><p>{{ error }}</p>{% if saved_post %}<button type="submit" form="story-form" name="action" value="publish" data-busy-label="{{ account_copy.busy_publish }}">{{ account_copy.retry_story }}</button>{% endif %}</div>{% endif %}
   {% if preview %}
   <section class="story-preview" aria-labelledby="preview-title">
-    <p class="eyebrow" id="preview-title">{{ account_copy.preview_unpublished }}</p>
+    <div class="preview-head"><p class="eyebrow" id="preview-title">{{ account_copy.preview_unpublished }}</p><div class="preview-actions"><a class="button button-secondary" href="#project_name" data-edit-story>{{ ui.icon('write') }}{{ account_copy.edit_story }}</a><button type="submit" form="story-form" name="action" value="publish" data-busy-label="{{ account_copy.busy_publish }}">{{ account_copy.retry_story if saved_post else account_copy.publish_story }}</button></div></div>
     <p class="story-badge">{{ account_copy.self_reported }}{% if preview.project_name %} · {{ preview.project_name }}{% endif %}</p>
     <h2>{{ preview.title }}</h2><p class="project-preview">{{ preview.description }}</p>
     {% if preview.take_part %}<p class="project-preview"><strong>{{ account_copy.take_part }}</strong><br>{{ preview.take_part }}</p>{% endif %}
     <p class="meta">{{ preview.author }} · {{ preview.event_date }}</p>
     <div class="hashtag-list">{% for tag in preview.hashtags %}<span class="hashtag">#{{ tag }}</span>{% endfor %}</div>
     {% if preview.evidence %}<p class="meta">{{ account_copy.evidence }}: {% for link in preview.evidence %}{% set host = link.split('//', 1)[-1].split('/', 1)[0].split('?', 1)[0].split('#', 1)[0].lower() %}{% if host.startswith('www.') %}{% set host = host[4:] %}{% endif %}{% if not loop.first %}, {% endif %}<a href="{{ link }}" rel="noopener" title="{{ link }}">{{ host or (account_copy.link ~ ' ' ~ loop.index) }}</a>{% endfor %}</p>{% else %}<p class="form-help">{{ account_copy.no_evidence }}</p>{% endif %}
-    {% if preview.original %}<details class="original-source"><summary>{{ account_copy.show_original }}</summary><blockquote dir="auto">{{ preview.original }}</blockquote></details>{% endif %}
+    {% if preview.original %}<blockquote class="preview-original" dir="auto">{{ preview.original }}</blockquote>{% endif %}
   </section>
-  <div class="preview-actions"><a class="button button-secondary" href="#project_name" data-edit-story>{{ ui.icon('write') }}{{ account_copy.edit_story }}</a><button type="submit" form="story-form" name="action" value="publish" data-busy-label="{{ account_copy.busy_publish }}">{{ account_copy.retry_story if saved_post else account_copy.publish_story }}</button></div>
   {% endif %}
   <article class="project-form">
     <p>{{ account_copy.english_notice }}</p>

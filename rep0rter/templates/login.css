@@ -74,3 +74,8 @@
   .login-identity { font-size: 19px; }
   .login-notice { font-size: 17px; }
 }
+
+@media (min-width: 2200px) {
+  .login-privacy, .login-read, .login-card .login-text-button { font-size: 18px; }
+  .login-intro { font-size: 21px; }
+}

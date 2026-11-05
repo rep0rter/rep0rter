@@ -424,6 +424,10 @@ for _language, _values in {
 }.items():
     COPY[_language].update(zip(('fix_dates', 'write_short', 'sign_in_short', 'account_short'), _values))
 
+# Short visible label under the phone appearance icon (the full name stays its accessible name).
+for _language, _label in {'en': 'Theme', 'zh-TW': '外觀', 'ja': '表示', 'ko': '화면'}.items():
+    COPY[_language]['appearance_short'] = _label
+
 
 # One neutral source label for stories and projects people submit themselves.
 for _language, _label in {'en': 'Community submissions', 'zh-TW': '社群投稿',

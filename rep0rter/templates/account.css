@@ -128,3 +128,16 @@
   .account-page main > article, .account-page main > section, .account-page .project-form .owner-confirmation, .account-page .form-notice, .account-page .preference-option, .account-page .project-form input:not([type=hidden]), .account-page .project-form textarea, .account-page .project-form select { background: Canvas; color: CanvasText; border: 1px solid CanvasText; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
   .account-page .preference-option[aria-pressed=true] { color: HighlightText; background: Highlight; }
 }
+
+/* Preview actions sit beside the "not published" label, before the preview body. */
+.story-preview .preview-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; margin-bottom: 16px; }
+.story-preview .preview-head .eyebrow { margin: 0; }
+.story-preview .preview-head .preview-actions { margin: 0; }
+
+/* 1440p: match the reader's 2200px tier (18px secondary text, 21px body). */
+@media (min-width: 2200px) {
+  .account-page .form-help, .account-page .field-error, .account-page .form-fine-print,
+  .account-page .project-list li > span, .account-page .account-navigation a,
+  .account-page .project-form .owner-confirmation { font-size: 18px; }
+  .account-page .project-form > p, .account-page .form-notice, .account-page .project-preview { font-size: 21px; }
+}

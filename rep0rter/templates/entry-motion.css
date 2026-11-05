@@ -128,14 +128,15 @@ html[data-brand-exiting] body::before { transition: opacity 240ms ease-out; }
   [data-brand-original] { visibility: visible; }
 }
 
-/* New interface (beta): the page stays readable beneath a light veil while the
+/* New interface: the page stays fully readable beneath a clear veil while the
    brand plays in the masthead. It grows in place and settles into the header, so
    it never travels across the hero text. The scale follows the script's veil
    progress (1 at the start, 0 when docked); the script's centring is replaced. */
+/* No tint or blur: the page underneath stays at full strength and never reads as disabled. */
 html[data-brand-entering] body::before {
-  background: radial-gradient(ellipse at 22% 4%, color-mix(in srgb, var(--surface) 70%, transparent), transparent 45%), color-mix(in srgb, var(--canvas) 22%, transparent);
-  -webkit-backdrop-filter: blur(.6px);
-  backdrop-filter: blur(.6px);
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 html .brand-entry-clone {
   transform: none !important;
