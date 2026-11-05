@@ -84,12 +84,27 @@ suppressed (its own "dismissed" flag) except in `home-entrance`.
 | `projects-error` | `/projects` | Validation failure |
 | `projects-saved` | `/projects/<id>` | Saved notice with project list |
 
+## New interface (beta) switch
+
+From brief v2 on, the new set is captured with the footer switch on
+(`REDESIGN=1 scripts/design-review/round.sh …`), which is what reviewers see.
+Every round also captures the same states with the switch off; that set is a
+regression check for the default interface and is not shown to reviewers.
+
 ## Reference sites
 
-Captured once (`scripts/design-review/competitors.py`) at the same sizes,
-read-only: Rest of World, The Markup and Semafor. States where available:
-`home`, `home-feed`, `home-footer`, `article`, `search`, `search-no-results`,
-`language` (another edition) and `newsletter` (a sign-up form before submit).
+Captured once per brief version (`scripts/design-review/competitors.py`) at the
+same sizes, read-only, and reused unchanged in every round of that version.
+
+- Brief v1 (rounds 1–9): Rest of World, The Markup and Semafor — `home`,
+  `home-feed`, `home-footer`, `article`, `search`, `search-no-results`,
+  `language` and `newsletter`.
+- Brief v2 (`--v2`): The Markup, Civic Tech Field Guide and Code for Japan —
+  the civic-tech publications and directories rep0rter's readers compare it
+  with, none behind verification walls. States: `home`, `home-feed`,
+  `home-footer`, `article`, `search`, `search-no-results`, `newsletter`
+  (Markup); `topic`, `submit-form` (Field Guide); `news`, `news-filtered`,
+  `language` (Code for Japan).
 
 ## Excluded
 

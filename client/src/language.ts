@@ -103,7 +103,9 @@
       status.setAttribute('role', 'status');
       // Sit in the flow under the header, pushing content down instead of covering it.
       let header: Element | null = null;
-      try { header = document.querySelector('body > .site-header'); } catch { /* minimal DOMs */ }
+      // Only the new interface places the status in the flow under the header.
+      try { if (document.documentElement.dataset.redesign !== undefined) header = document.querySelector('body > .site-header'); }
+      catch { /* minimal DOMs */ }
       if (header) {
         header.after(status);
         const zoom = Number.parseFloat(getComputedStyle(document.documentElement).zoom) || 1;

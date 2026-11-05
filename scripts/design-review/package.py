@@ -67,6 +67,7 @@ def main():
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--mapping", type=Path, required=True)
+    parser.add_argument("--brief", default="docs/design-review/brief.md", help="brief copied into the folder as brief.md")
     parser.add_argument("--seed", type=int)
     args = parser.parse_args()
     letters = ["A", "B", "C"]
@@ -79,7 +80,7 @@ def main():
     for name, source in (("baseline", args.baseline), ("new", args.new), ("reference", args.reference)):
         counts[name] = package(source, review / mapping[name], mapping[name])
     shutil.copy2(ROOT / "docs/design-review/states.md", review / "states.md")
-    shutil.copy2(ROOT / "docs/design-review/brief.md", review / "brief.md")
+    shutil.copy2(ROOT / args.brief, review / "brief.md")
     args.mapping.parent.mkdir(parents=True, exist_ok=True)
     args.mapping.write_text(json.dumps({"letters": mapping, "states": counts}, indent=2))
     print(json.dumps({"review": str(review), "states": counts}))

@@ -102,8 +102,10 @@
             status.setAttribute('role', 'status');
             // Sit in the flow under the header, pushing content down instead of covering it.
             let header = null;
+            // Only the new interface places the status in the flow under the header.
             try {
-                header = document.querySelector('body > .site-header');
+                if (document.documentElement.dataset.redesign !== undefined)
+                    header = document.querySelector('body > .site-header');
             }
             catch { /* minimal DOMs */ }
             if (header) {

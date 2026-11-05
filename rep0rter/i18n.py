@@ -402,3 +402,13 @@ for _language, (_title, _body) in {
     'ko': ('날짜 범위를 고쳐 주세요', '시작일이 종료일과 같거나 빠르면 소식이 다시 표시됩니다.'),
 }.items():
     COPY[_language].update(range_title=_title, range_body=_body)
+
+
+# Beta switch for the new interface, stored only in this browser.
+for _language, _values in {
+    'en': ('New interface (beta)', 'On', 'Off'),
+    'zh-TW': ('新版介面（測試版）', '開啟', '關閉'),
+    'ja': ('新しい画面（ベータ版）', 'オン', 'オフ'),
+    'ko': ('새 화면 (베타)', '켜짐', '꺼짐'),
+}.items():
+    COPY[_language].update(zip(('redesign_label', 'redesign_on', 'redesign_off'), _values))

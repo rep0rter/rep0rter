@@ -19,6 +19,6 @@
 <body class="withdrawal-page">
 <div class="ambient" aria-hidden="true"><span></span><span></span><span></span></div>
 <header class="site-header page-shell"><div class="masthead"><a class="wordmark" href="../../{{ page_name(language) }}">{% if branding %}<img src="../../{{ branding.logo }}" alt="" width="44" height="44">{% endif %}<span>{{ cfg.site_title if cfg else 'rep0rter' }}<small>{{ copy.brand_note }}</small></span></a><div class="masthead-actions"><div class="masthead-preferences">{{ ui.language_links(copy, language, languages, page_name, compact=True) }}{{ ui.appearance(copy) }}</div></div></div></header>
-<main class="withdrawal-card"><span class="icon-orb orb-violet">{{ ui.icon('chat') }}</span><h1>{{ copy.withdrawn }}</h1><p>{{ copy.withdrawal_notice }}</p><a class="button button-primary" href="../../{{ page_name(language) }}">{{ ui.icon('back') }} {{ copy.back_home }}</a></main>
+<main class="withdrawal-card"><span class="icon-orb orb-violet">{{ ui.icon('chat') }}</span><h1>{{ copy.withdrawn }}</h1><p>{{ copy.withdrawal_notice }}</p><a class="button button-primary" href="../../{{ page_name(language) }}">{{ ui.icon('back') }} {{ copy.back_home }}</a><div class="legacy-only">{{ ui.language_links(copy, language, languages, page_name) }}</div></main>
 </body>
 </html>

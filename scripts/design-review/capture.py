@@ -238,7 +238,7 @@ STATES = [
 ]
 
 
-def capture(servers, out: Path, only=None):
+def capture(servers, out: Path, only=None, redesign=False):
     out.mkdir(parents=True, exist_ok=True)
     failures = []
     with sync_playwright() as playwright:
@@ -251,6 +251,8 @@ def capture(servers, out: Path, only=None):
                                               locale="en-US", timezone_id="Asia/Taipei")
                 if not options.get("entrance"):
                     context.add_init_script("try { localStorage.setItem('rep0rter-brand-dismissed', '1') } catch (e) {}")
+                if redesign:
+                    context.add_init_script("try { localStorage.setItem('rep0rter-redesign', '1') } catch (e) {}")
                 page = context.new_page()
                 errors = []
                 page.on("pageerror", lambda error: errors.append(str(error)))
@@ -292,12 +294,13 @@ def main():
     parser.add_argument("--disabled", required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--only", nargs="*")
+    parser.add_argument("--redesign", action="store_true", help="turn the New interface (beta) switch on")
     args = parser.parse_args()
     servers = {"base": args.base.rstrip("/"), "empty": args.empty.rstrip("/"), "disabled": args.disabled.rstrip("/")}
     for url in servers.values():
         if urlsplit(url).hostname not in ("127.0.0.1", "localhost", "::1"):
             parser.error("Capture local previews only; never production.")
-    failures = capture(servers, args.out, args.only)
+    failures = capture(servers, args.out, args.only, args.redesign)
     print("\n".join(failures) or "all states captured")
     return 1 if failures else 0
 

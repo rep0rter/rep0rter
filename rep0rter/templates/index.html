@@ -83,6 +83,7 @@
   {% elif detail %}
   <section class="page-intro detail-intro">
     <a class="back-link" href="{{ prefix }}{{ page_name(language) }}">{{ ui.icon('back') }} {{ copy.back_home }}</a>
+    <div class="legacy-only"><p class="eyebrow">{{ copy.story_heading }}</p><p class="page-intro-title">{{ copy.detail_title }}</p><p>{{ copy.detail_intro }}</p></div>
   </section>
   {% else %}
   <section class="page-intro">
@@ -103,7 +104,7 @@
   <div class="reading-layout{% if detail %} reading-layout--detail{% endif %}">
     <div class="feed-column" id="news" tabindex="-1">
       {% if not detail %}
-      {% if page_kind == 'home' %}<div class="section-heading"><div><p class="eyebrow">{{ copy.feed_eyebrow }}</p><h2>{{ copy.browse_by_date }}</h2></div></div>{% endif %}
+      <div class="section-heading"><div><p class="eyebrow">{{ copy.feed_eyebrow }}</p><h2>{{ copy.browse_by_date }}</h2></div></div>
       <details class="search-filters" data-filters hidden>
         <summary>{{ ui.icon('search') }}<span>{{ copy.filters }}</span><span class="filter-count" data-filter-count hidden></span><span class="filter-alert" data-filter-alert hidden>{{ copy.invalid_range }}</span>{{ ui.icon('down') }}</summary>
         <div class="filter-panel">
@@ -130,8 +131,8 @@
       <div class="story-days{% if page_kind in ('tag', 'source') %} story-timeline{% endif %}">
       {% for day, day_items in days.items() %}
       {% set first_day = loop.first %}
-      <section class="day"{% if not detail %} aria-labelledby="day-{{ day }}"{% endif %}>
-        {% if not detail %}<h2 id="day-{{ day }}" class="day-heading"><time datetime="{{ day }}">{{ day }}</time><span class="day-count">{{ day_items | length }}</span><span class="day-rule" aria-hidden="true"></span></h2>{% endif %}
+      <section class="day" aria-labelledby="day-{{ day }}">
+        <h2 id="day-{{ day }}" class="day-heading{% if detail %} legacy-only{% endif %}"><time datetime="{{ day }}">{{ day }}</time><span class="day-count">{{ day_items | length }}</span><span class="day-rule" aria-hidden="true"></span></h2>
         <div class="story-grid{% if day_items | length == 1 %} story-grid--single{% endif %}">
           {% for it in day_items %}{% set featured = (first_day and loop.first) or detail %}{% include '_story.html' %}{% endfor %}
         </div>
@@ -140,8 +141,8 @@
       </div>
     </div>
     <aside class="reading-aside" aria-label="{{ copy.about }}">
-      {% if popular_tags and not detail %}<section class="about-card hashtag-discovery"><p class="eyebrow">{{ copy.hashtags }}</p><h2>{{ copy.explore_hashtags }}</h2><nav class="hashtag-list" aria-label="{{ copy.hashtags }}">{% for name, count in popular_tags %}<a class="hashtag" href="{{ prefix }}{{ tag_path(name) }}{{ page_name(language) }}"{% if name == tag %} aria-current="page"{% endif %}>#{{ name }} <span>{{ count }}</span></a>{% endfor %}</nav></section>{% endif %}
-      {% if not detail %}<section class="about-card"><span class="icon-orb orb-violet">{{ ui.icon('spark') }}</span><p class="eyebrow">{{ copy.about_eyebrow }}</p><h2>{{ copy.about_title }}</h2><p>{{ copy.about_body }}</p><div class="about-principle">{{ ui.icon('check') }}<span>{{ copy.principle_sources }}</span></div><div class="about-principle">{{ ui.icon('globe') }}<span>{{ copy.principle_languages }}</span></div><div class="about-principle">{{ ui.icon('chat') }}<span>{{ copy.principle_people }}</span></div></section>{% endif %}
+      {% if popular_tags %}<section class="about-card hashtag-discovery"><p class="eyebrow">{{ copy.hashtags }}</p><h2>{{ copy.explore_hashtags }}</h2><nav class="hashtag-list" aria-label="{{ copy.hashtags }}">{% for name, count in popular_tags %}<a class="hashtag" href="{{ prefix }}{{ tag_path(name) }}{{ page_name(language) }}"{% if name == tag %} aria-current="page"{% endif %}>#{{ name }} <span>{{ count }}</span></a>{% endfor %}</nav></section>{% endif %}
+      <section class="about-card"><span class="icon-orb orb-violet">{{ ui.icon('spark') }}</span><p class="eyebrow">{{ copy.about_eyebrow }}</p><h2>{{ copy.about_title }}</h2><p>{{ copy.about_body }}</p><div class="about-principle">{{ ui.icon('check') }}<span>{{ copy.principle_sources }}</span></div><div class="about-principle">{{ ui.icon('globe') }}<span>{{ copy.principle_languages }}</span></div><div class="about-principle">{{ ui.icon('chat') }}<span>{{ copy.principle_people }}</span></div></section>
       <section class="subscribe-card"><span class="icon-orb orb-peach">{{ ui.icon('rss') }}</span><h2>{{ copy.subscribe_title }}</h2><p>{{ copy.subscribe_body }}</p><a class="button button-secondary" href="{{ prefix }}{{ feed }}">{{ copy.subscribe }} {{ ui.icon('arrow') }}</a></section>
       <p class="aside-note">{{ copy.aside_note }}</p>
     </aside>
@@ -167,6 +168,7 @@
   <p class="footer-explanation">{{ copy.footer }}</p>
   <div class="footer-status"><p>{{ stats }}<br>{{ copy.updated }} {{ generated_local }}{% if last_healthy %}<br>{{ copy.healthy }} {{ last_healthy }}{% endif %}</p><p>{{ copy.optout }} <a href="https://g0v-slack-archive.g0v.ronny.tw/index/channel/C069ARZJNE9">#rep0rter {{ ui.icon('external') }}</a></p></div>
   {% if not collection_complete %}<p class="source-update-status">{{ copy.collection_delayed }}</p>{% endif %}
+  <button type="button" class="redesign-toggle" data-redesign-toggle aria-pressed="false" data-on="{{ copy.redesign_on }}" data-off="{{ copy.redesign_off }}" hidden><span>{{ copy.redesign_label }}</span><span class="redesign-state" data-redesign-state>{{ copy.redesign_off }}</span></button>
 </footer>
 </body>
 </html>

@@ -2,8 +2,6 @@
 .account-page { min-height: 100svh; }
 .account-page > header, .account-page > main, .account-page > footer { width: min(100% - 48px, 920px); }
 .account-page > header.site-header { padding-block: 16px; }
-/* One header width across reader and account pages. */
-.account-page > header.site-header { width: min(100% - 64px, 1200px); }
 .account-page .masthead { --nav-depth: 1; display: flex; flex-direction: row; flex-wrap: nowrap; align-items: center; min-height: 76px; gap: 16px; margin: 0; padding: 12px 20px; }
 .account-page .wordmark { min-width: 0; }
 .account-page .wordmark img { flex: 0 0 auto; }
@@ -44,7 +42,7 @@
   .account-page .quiet-button:hover { background: var(--accent-soft); }
 }
 @media (max-width: 600px) {
-  .account-page > header, .account-page > main, .account-page > footer, .account-page > header.site-header { width: calc(100% - 32px); }
+  .account-page > header, .account-page > main, .account-page > footer { width: calc(100% - 32px); }
   .account-page .masthead { min-height: 68px; padding: 10px 14px; gap: 10px; }
   .account-page .wordmark { font-size: 23px; }
   .account-page .wordmark small { font-size: 10px; }
@@ -76,37 +74,39 @@
   .account-page .masthead { padding-inline: 10px; }
 }
 
-/* Forms on phones: reach the first field sooner. Kept last so it wins over the rules above. */
-@media (max-width: 640px) {
-  .account-page .account-intro { padding: 16px 4px 12px; }
-  .account-page .account-intro h1 { margin-top: 10px; font-size: 30px; }
-  .account-page .account-intro .tagline { margin-top: 8px; font-size: 15px; line-height: 1.6; }
-  /* Links wrap as compact chips so none is hidden off-screen. */
-  .account-navigation { flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-  .account-navigation a { min-height: 44px; padding: 0 12px; }
-  .account-page:has(.project-form) .account-intro .tagline { display: none; }
-  .account-navigation a { flex: 0 0 auto; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--glass-clear); text-decoration: none; font-size: 13px; }
-  .account-page .account-bar { padding: 8px 8px 8px 14px; margin-bottom: 16px; font-size: 13px; }
-  .account-page .account-bar button { min-height: 40px; padding: 8px 14px; }
-}
+.account-page > footer > p:empty { display: none; }
 
-/* Wide form pages align with the header grid and add a side panel on how it works. */
-.account-page:has(.account-aside) > main { width: min(100% - 64px, 1200px); display: grid; grid-template-columns: minmax(0, 1fr) 340px; column-gap: 40px; align-items: start; }
-.account-page:has(.account-aside) > main > * { grid-column: 1; }
-.account-page:has(.account-aside) > main > .account-intro { grid-column: 1 / -1; }
-.account-page:has(.account-aside) > footer { width: min(100% - 64px, 1200px); }
-.account-page main > aside.account-aside { grid-column: 2; grid-row: 2 / span 8; position: sticky; top: 132px; padding: 28px; margin: 0; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-card); }
+/* ===== New interface (beta): account layout changes behind data-redesign. ===== */
+:root[data-redesign] .account-page > header.site-header { width: min(100% - 64px, 1200px); }
+:root:not([data-redesign]) .account-aside { display: none; }
+:root[data-redesign] .account-page:has(.account-aside) > main { width: min(100% - 64px, 1200px); display: grid; grid-template-columns: minmax(0, 1fr) 340px; column-gap: 40px; align-items: start; }
+:root[data-redesign] .account-page:has(.account-aside) > main > * { grid-column: 1; }
+:root[data-redesign] .account-page:has(.account-aside) > main > .account-intro { grid-column: 1 / -1; }
+:root[data-redesign] .account-page:has(.account-aside) > footer { width: min(100% - 64px, 1200px); }
+:root[data-redesign] .account-page main > aside.account-aside { grid-column: 2; grid-row: 2 / span 8; position: sticky; top: 132px; padding: 28px; margin: 0; border: 1px solid var(--line); border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow-card); }
 .account-aside h2 { margin-bottom: 18px; font-size: 20px; }
 .account-aside ol { display: grid; gap: 18px; margin: 0; padding: 0; list-style: none; counter-reset: step; }
 .account-aside li { display: grid; grid-template-columns: 32px 1fr; gap: 2px 12px; counter-increment: step; }
 .account-aside li::before { content: counter(step); grid-row: span 2; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 700; }
 .account-aside strong { font-size: 15px; }
 .account-aside span { color: var(--muted); font-size: 14px; line-height: 1.6; }
+:root[data-redesign] .account-page.login-page main { width: min(560px, calc(100% - 32px)); }
 @media (max-width: 1100px) {
-  .account-page:has(.account-aside) > main { display: flex; flex-direction: column; width: min(100% - 48px, 920px); }
-  .account-page main > aside.account-aside { position: static; margin-top: 24px; }
-  .account-page:has(.account-aside) > main > aside.account-aside { order: 99; }
+  :root[data-redesign] .account-page:has(.account-aside) > main { display: flex; flex-direction: column; width: min(100% - 48px, 920px); }
+  :root[data-redesign] .account-page main > aside.account-aside { position: static; margin-top: 24px; order: 99; }
 }
-@media (max-width: 600px) { .account-page:has(.account-aside) > main, .account-page:has(.account-aside) > footer { width: calc(100% - 32px); } }
-/* A larger sign-in card on wide screens. */
-.account-page.login-page main { width: min(560px, calc(100% - 32px)); }
+@media (max-width: 600px) {
+  :root[data-redesign] .account-page > header.site-header, :root[data-redesign] .account-page:has(.account-aside) > main,
+  :root[data-redesign] .account-page:has(.account-aside) > footer { width: calc(100% - 32px); }
+}
+/* Forms on phones: reach the first field sooner. */
+@media (max-width: 640px) {
+  :root[data-redesign] .account-page .account-intro { padding: 16px 4px 12px; }
+  :root[data-redesign] .account-page .account-intro h1 { margin-top: 10px; font-size: 30px; }
+  :root[data-redesign] .account-page .account-intro .tagline { margin-top: 8px; font-size: 15px; line-height: 1.6; }
+  :root[data-redesign] .account-page:has(.project-form) .account-intro .tagline { display: none; }
+  :root[data-redesign] .account-navigation { flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  :root[data-redesign] .account-navigation a { flex: 0 0 auto; min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--glass-clear); text-decoration: none; font-size: 13px; }
+  :root[data-redesign] .account-page .account-bar { padding: 8px 8px 8px 14px; margin-bottom: 16px; font-size: 13px; }
+  :root[data-redesign] .account-page .account-bar button { min-height: 44px; padding: 8px 14px; }
+}
