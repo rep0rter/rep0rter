@@ -84,7 +84,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 /* Masthead: language and appearance are always available, including on touch. */
 .site-header { view-transition-name: site-navigation; position: sticky; top: 0; z-index: 10; padding-block: 16px;
   /* Fill the gap above the masthead so scrolled text never peeks through. */
-  background: linear-gradient(to bottom, var(--canvas) 0 calc(100% - 16px), transparent); }
+  background: var(--canvas); }
 .masthead, .story-card, .image-viewer-panel { position: relative; isolation: isolate; }
 /* Paired inner edge highlights emulate a gently curved lens, without distorting text. */
 .masthead::before, .story-card::before, .image-viewer-panel::before {
@@ -874,11 +874,57 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
 }
 
 /* Superseded stories: the report card is labelled as the previous version too. */
-.report-figure .figure-superseded { padding: 2px 10px; border-radius: 999px; background: var(--warning-bg); color: var(--warning-text); font-weight: 700; }
+/* The superseded mark sits on the report card itself, so the image never reads as current. */
+.report-figure--superseded { position: relative; }
+.report-figure--superseded .figure-superseded { position: absolute; z-index: 1; top: 14px; left: 14px; padding: 6px 14px; border-radius: 999px; background: var(--warning-bg); color: var(--warning-text); border: 1px solid color-mix(in srgb, var(--warning-text) 40%, transparent); font-size: 14px; font-weight: 700; box-shadow: var(--shadow-button); }
+.report-figure--superseded .source-card { opacity: .72; }
 
 /* Phone hashtag/source timelines: the first story comes sooner. */
 @media (max-width: 640px) {
   .page-intro:has(> .timeline-context) { padding-block: 8px 12px; }
   .timeline-context h1 { margin: 4px 0 6px; }
   .timeline-context > .button { margin-top: 10px; min-height: 44px; }
+}
+
+/* Desktop header controls keep a comfortable target as type grows. */
+@media (min-width: 1700px) { .masthead .preference-trigger { min-width: 48px; min-height: 48px; font-size: 15px; } }
+@media (min-width: 2200px) { .masthead .preference-trigger { min-width: 52px; min-height: 52px; font-size: 17px; } }
+
+/* Search and filter results read as full-width rows: no half-empty rows for sparse days. */
+@media (min-width: 900px) {
+  :root[data-search-active="true"] .reading-layout:not(.reading-layout--detail) .story-grid > .story-card { grid-column: 1 / -1; }
+}
+
+/* Phones: custom dates sit directly under the period they belong to, next to their error. */
+@media (max-width: 640px) {
+  .filter-panel { display: flex; flex-direction: column; gap: 16px; }
+  .filter-panel > .filter-fields { display: contents; }
+  .filter-panel > .filter-error { order: 1; }
+  .filter-panel > .filter-fields > label:first-child { order: 2; }
+  .filter-panel > .filter-dates { order: 3; margin-top: 0; }
+  .filter-panel > .filter-fields > label:not(:first-child) { order: 4; }
+  .filter-panel > .filter-bottom { order: 5; }
+  .filter-panel > .filter-show-bar { order: 6; }
+  .filter-panel > * { margin-top: 0; }
+}
+
+/* Wide screens: anchored jumps land just under the header, so the hashtag row above
+   the feed is either fully visible or fully covered, never cut in half. */
+@media (min-width: 1700px) {
+  :root { --header-clearance: 136px; }
+  .feed-column { scroll-margin-top: 0; }
+}
+
+/* Search results: full-width rows at every wide size (outranks the 2200px track rules). */
+@media (min-width: 900px) {
+  /* !important: search and filter results always read as rows, whatever the day-grid row rules say. */
+  :root[data-search-active="true"] .reading-layout:not(.reading-layout--detail) .story-grid > .story-card { grid-column: 1 / -1 !important; }
+  /* Every result row shares one width and image column, so lone days match busy ones. */
+  :root[data-search-active="true"] .reading-layout:not(.reading-layout--detail) .story-grid > .story-card { max-width: calc(70ch + 620px); }
+}
+
+@media (min-width: 1100px) {
+  @container story-card (min-width: 760px) {
+    :root[data-search-active="true"] .reading-layout:not(.reading-layout--detail) .story-grid > .story-card .story-content { grid-template-columns: minmax(0, 1fr) minmax(260px, 30%); }
+  }
 }
