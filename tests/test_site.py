@@ -161,6 +161,7 @@ def test_author_byline_preserves_local_photo_and_initial_fallback_across_edition
 
 
 def test_four_editions_escape_content_and_preserve_legacy_feed_guids(published_site):
+    from rep0rter.i18n import COPY
     _, cfg, _, entries, rendered_ids = published_site
     latest, latest_event = entries[-1]
     assert set(rendered_ids) == {event.id for _, event in entries}
@@ -174,11 +175,9 @@ def test_four_editions_escape_content_and_preserve_legacy_feed_guids(published_s
         assert latest_event.text not in doc.select_one("article").get_text()
         assert doc.select_one(f'article .meta a[href="{latest_event.url}"]')
         assert not doc.select("article script, article img[onerror]")
-        preview = doc.select_one('[data-preview-post-id]')
-        assert preview['data-preview-post-id'] == str(latest.id)
-        assert latest.translations[language]['headline'] in preview.get_text()
-        assert latest.translations[language]['summary'] in preview.get_text()
-        assert not preview.select('script, img[onerror]')
+        # The feed article is the only place a story appears; no duplicate highlight card.
+        assert not doc.select('[data-preview-post-id]')
+        assert doc.h1.get_text() == COPY[language]['title']
         links = doc.select(".masthead-actions a[data-language]")
         assert {link['data-language'] for link in links} == set(EDITIONS)
         assert doc.select_one('.language-menu [aria-current=page]')['data-language'] == language
@@ -214,7 +213,7 @@ def test_older_stories_keep_permanent_pages_outside_homepage_window(published_si
         assert doc.select_one('meta[property="og:type"]')["content"] == "article"
 
 
-def test_home_highlights_show_three_latest_localized_stories_before_date_feed(published_site):
+def test_home_feed_shows_latest_localized_stories_first_without_duplicate_highlights(published_site):
     store, cfg, _, entries, _ = published_site
     for index in range(3):
         event = replace(entries[-1][1], id=f'latest-preview:{index}', ts=1700001000 + index,
@@ -232,20 +231,20 @@ def test_home_highlights_show_three_latest_localized_stories_before_date_feed(pu
     expected = list(reversed(entries))[:3]
     for language, (page, _) in EDITIONS.items():
         doc = html(cfg.site_dir / page)
-        previews = doc.select('.hero-latest [data-preview-post-id]')
-        assert [node['data-preview-post-id'] for node in previews] == [str(post.id) for post, _ in expected]
-        assert not doc.select('.glass-scene')
-        for index, (node, (post, _)) in enumerate(zip(previews, expected)):
+        # Each story appears once, in the feed: no highlight card repeats headlines.
+        assert not doc.select('[data-preview-post-id], .hero-latest, .glass-scene')
+        articles = doc.select('.story-days article')
+        for node, (post, _) in zip(articles, expected):
+            assert node['id'] == str(post.id)
             assert post.translations[language]['headline'] in node.get_text()
-            assert (post.translations[language]['summary'] in node.get_text()) == (index == 0)
+            assert post.translations[language]['summary'] in node.get_text()
             assert node.select_one(f'a[href="posts/{post.id}/{page}"]')
             assert node.select_one('time')
             assert '#Original channel' in node.get_text()
-            assert not node.has_attr('id'), 'Preview must not duplicate the article DOM id'
             assert not node.select('script, img[onerror]')
-        assert len(doc.select('.story-days article')) == len(entries)
-        assert [node['id'] for node in doc.select('.story-days article')] == [str(post.id) for post, _ in reversed(entries)]
-        assert doc.select_one('.hero-latest').find_next(class_='story-days')
+        assert len(articles) == len(entries)
+        assert [node['id'] for node in articles] == [str(post.id) for post, _ in reversed(entries)]
+        assert doc.text.count(expected[0][0].translations[language]['headline']) == 1
         ids = [node['id'] for node in doc.select('[id]')]
         assert len(ids) == len(set(ids))
         for path in (cfg.site_dir / 'posts' / str(expected[0][0].id) / page,
@@ -312,9 +311,10 @@ def test_english_report_cards_and_feed_images_stay_localized(published_site):
         report = article.select_one('figure img')
         assert report['src'].endswith(f'cards/report-{latest.id}-en.png')
         assert report['alt'].startswith('English report card.')
-        assert 'Summary by rep0rter' in article.select_one('figcaption').get_text()
         assert len(article.select('figure img')) == 1
         if 'posts' in str(page):
+            # Feed thumbnails are captionless; the story page names the report card once.
+            assert 'Summary by rep0rter' in article.select_one('figcaption').get_text()
             assert doc.select_one('meta[property="og:image"]')['content'].endswith(report['src'].removeprefix('../../'))
     english_image = ElementTree.parse(cfg.site_dir / 'feed.xml').find('channel/item/enclosure').get('url')
     chinese_image = ElementTree.parse(cfg.site_dir / 'feed.zh-TW.xml').find('channel/item/enclosure').get('url')
@@ -580,7 +580,8 @@ def test_reading_is_available_without_javascript_and_controls_are_labeled(publis
             assert trigger['data-theme-' + mode] == copy['theme_' + mode]
             assert controls.select_one(f'[data-theme-choice="{mode}"]').get_text(strip=True) == copy['theme_' + mode]
         assert not doc.select("article[hidden], .day[hidden]")
-        assert all(article.select_one("h3").get_text().strip() for article in doc.select("article"))
+        # Story pages promote the report headline to the page's h1.
+        assert all(article.select_one("h1, h3").get_text().strip() for article in doc.select("article"))
         if "posts" in path.parts:
             assert doc.select_one("[data-search-form]") is None
             continue
@@ -676,7 +677,7 @@ def test_superseded_pages_cards_and_feeds_link_latest_without_repeating_stale_og
         assert not html(cfg.site_dir / 'posts' / str(latest.id) / page).select_one('.revision-notice')
         old_card = html(cfg.site_dir / page).find('article', id=str(old.id))
         assert old_card.select_one('.revision-notice a')['href'] == f'posts/{latest.id}/{page}'
-        assert [node['data-preview-post-id'] for node in html(cfg.site_dir / page).select('[data-preview-post-id]')] == [str(latest.id)]
+        assert not html(cfg.site_dir / page).select('[data-preview-post-id]')
         items = ElementTree.parse(cfg.site_dir / feed).findall('channel/item')
         assert {item.findtext('guid') for item in items} == {str(old.id), str(latest.id)}
         description = next(item.findtext('description') for item in items if item.findtext('guid') == str(old.id))
@@ -763,9 +764,9 @@ def test_emergency_withdrawal_scrubs_home_highlights_when_rebuild_fails(publishe
     assert cfg.site_dir.resolve() == release
     for language, (page, _) in EDITIONS.items():
         doc = html(cfg.site_dir / page)
-        remaining = doc.select('[data-preview-post-id]')
-        assert [node['data-preview-post-id'] for node in remaining] == ([] if remove_all else [str(entries[0][0].id)])
-        assert bool(doc.select('.hero-latest')) == (not remove_all)
+        assert not doc.select('[data-preview-post-id]')
+        remaining = [node['id'] for node in doc.select('article')]
+        assert remaining == ([] if remove_all else [str(entries[0][0].id)])
         for post, _ in removed:
             assert post.translations[language]['headline'] not in doc.get_text()
             assert post.translations[language]['summary'] not in doc.get_text()
@@ -881,7 +882,12 @@ def test_facet_metadata_stays_in_removable_articles_and_selects_start_empty(publ
             assert article['data-author-label'] == event.author_name
             assert article['data-author']
             assert article['data-source']
-            assert article['data-date'] == article.find_parent('section', class_='day').time['datetime']
+            day_heading = article.find_parent('section', class_='day').select_one('.day-heading time')
+            # Story pages show the event date inside the article instead of a day heading.
+            if day_heading:
+                assert article['data-date'] == day_heading['datetime']
+            else:
+                assert 'posts' in path.parts and article.select_one('.story-date')['datetime']
             assert isinstance(json.loads(article['data-topics']), list)
         if 'posts' in path.parts:
             assert doc.select_one('[data-filters]') is None
@@ -948,7 +954,6 @@ def test_batch_timestamps_keep_latest_preview_feed_and_home_window_in_same_order
 
     for page, feed in EDITIONS.values():
         doc = html(cfg.site_dir / page)
-        assert doc.select_one('[data-preview-post-id]')['data-preview-post-id'] == str(newest.id)
         assert [article['data-post-id'] for article in doc.select('article')] == [str(newest.id)]
         assert ElementTree.parse(cfg.site_dir / feed).findtext('channel/item/guid') == str(newest.id)
 
@@ -1091,7 +1096,7 @@ def test_source_examples_do_not_leak_through_story_history(published_site):
     for page, _ in EDITIONS.values():
         doc = html(cfg.site_dir / "posts" / str(kept.id) / page)
         assert not doc.select_one(".revision-notice")
-        assert not doc.select_one(".story-history nav")
+        assert not doc.select_one(".story-revisions")
         assert not doc.find("a", href=sample.url)
         assert doc.select_one(f'.story-history a[href="{evidence.url}"]')
         assert not doc.find("a", href=f"../{removed.id}/{page}")

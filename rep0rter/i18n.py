@@ -93,7 +93,7 @@ COPY = {
         "subscribe_title": "在習慣的地方讀消息", "subscribe_body": "將 RSS 加入你的閱讀器，接收這個語言版本的更新。",
         "aside_note": "摘要協助你掌握重點；完整內容請以原文為準。",
         "resources": "相關資源", "back_home": "回到所有消息", "replies": "回覆數", "view_image": "檢視圖卡", "close_image": "關閉圖片",
-        "image_loading": "圖片載入中…", "image_error": "圖片暫時無法載入，請關閉後重試。",
+        "image_loading": "圖片載入中…", "image_error": "圖片暫時無法載入。",
     },
     "ko": {
         "presentation": "3분 소개",
@@ -124,7 +124,7 @@ COPY = {
         "subscribe_title": "익숙한 곳에서 읽으세요", "subscribe_body": "RSS를 리더에 추가하면 이 언어로 새 소식을 받아볼 수 있습니다.",
         "aside_note": "요약은 핵심을 파악하는 데 도움을 줍니다. 전체 내용은 원문을 확인하세요.",
         "resources": "관련 자료", "back_home": "모든 소식으로", "replies": "답글 수", "view_image": "이미지 보기", "close_image": "이미지 닫기",
-        "image_loading": "이미지 불러오는 중…", "image_error": "이미지를 불러올 수 없습니다. 닫은 후 다시 시도해 주세요.",
+        "image_loading": "이미지 불러오는 중…", "image_error": "이미지를 불러올 수 없습니다.",
     },
     "ja": {
         "presentation": "3分でわかる紹介",
@@ -155,7 +155,7 @@ COPY = {
         "subscribe_title": "いつもの場所で読もう", "subscribe_body": "RSS をリーダーに追加すると、この言語の新着ニュースを受け取れます。",
         "aside_note": "要約は内容をつかむためのものです。詳しい内容は原文をご確認ください。",
         "resources": "関連リンク", "back_home": "すべてのニュースへ", "replies": "返信数", "view_image": "画像を見る", "close_image": "画像を閉じる",
-        "image_loading": "画像を読み込み中…", "image_error": "画像を読み込めませんでした。閉じてからもう一度お試しください。",
+        "image_loading": "画像を読み込み中…", "image_error": "画像を読み込めませんでした。",
     },
     "en": {
         "presentation": "3-minute overview",
@@ -190,7 +190,7 @@ COPY = {
         "subscribe_title": "Read where you like", "subscribe_body": "Add this RSS feed to your reader for updates in your chosen language.",
         "aside_note": "Summaries help you find the essentials. Refer to the original for the full story.",
         "resources": "Resources", "back_home": "Back to all stories", "replies": "Replies", "view_image": "View image", "close_image": "Close image",
-        "image_loading": "Loading image…", "image_error": "The image could not load. Close and try again.",
+        "image_loading": "Loading image…", "image_error": "The image could not load.",
     },
 }
 
@@ -305,7 +305,7 @@ for _language, _values in {
            'Sign-in could not load. Please try again.', 'Try again', 'Open sign-in page',
            'You’re signed in', 'Choose what you would like to do next.', 'Manage project news',
            'Sign out', 'Sign-in is not available yet', 'Please check back soon.'),
-    'zh-TW': ('歡迎回到 rep0rter', '你的社群，下一則故事。',
+    'zh-TW': ('歡迎來到 rep0rter', '你的社群，下一則故事。',
               '登入後，分享近況或管理你的專案消息。', '使用 Google 繼續',
               '你的電子郵件不會公開。所有內容都會在你確認後才發布。',
               '繼續閱讀', '關閉登入視窗', '正在準備安全登入…',
@@ -332,3 +332,124 @@ for _language, _values in {
         'login_read', 'login_close', 'login_loading', 'login_error', 'login_retry',
         'login_fallback', 'login_signed_in', 'login_next', 'login_projects',
         'login_logout', 'login_unavailable', 'login_later'), _values))
+
+
+# Reader feedback after publishing, signed-in header label and singular counts.
+for _language, _values in {
+    'en': ('Your account', 'Your story is live', 'Your project is live',
+           'It now appears in the community feed and its RSS edition.', 'Back to the feed', 'Write another story',
+           '1 story', '1 story found'),
+    'zh-TW': ('你的帳號', '你的報導已發布', '你的專案已發布',
+              '現在已出現在社群消息列表與 RSS 中。', '回到消息列表', '再寫一篇',
+              '1 篇報導', '找到 1 則消息'),
+    'ja': ('アカウント', '記事が公開されました', 'プロジェクトが公開されました',
+           'コミュニティのニュース一覧と RSS に表示されています。', 'ニュース一覧へ戻る', 'もう一本書く',
+           '1 件の記事', '1 件のニュースが見つかりました'),
+    'ko': ('내 계정', '기사가 게시되었습니다', '프로젝트가 게시되었습니다',
+           '이제 커뮤니티 소식 목록과 RSS에 표시됩니다.', '소식 목록으로 돌아가기', '한 편 더 쓰기',
+           '소식 1개', '소식 1개를 찾았습니다'),
+}.items():
+    COPY[_language].update(zip(('account_label', 'published_story', 'published_project', 'published_body',
+                               'published_feed', 'published_write', 'story_count_one', 'search_results_one'),
+                              _values))
+
+
+for _language, _values in {
+    'en': ('Read it now in', 'Post another project'),
+    'zh-TW': ('目前可閱讀的版本：', '再發布一個專案'),
+    'ja': ('現在読める版：', '別のプロジェクトを投稿'),
+    'ko': ('지금 읽을 수 있는 언어:', '다른 프로젝트 올리기'),
+}.items():
+    COPY[_language].update(zip(('read_in', 'published_project_again'), _values))
+
+
+for _language, _label in {'en': 'Owner-submitted projects', 'zh-TW': '社群自行投稿',
+                          'ja': 'オーナーによる投稿', 'ko': '직접 올린 프로젝트'}.items():
+    COPY[_language]['owner_projects'] = _label
+
+
+for _language, _label in {'en': 'Original', 'zh-TW': '原文', 'ja': '原文', 'ko': '원문'}.items():
+    COPY[_language]['original_tag'] = _label
+
+
+for _language, _label in {'en': 'More from', 'zh-TW': '更多來自', 'ja': 'さらに読む：', 'ko': '더 보기:'}.items():
+    COPY[_language]['more_from'] = _label
+
+
+for _language, (_tag, _full) in {'en': ('Original', 'Open full size'), 'zh-TW': ('原文・未翻譯', '開啟原尺寸'),
+                                 'ja': ('原文・未翻訳', '原寸で開く'), 'ko': ('원문 · 번역 전', '원본 크기로 열기')}.items():
+    COPY[_language].update(original_tag=_tag, open_full=_full)
+
+
+for _language, _values in {
+    'en': ('{count} stories for “{query}”', '1 story for “{query}”', 'Latest version', 'Revision {revision} of {total}',
+           'Earlier versions'),
+    'zh-TW': ('「{query}」找到 {count} 則消息', '「{query}」找到 1 則消息', '最新版本', '第 {revision} 版，共 {total} 版',
+              '較早的版本'),
+    'ja': ('「{query}」の検索結果 {count} 件', '「{query}」の検索結果 1 件', '最新版', '{total} 版中 第 {revision} 版',
+           '以前の版'),
+    'ko': ('“{query}” 검색 결과 {count}개', '“{query}” 검색 결과 1개', '최신 버전', '전체 {total}개 중 {revision}번째 버전',
+           '이전 버전'),
+}.items():
+    COPY[_language].update(zip(('search_results_query', 'search_results_query_one', 'latest_version',
+                               'revision_of', 'earlier_versions'), _values))
+
+
+for _language, (_title, _body) in {
+    'en': ('Fix the date range', 'Stories appear again once the start date is on or before the end date.'),
+    'zh-TW': ('請修正日期範圍', '開始日期不晚於結束日期後，消息就會重新出現。'),
+    'ja': ('日付の範囲を修正してください', '開始日が終了日以前になると、ニュースが再び表示されます。'),
+    'ko': ('날짜 범위를 고쳐 주세요', '시작일이 종료일과 같거나 빠르면 소식이 다시 표시됩니다.'),
+}.items():
+    COPY[_language].update(range_title=_title, range_body=_body)
+
+
+
+# Phone filter panel: close it and jump to the matching stories.
+for _language, _values in {
+    'en': ('Show {count} stories', 'Show 1 story'),
+    'zh-TW': ('顯示 {count} 則消息', '顯示 1 則消息'),
+    'ja': ('{count} 件のニュースを表示', '1 件のニュースを表示'),
+    'ko': ('소식 {count}개 보기', '소식 1개 보기'),
+}.items():
+    COPY[_language].update(zip(('show_results', 'show_results_one'), _values))
+
+
+# Phone filter fix action and short masthead labels shown under phone icons.
+for _language, _values in {
+    'en': ('Fix the dates', 'Write', 'Sign in', 'Account'),
+    'zh-TW': ('修正日期', '撰寫', '登入', '帳號'),
+    'ja': ('日付を修正', '書く', 'ログイン', 'アカウント'),
+    'ko': ('날짜 고치기', '쓰기', '로그인', '계정'),
+}.items():
+    COPY[_language].update(zip(('fix_dates', 'write_short', 'sign_in_short', 'account_short'), _values))
+
+# Short visible label under the phone appearance icon (the full name stays its accessible name).
+for _language, _label in {'en': 'Theme', 'zh-TW': '外觀', 'ja': '表示', 'ko': '화면'}.items():
+    COPY[_language]['appearance_short'] = _label
+
+
+# One neutral source label for stories and projects people submit themselves.
+for _language, _label in {'en': 'Community submissions', 'zh-TW': '社群投稿',
+                          'ja': 'コミュニティからの投稿', 'ko': '커뮤니티 기고'}.items():
+    COPY[_language]['community_submissions'] = _label
+
+
+# Story revisions sit beside the source label: a short label, with the newest one marked.
+for _language, _values in {
+    'en': ('Revisions', 'latest'),
+    'zh-TW': ('修訂版本', '最新'),
+    'ja': ('改訂版', '最新'),
+    'ko': ('수정본', '최신'),
+}.items():
+    COPY[_language].update(zip(('revisions', 'latest_short'), _values))
+
+# The empty site offers one next step.
+for _language, _label in {'en': 'Write the first story', 'zh-TW': '撰寫第一則消息',
+                          'ja': '最初のニュースを書く', 'ko': '첫 소식 쓰기'}.items():
+    COPY[_language]['write_first'] = _label
+
+
+# One name for the way back to the feed, matching the story pages' back link.
+for _language in COPY:
+    COPY[_language]['published_feed'] = COPY[_language]['back_home']

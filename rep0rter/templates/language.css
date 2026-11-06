@@ -2,3 +2,26 @@
 html[data-language-updating] { overflow-anchor: none; scroll-behavior: auto; }
 html[data-language-updating] * { overflow-anchor: none; }
 .language-status { position: fixed; z-index: 40; left: 50%; bottom: 24px; transform: translateX(-50%); width: max-content; max-width: calc(100% - 40px); padding: 12px 20px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); color: var(--ink); box-shadow: var(--shadow-card); font-size: 14px; pointer-events: none; }
+.language-status[data-state=error] { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; border-color: var(--danger-line); border-left-width: 5px; background: var(--danger-bg); color: var(--danger-text); font-weight: 600; pointer-events: auto; }
+.language-retry { min-height: 44px; padding: 8px 16px; border: 1px solid currentColor; border-radius: 16px; background: var(--surface); color: inherit; font-weight: 700; }
+
+/* Under a site header the status joins the page flow: it pushes the page down
+   instead of covering it, and sticks just below the header while scrolled (the
+   sticky offset is set by language.js). Same width as the page content. */
+:root .site-header + [data-language-status].language-status { position: sticky; z-index: 9; top: 84px; left: auto; bottom: auto; transform: none; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; box-sizing: border-box; width: var(--shell, min(100% - 64px, 1200px)); max-width: none; margin: 0 auto 12px; padding: 10px 16px; border-radius: 14px; background: var(--surface); font-size: 14px; line-height: 1.4; pointer-events: auto; }
+:root .site-header + [data-language-status].language-status[hidden] { display: none; }
+:root .site-header + [data-language-status].language-status[data-state=error] { padding-block: 6px; background: var(--danger-bg); }
+:root .site-header + [data-language-status].language-status[data-state=loading]::before { content: ""; flex: 0 0 auto; width: 14px; height: 14px; border: 2px solid var(--accent); border-right-color: transparent; border-radius: 50%; animation: busy-spin .8s linear infinite; }
+@keyframes busy-spin { to { transform: rotate(360deg); } }
+@media (max-width: 640px) {
+  :root .site-header + [data-language-status].language-status { padding: 8px 14px; font-size: 13px; }
+}
+@media (min-width: 1700px) {
+  .language-status, :root .site-header + [data-language-status].language-status { font-size: 15px; }
+}
+@media (min-width: 2200px) {
+  .language-status, :root .site-header + [data-language-status].language-status { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  :root .site-header + [data-language-status].language-status[data-state=loading]::before { animation-duration: 2.4s; }
+}

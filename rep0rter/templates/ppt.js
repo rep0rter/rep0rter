@@ -38,7 +38,11 @@
             style.id = 'ppt-embedded-navigation';
             // The presentation owns the crossfade. Native iframe navigation snapshots
             // can race when arrow presses replace a still-running navigation.
-            style.textContent = '@view-transition { navigation: none; }';
+            // The #news jump target needs no focus ring inside a non-interactive demo.
+            // A phone-sized frame is too short to share with the sticky masthead: let it
+            // scroll away so a whole story card (source, headline, summary) fits inside.
+            style.textContent = '@view-transition { navigation: none; } #news:focus, #news:target { outline: none; } ' +
+                '@media (max-width: 640px) { .site-header { position: static; } }';
             doc.head.append(style);
             // Commit the opt-out before assigning the next iframe URL.
             void doc.documentElement.offsetWidth;
@@ -100,9 +104,15 @@
                 change.initEvent('change', true, false);
                 source.dispatchEvent(change);
             }
-            const anchor = demoStep === 1 ? filters : doc.querySelector('#news');
+            // Start each view just below the embedded reader's sticky masthead, whatever its height.
+            const header = doc.querySelector('.site-header');
+            const sticky = !!header && win.getComputedStyle(header).position === 'sticky';
+            const clearance = sticky && header ? header.getBoundingClientRect().height + 8 : 12;
+            // Without a sticky masthead (phone frames) the timeline view opens on the first day's stories.
+            const anchor = demoStep === 1 ? filters
+                : (!sticky && doc.querySelector('.story-days .day')) || doc.querySelector('#news');
             if (anchor)
-                win.scrollTo({ top: Math.max(0, anchor.getBoundingClientRect().top + win.scrollY - 130), behavior: 'instant' });
+                win.scrollTo({ top: Math.max(0, anchor.getBoundingClientRect().top + win.scrollY - clearance), behavior: 'instant' });
             revealTimer = window.setTimeout(() => {
                 if (current !== 2)
                     return;

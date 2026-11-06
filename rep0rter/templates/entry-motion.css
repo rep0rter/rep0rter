@@ -127,3 +127,37 @@ html[data-brand-exiting] body::before { transition: opacity 240ms ease-out; }
   html[data-brand-entering] body::before, .brand-entry-clone { display: none; }
   [data-brand-original] { visibility: visible; }
 }
+
+/* New interface: the page stays fully readable beneath a clear veil, and the brand
+   plays only inside the logo's own masthead slot: it materialises in place, at its
+   docked size, so it never grows past the masthead or over any other element. The
+   script's centring transform is replaced. Every header control stays visible. */
+/* No tint or blur: the page underneath stays at full strength and never reads as disabled. */
+html[data-brand-entering] body::before {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+html .brand-entry-clone { transform: none !important; scale: none; }
+/* The optical surface hugs the lockup, within the masthead's own padding. */
+html .brand-entry-face::before, html .brand-entry-face::after { inset: -4px -6px; border-radius: 16px; }
+html .brand-entry-face::before {
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: 0 0 0 .3px var(--line), inset 0 .35px 0 var(--highlight), inset 0 -.35px 0 var(--rim);
+}
+
+/* Skip and Don’t show again sit together at the foot of the screen, clear of the
+   masthead; a solid surface keeps them legible over the page. */
+.brand-entry-controls[open] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: flex-end;
+  align-content: flex-end;
+  gap: 8px;
+  padding: 0 max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+  box-sizing: border-box;
+}
+.brand-entry-controls button { position: static; background: var(--surface); box-shadow: var(--shadow-button); }
+@media (min-width: 1700px) { .brand-entry-controls button { font-size: 15px; } }
+@media (min-width: 2200px) { .brand-entry-controls button { font-size: 16px; } }

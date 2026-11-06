@@ -27,6 +27,7 @@
 <details class="preference-menu theme-menu" data-theme-controls hidden>
   <summary class="preference-trigger theme-trigger" data-theme-trigger data-theme-label="{{ copy.appearance }}"{% for mode in ('light', 'dark', 'system') %} data-theme-{{ mode }}="{{ copy['theme_' ~ mode] }}"{% endfor %} aria-label="{{ copy.appearance }}">
     {% for mode in ('light', 'dark', 'system') %}<span data-theme-icon="{{ mode }}"{% if mode != 'system' %} hidden{% endif %}>{{ icon('sun' if mode == 'light' else 'moon' if mode == 'dark' else 'system') }}</span>{% endfor %}
+    {%- if copy.appearance_short %}<span class="masthead-link-short theme-short" aria-hidden="true">{{ copy.appearance_short }}</span>{% endif %}
   </summary>
   <div class="preference-panel" aria-label="{{ copy.appearance }}">
     {% for mode in ('light', 'dark', 'system') %}<button type="button" class="preference-option" data-theme-choice="{{ mode }}" aria-pressed="{{ 'true' if mode == 'system' else 'false' }}">{{ icon('sun' if mode == 'light' else 'moon' if mode == 'dark' else 'system') }}<span>{{ copy['theme_' ~ mode] }}</span>{{ icon('check', 'preference-check') }}</button>{% endfor %}

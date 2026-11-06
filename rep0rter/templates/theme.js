@@ -2,6 +2,32 @@
 // Apply the saved appearance before CSS paints. Storage is optional.
 (() => {
     const root = document.documentElement;
+    // Modal scroll locks drop the reserved scrollbar gutter so their scrim
+    // reaches the window edge, and pad the page by the gutter's width so nothing
+    // shifts. The root's layout box is measured: clientWidth can report the full
+    // window while a hidden scrollbar's stable gutter is still reserved.
+    const measureScrollbar = () => {
+        try {
+            if (root.dataset.loginOpen !== undefined || root.classList.contains('image-viewer-open'))
+                return;
+            const zoom = Number.parseFloat(getComputedStyle(root).zoom) || 1;
+            const layout = Math.min(root.clientWidth, root.getBoundingClientRect().width / zoom);
+            const width = Math.max(0, innerWidth / zoom - layout);
+            root.style.setProperty('--scrollbar-width', `${width}px`);
+            // Overlay scrollbars take no space; leave the gutter alone so nothing shifts.
+            if (width > 0.5)
+                root.dataset.scrollbar = 'classic';
+            else
+                delete root.dataset.scrollbar;
+        }
+        catch { /* Cosmetic; appearance must still apply. */ }
+    };
+    try {
+        measureScrollbar();
+        addEventListener('resize', measureScrollbar);
+        addEventListener('DOMContentLoaded', measureScrollbar);
+    }
+    catch { /* Minimal environments lack window events. */ }
     // The circle and glyph animation overlap; either owner may finish first.
     const scrollOwners = new Set();
     const scrollKeys = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End', ' ']);

@@ -47,6 +47,7 @@ ACCOUNT_COPY = {'en': {'write_title': 'Write a story',
         'preview_story': 'Preview story',
         'retry_story': 'Retry publishing saved story',
         'publish_story': 'Publish story',
+        'edit_story': 'Edit',
         'stories_footer': 'Community stories, shared by the people doing the work.',
         'community_projects': 'COMMUNITY PROJECTS',
         'submit_heading': 'Share what you’re building.',
@@ -89,7 +90,7 @@ ACCOUNT_COPY = {'en': {'write_title': 'Write a story',
         'github_releases': 'GitHub releases',
         'rss_feed': 'RSS news feed',
         'source_url': 'GitHub repository or RSS URL',
-        'source_placeholder': 'your-team/your-project or https://your-project.org/feed.xml',
+        'source_placeholder': 'team/project or https://…/feed.xml',
         'source_help': 'Use a public repository or an HTTPS RSS 2.0 feed that you maintain. GitHub drafts '
                        'and pre-releases are excluded.',
         'headline_template': 'News headline template',
@@ -151,6 +152,7 @@ ACCOUNT_COPY = {'en': {'write_title': 'Write a story',
            'preview_story': '預覽報導',
            'retry_story': '重新發布已儲存的報導',
            'publish_story': '發布報導',
+           'edit_story': '編輯',
            'stories_footer': '由實際參與者分享的社群報導。',
            'community_projects': '社群專案',
            'submit_heading': '分享你正在打造的事物。',
@@ -188,7 +190,7 @@ ACCOUNT_COPY = {'en': {'write_title': 'Write a story',
            'github_releases': 'GitHub 發行版本',
            'rss_feed': 'RSS 消息訂閱',
            'source_url': 'GitHub 儲存庫或 RSS 網址',
-           'source_placeholder': 'your-team/your-project 或 https://your-project.org/feed.xml',
+           'source_placeholder': 'team/project 或 https://…/feed.xml',
            'source_help': '請使用你維護的公開儲存庫或 HTTPS RSS 2.0 訂閱來源。不包含 GitHub 草稿及預先發行版本。',
            'headline_template': '消息標題範本',
            'summary_template': '消息內文範本',
@@ -245,6 +247,7 @@ ACCOUNT_COPY = {'en': {'write_title': 'Write a story',
         'preview_story': '記事をプレビュー',
         'retry_story': '保存済み記事の公開を再試行',
         'publish_story': '記事を公開',
+        'edit_story': '編集する',
         'stories_footer': '活動する人たちが伝える、コミュニティの記事。',
         'community_projects': 'コミュニティのプロジェクト',
         'submit_heading': '取り組んでいることを共有しましょう。',
@@ -282,7 +285,7 @@ ACCOUNT_COPY = {'en': {'write_title': 'Write a story',
         'github_releases': 'GitHubリリース',
         'rss_feed': 'RSSニュースフィード',
         'source_url': 'GitHubリポジトリまたはRSS URL',
-        'source_placeholder': 'your-team/your-project または https://your-project.org/feed.xml',
+        'source_placeholder': 'team/project または https://…/feed.xml',
         'source_help': '管理している公開リポジトリ、またはHTTPSのRSS 2.0フィードを指定してください。GitHubの下書きとプレリリースは除外されます。',
         'headline_template': '見出しのテンプレート',
         'summary_template': '本文のテンプレート',
@@ -340,6 +343,7 @@ ACCOUNT_COPY = {'en': {'write_title': 'Write a story',
         'preview_story': '기사 미리보기',
         'retry_story': '저장된 기사 게시 재시도',
         'publish_story': '기사 게시',
+        'edit_story': '수정하기',
         'stories_footer': '직접 참여한 사람들이 전하는 커뮤니티 기사.',
         'community_projects': '커뮤니티 프로젝트',
         'submit_heading': '만들고 있는 것을 공유하세요.',
@@ -377,7 +381,7 @@ ACCOUNT_COPY = {'en': {'write_title': 'Write a story',
         'github_releases': 'GitHub 릴리스',
         'rss_feed': 'RSS 소식 피드',
         'source_url': 'GitHub 저장소 또는 RSS URL',
-        'source_placeholder': 'your-team/your-project 또는 https://your-project.org/feed.xml',
+        'source_placeholder': 'team/project 또는 https://…/feed.xml',
         'source_help': '직접 관리하는 공개 저장소 또는 HTTPS RSS 2.0 피드를 사용하세요. GitHub 초안 및 사전 릴리스는 제외됩니다.',
         'headline_template': '소식 제목 템플릿',
         'summary_template': '소식 본문 템플릿',
@@ -400,3 +404,89 @@ ACCOUNT_COPY['en']['language_error'] = 'Could not change the language. Your draf
 ACCOUNT_COPY['zh-TW']['language_error'] = '無法切換語言。你的草稿仍保留在這裡，請再試一次。'
 ACCOUNT_COPY['ja']['language_error'] = '言語を切り替えられませんでした。下書きはそのままです。もう一度お試しください。'
 ACCOUNT_COPY['ko']['language_error'] = '언어를 변경하지 못했습니다. 작성 중인 내용은 그대로 있습니다. 다시 시도해 주세요.'
+
+# Labels shown on the pressed button while a request is in flight.
+for _language, (_publish, _preview, _save) in {
+    'en': ('Publishing…', 'Preparing preview…', 'Saving…'),
+    'zh-TW': ('發布中…', '準備預覽中…', '儲存中…'),
+    'ja': ('公開しています…', 'プレビューを準備しています…', '保存しています…'),
+    'ko': ('게시하는 중…', '미리보기를 준비하는 중…', '저장하는 중…'),
+}.items():
+    ACCOUNT_COPY[_language].update(busy_publish=_publish, busy_preview=_preview, busy_save=_save)
+
+
+# Side panel explaining what happens after the primary action.
+for _language, _values in {
+    'en': ('How publishing works',
+           ('Preview', 'Check how your story will look. Nothing is public yet.'),
+           ('Publish', 'It joins the community feed and RSS right away, labelled self-reported.'),
+           ('Translations', 'Other editions show a notice until their translation is ready.'),
+           'How project news works',
+           ('Connect', 'Point to GitHub releases or a public RSS feed.'),
+           ('Check', 'rep0rter checks on your schedule and fills in your templates.'),
+           ('Control', 'Pause at any time; every post links back to its source.')),
+    'zh-TW': ('發布流程',
+              ('預覽', '先確認報導呈現的樣子，此時尚未公開。'),
+              ('發布', '立即出現在社群消息列表與 RSS，並標示為自行投稿。'),
+              ('翻譯', '其他語言版本在翻譯完成前會顯示提示。'),
+              '專案消息如何運作',
+              ('連結', '指定 GitHub releases 或公開 RSS。'),
+              ('檢查', 'rep0rter 依你設定的頻率檢查，並套用你的範本。'),
+              ('掌控', '隨時可以暫停；每則消息都連回原始來源。')),
+    'ja': ('公開の流れ',
+           ('プレビュー', '表示を確認できます。まだ公開されません。'),
+           ('公開', 'すぐにニュース一覧と RSS に「本人による投稿」として表示されます。'),
+           ('翻訳', '翻訳が整うまで、他の言語版には案内が表示されます。'),
+           'プロジェクトニュースの仕組み',
+           ('接続', 'GitHub リリースまたは公開 RSS を指定します。'),
+           ('確認', 'rep0rter が設定した頻度で確認し、テンプレートに当てはめます。'),
+           ('管理', 'いつでも一時停止できます。各投稿は元の情報源にリンクします。')),
+    'ko': ('게시 과정',
+           ('미리보기', '기사가 어떻게 보일지 확인합니다. 아직 공개되지 않습니다.'),
+           ('게시', '바로 커뮤니티 소식 목록과 RSS에 직접 작성한 소식으로 표시됩니다.'),
+           ('번역', '번역이 준비될 때까지 다른 언어판에는 안내가 표시됩니다.'),
+           '프로젝트 소식 작동 방식',
+           ('연결', 'GitHub 릴리스나 공개 RSS 피드를 지정합니다.'),
+           ('확인', 'rep0rter가 설정한 주기로 확인하고 템플릿을 채웁니다.'),
+           ('관리', '언제든 일시 중지할 수 있으며, 모든 소식은 원본으로 연결됩니다.')),
+}.items():
+    ACCOUNT_COPY[_language].update(how_title=_values[0], how_steps=list(_values[1:4]),
+                                   news_how_title=_values[4], news_how_steps=list(_values[5:8]))
+
+
+for _language, _values in {
+    'en': ('How project posts work',
+           ('Publish', 'Your post joins the community feed and RSS right away, labelled as an owner submission.'),
+           ('Translations', 'Other editions show a notice until their translation is ready.'),
+           ('Keep it current', 'Set up automatic project news to post new releases for you.'),
+           'You have no automatic project news yet. Set up your first project below.'),
+    'zh-TW': ('專案投稿流程',
+              ('發布', '投稿會立即出現在社群消息列表與 RSS，並標示為擁有者投稿。'),
+              ('翻譯', '其他語言版本在翻譯完成前會顯示提示。'),
+              ('持續更新', '設定自動專案消息，新版本發布時會自動貼文。'),
+              '你還沒有設定自動專案消息。可以在下方建立第一個專案。'),
+    'ja': ('プロジェクト投稿の流れ',
+           ('公開', '投稿はすぐにニュース一覧と RSS に「オーナーによる投稿」として表示されます。'),
+           ('翻訳', '翻訳が整うまで、他の言語版には案内が表示されます。'),
+           ('最新に保つ', '自動プロジェクトニュースを設定すると、新しいリリースを自動で投稿します。'),
+           '自動プロジェクトニュースはまだありません。下で最初のプロジェクトを設定しましょう。'),
+    'ko': ('프로젝트 게시 과정',
+           ('게시', '게시물은 바로 커뮤니티 소식 목록과 RSS에 소유자 게시물로 표시됩니다.'),
+           ('번역', '번역이 준비될 때까지 다른 언어판에는 안내가 표시됩니다.'),
+           ('최신 유지', '자동 프로젝트 소식을 설정하면 새 릴리스를 자동으로 게시합니다.'),
+           '아직 자동 프로젝트 소식이 없습니다. 아래에서 첫 프로젝트를 설정해 보세요.'),
+}.items():
+    ACCOUNT_COPY[_language].update(project_how_title=_values[0], project_how_steps=list(_values[1:4]),
+                                   no_projects=_values[4])
+
+# Phones with the new interface repeat the page links in the footer.
+ACCOUNT_COPY['en']['more_links'] = 'More account links'
+ACCOUNT_COPY['zh-TW']['more_links'] = '更多帳號連結'
+ACCOUNT_COPY['ja']['more_links'] = 'アカウントのその他のリンク'
+ACCOUNT_COPY['ko']['more_links'] = '계정 링크 더 보기'
+
+# When a server error is shown beside its field, the banner only points to it.
+ACCOUNT_COPY['en']['fix_field'] = 'Fix 1 field below.'
+ACCOUNT_COPY['zh-TW']['fix_field'] = '請修正下方 1 個欄位。'
+ACCOUNT_COPY['ja']['fix_field'] = '下の 1 項目を修正してください。'
+ACCOUNT_COPY['ko']['fix_field'] = '아래 항목 1개를 수정해 주세요.'

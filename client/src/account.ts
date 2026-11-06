@@ -232,6 +232,7 @@
         document.body.replaceChildren(...[...page.body.childNodes].map(node => document.importNode(node, true)));
         document.body.className = page.body.className;
         document.body.dataset.accountLanguageError = page.body.dataset.accountLanguageError || '';
+        document.body.dataset.accountFixField = page.body.dataset.accountFixField || '';
         root.lang = page.documentElement.lang;
         document.title = page.title;
         history.replaceState(history.state, '', url);
@@ -256,4 +257,172 @@
     })();
   });
   window.addEventListener('pagehide', () => { request?.abort(); request = null; document.documentElement.removeAttribute('aria-busy'); });
+})();
+
+// Form feedback: in-flight buttons, field-level server errors, publish
+// confirmation on arrival, and a local signed-in hint for the reader header.
+(() => {
+  const publishedKey = 'rep0rter-just-published';
+  const accountKey = 'rep0rter-signed-in';
+  const store = (action: (storage: Storage) => void) => {
+    try { action(sessionStorage); } catch { /* Feedback is optional when storage is blocked. */ }
+  };
+  // Server messages are English-only; map each to the field that caused it.
+  const FIELD_ERRORS: [RegExp, string][] = [
+    [/^Headline|^Project name|^The headline template/, 'title'],
+    [/^What happened|^Description/, 'description'],
+    [/^Public display name/, 'author'],
+    [/^How to take part/, 'take_part'],
+    [/^Original text/, 'original'],
+    [/evidence link|^Evidence links/i, 'evidence'],
+    [/hashtag/i, 'hashtags'],
+    [/^Choose the date/, 'event_date'],
+    [/^Enter a valid public project URL/, 'url'],
+    [/^Enter a GitHub repository|^Enter a public HTTPS RSS/, 'source_url'],
+    [/^The summary template|^Templates support/, 'summary_template'],
+    [/^Confirm that/, 'owner_confirmed'],
+  ];
+  const markFieldError = () => {
+    const notice = document.querySelector<HTMLElement>('.account-page main > .form-notice[role=alert]');
+    const form = document.querySelector<HTMLFormElement>('.project-form form');
+    if (!notice || !form || form.querySelector('.field-error')) return;
+    const text = notice.querySelector('p') || notice;
+    const message = text.textContent?.trim() || '';
+    const name = FIELD_ERRORS.find(([pattern]) => pattern.test(message))?.[1];
+    const field = name ? form.querySelector<HTMLElement>(`[name="${name}"]`) : null;
+    if (!field) return;
+    const anchor = field.closest('.owner-confirmation') || field;
+    const inline = document.createElement('p');
+    inline.className = 'field-error';
+    inline.id = `${name}-error`;
+    inline.textContent = message;
+    anchor.after(inline);
+    field.setAttribute('aria-invalid', 'true');
+    field.setAttribute('aria-describedby', [field.getAttribute('aria-describedby'), inline.id].filter(Boolean).join(' '));
+    field.addEventListener('input', () => { field.removeAttribute('aria-invalid'); inline.remove(); }, { once: true });
+    // The banner sits above the form; link it to the field it is about. The
+    // full sentence now sits beside the field, so the banner only points there.
+    const label = field.id ? form.querySelector(`label[for="${field.id}"]`)?.firstChild?.textContent?.trim() : '';
+    if (label) {
+      const jump = document.createElement('a');
+      jump.className = 'field-link';
+      jump.href = `#${field.id}`;
+      jump.textContent = `↓ ${label}`;
+      jump.addEventListener('click', event => {
+        event.preventDefault();
+        field.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+        field.focus({ preventScroll: true });
+      });
+      const summary = document.body.dataset.accountFixField;
+      if (summary) text.replaceChildren(summary, ' ', jump);
+      else notice.append(document.createElement('br'), jump);
+    }
+  };
+  const formButtons = (form: HTMLFormElement) =>
+    Array.from(form.elements).filter((element): element is HTMLButtonElement => element instanceof HTMLButtonElement);
+  // The preview's Edit link moves to the first field and puts the cursor there.
+  document.addEventListener('click', event => {
+    const link = (event.target as Element | null)?.closest<HTMLAnchorElement>('a[data-edit-story]');
+    const field = link ? document.getElementById(decodeURIComponent(new URL(link.href).hash.slice(1))) : null;
+    if (!field || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    field.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    field.focus({ preventScroll: true });
+  });
+  const accountPage = () => {
+    if (!document.body.classList.contains('account-page')) return;
+    // Arriving on a form again means the last attempt did not publish.
+    store(storage => storage.removeItem(publishedKey));
+    const signedIn = Boolean(document.querySelector('.sign-in-link[data-signed-in], .login-identity'));
+    try {
+      if (signedIn) localStorage.setItem(accountKey, '1');
+      else if (document.querySelector('[data-login-form]')) localStorage.removeItem(accountKey);
+    } catch { /* The header hint is cosmetic. */ }
+    markFieldError();
+  };
+  document.addEventListener('submit', event => {
+    const form = event.target as HTMLFormElement;
+    // A button named "action" shadows form.action; read the attribute instead.
+    const target = new URL(form.getAttribute('action') || location.href, location.href).pathname;
+    if (form.matches('[data-logout-form]') || target === '/auth/logout') {
+      try { localStorage.removeItem(accountKey); } catch { /* cosmetic */ }
+    }
+    if (!form.closest('.project-form') || event.defaultPrevented) return;
+    const submitter = (event as SubmitEvent).submitter as HTMLButtonElement | null;
+    const action = submitter?.value || 'publish';
+    if (action === 'publish' && /\/(write|submit)$/.test(target)) {
+      store(storage => storage.setItem(publishedKey, JSON.stringify({
+        kind: target.endsWith('/submit') ? 'project' : 'story', at: Date.now(),
+      })));
+    }
+    // Disable after the browser has captured the submitter's name and value.
+    // form.elements includes buttons outside the form tied to it by form="…".
+    setTimeout(() => {
+      form.setAttribute('aria-busy', 'true');
+      formButtons(form).forEach(button => { button.disabled = true; });
+      const label = submitter?.dataset.busyLabel;
+      if (submitter && label) {
+        submitter.dataset.busy = '';
+        const spinner = document.createElement('span');
+        spinner.className = 'busy-spinner';
+        spinner.setAttribute('aria-hidden', 'true');
+        submitter.replaceChildren(spinner, document.createTextNode(label));
+      }
+    }, 0);
+  });
+  // Restore usable buttons when the browser returns this page from its cache.
+  window.addEventListener('pageshow', event => {
+    if (!event.persisted) return;
+    document.querySelectorAll<HTMLFormElement>('form[aria-busy="true"]').forEach(form => {
+      form.removeAttribute('aria-busy');
+      formButtons(form).forEach(button => { button.disabled = false; });
+    });
+  });
+  const readerPage = () => {
+    if (document.body.classList.contains('account-page')) return;
+    try {
+      const entry = document.querySelector<HTMLElement>('[data-sign-in]');
+      if (entry && localStorage.getItem(accountKey) === '1' && entry.dataset.accountLabel) {
+        entry.dataset.signedIn = '';
+        entry.setAttribute('aria-label', entry.dataset.accountLabel);
+        entry.title = entry.dataset.accountLabel;
+        const text = entry.querySelector('.masthead-link-label');
+        if (text) text.textContent = entry.dataset.accountLabel;
+      }
+    } catch { /* cosmetic */ }
+    if (!document.body.classList.contains('page-story')) return;
+    let notice: { kind?: string; at?: number } | null = null;
+    store(storage => {
+      const raw = storage.getItem(publishedKey);
+      storage.removeItem(publishedKey);
+      notice = raw ? JSON.parse(raw) : null;
+    });
+    const published = notice as { kind?: string; at?: number } | null;
+    const copy = document.body.dataset;
+    if (!published || !published.at || Date.now() - published.at > 600_000 || !copy.publishedStory) return;
+    const banner = document.createElement('div');
+    banner.className = 'publish-banner';
+    banner.setAttribute('role', 'status');
+    banner.innerHTML = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>';
+    const title = document.createElement('strong');
+    title.textContent = (published.kind === 'project' ? copy.publishedProject : copy.publishedStory) || '';
+    const body = document.createElement('p');
+    body.textContent = copy.publishedBody || '';
+    const links = document.createElement('nav');
+    const again = published.kind === 'project'
+      ? [copy.publishedProjectAgain, copy.publishedProjectAgainLabel] : [copy.publishedWrite, copy.publishedWriteLabel];
+    for (const [href, label] of [[copy.publishedFeed, copy.publishedFeedLabel], again]) {
+      if (!href || !label) continue;
+      const link = document.createElement('a');
+      link.href = href;
+      link.textContent = label;
+      links.append(link);
+    }
+    banner.append(title, body, links);
+    document.querySelector('main .detail-intro, main .page-intro')?.after(banner);
+  };
+  const ready = () => { accountPage(); readerPage(); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready, { once: true });
+  else ready();
+  document.addEventListener('rep0rter:language-applied', markFieldError);
 })();

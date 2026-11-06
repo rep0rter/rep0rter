@@ -31,6 +31,26 @@
         const filters = document.querySelector('[data-filters]');
         const countBadge = document.querySelector('[data-filter-count]');
         const error = document.querySelector('[data-filter-error]');
+        let rangeNotice = null;
+        try {
+            rangeNotice = document.querySelector('[data-invalid-range]');
+        }
+        catch { /* Optional explanation. */ }
+        let resetButton = null;
+        try {
+            resetButton = document.querySelector('[data-search-reset]');
+        }
+        catch { /* Optional label switch. */ }
+        let filterAlert = null;
+        try {
+            filterAlert = document.querySelector('[data-filter-alert]');
+        }
+        catch { /* Optional summary badge; minimal DOMs may not support it. */ }
+        let showButton = null;
+        try {
+            showButton = document.querySelector('[data-filters-show]');
+        }
+        catch { /* Optional phone shortcut from the open panel to its results. */ }
         const filterNames = ['period', 'from', 'to', 'topic', 'author', 'source', 'sort'];
         const fields = Object.fromEntries(filterNames
             .map(name => [name, filters?.querySelector(`[data-filter="${name}"]`) ?? null]));
@@ -56,6 +76,7 @@
             return { day, order, stories, date: stories[0]?.date || '', grid: day.querySelector('.story-grid'), timestamp: Math.max(0, ...stories.map(article => article.timestamp)) };
         });
         let previousSort = null;
+        let rangeInvalid = false;
         const dateFormatter = new Intl.DateTimeFormat('en', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' });
         const validDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(value) &&
             !Number.isNaN(Date.parse(`${value}T00:00:00Z`)) &&
@@ -154,6 +175,7 @@
             if (customDates)
                 customDates.hidden = !custom;
             const invalid = custom && state.from && state.to && state.from > state.to;
+            rangeInvalid = Boolean(invalid);
             ['from', 'to'].forEach(name => {
                 const field = fields[name];
                 if (field) {
@@ -163,6 +185,10 @@
             });
             if (error)
                 error.hidden = !invalid;
+            if (filterAlert)
+                filterAlert.hidden = !invalid;
+            if (rangeNotice)
+                rangeNotice.hidden = !invalid;
             // Calendar days are based on the publication timezone, including today.
             const dateParts = Object.fromEntries(dateFormatter.formatToParts(new Date()).map(part => [part.type, part.value]));
             const today = `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
@@ -208,9 +234,31 @@
             document.documentElement.dataset.searchActive =
                 String(Boolean(terms.length || summarised.some(name => state[name] !== defaults[name])));
             clear.hidden = !input.value;
-            status.hidden = !terms.length && !activeCount;
-            status.textContent = status.dataset.resultTemplate.replace('{count}', String(count));
-            empty.hidden = count !== 0;
+            // An invalid range is explained by its own error, not as "no matching stories".
+            status.hidden = Boolean(invalid) || (!terms.length && !activeCount);
+            // Repeat the query so readers can see what the results are for.
+            const query = input.value.trim();
+            const template = query && status.dataset.queryTemplate
+                ? (count === 1 && status.dataset.queryTemplateOne ? status.dataset.queryTemplateOne : status.dataset.queryTemplate)
+                : (count === 1 && status.dataset.resultTemplateOne ? status.dataset.resultTemplateOne : status.dataset.resultTemplate);
+            status.textContent = template.replace('{count}', String(count)).replace('{query}', query);
+            if (resetButton && resetButton.dataset.labelSearch && resetButton.dataset.labelFilters) {
+                resetButton.textContent = activeCount ? resetButton.dataset.labelFilters : resetButton.dataset.labelSearch;
+            }
+            if (showButton && invalid && showButton.dataset.labelFix) {
+                // "Show 0 stories" would hide the real problem; offer to fix the dates instead.
+                showButton.textContent = showButton.dataset.labelFix;
+            }
+            else if (showButton && showButton.dataset.template) {
+                const label = count === 1 && showButton.dataset.templateOne ? showButton.dataset.templateOne : showButton.dataset.template;
+                showButton.textContent = label.replace('{count}', String(count));
+            }
+            empty.hidden = count !== 0 || Boolean(invalid);
+            // Let a lone visible story span its day's grid instead of half of it.
+            days.forEach(({ grid, stories }) => {
+                if (grid && 'dataset' in grid)
+                    grid.dataset.visible = String(stories.filter(story => !story.element.hidden).length);
+            });
             if (persist)
                 writeURL(state);
         };
@@ -251,6 +299,21 @@
         Object.values(fields).forEach(field => listen(field, 'change', () => update()));
         listen(document.querySelector('[data-filters-reset]'), 'click', reset);
         listen(document.querySelector('[data-search-reset]'), 'click', reset);
+        listen(showButton, 'click', () => {
+            if (rangeInvalid) {
+                // Keep the panel open and take the reader to the first date to correct.
+                const field = fields.from || fields.to;
+                field?.focus({ preventScroll: true });
+                field?.scrollIntoView({ block: 'center', behavior: 'auto' });
+                return;
+            }
+            // Close the phone panel and continue reading at the matching stories.
+            if (filters)
+                filters.open = false;
+            const results = document.querySelector('#news');
+            results?.focus({ preventScroll: true });
+            (filters || results)?.scrollIntoView({ block: 'start', behavior: 'auto' });
+        });
         listen(window, 'popstate', () => { readURL(); update(false); });
     };
     document.addEventListener('rep0rter:before-language', () => dispose());

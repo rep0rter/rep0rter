@@ -1,7 +1,5 @@
 {% import '_ui.html' as ui %}
 <section class="login-card" data-auth-card lang="{{ account_language }}" aria-labelledby="login-title">
-  <span class="login-mark" aria-hidden="true">{{ ui.icon('chat') }}</span>
-  <p class="eyebrow">{{ copy.login_welcome }}</p>
   <h1 id="login-title">{{ copy.login_signed_in if owner else copy.login_title }}</h1>
   <p class="login-intro">{{ copy.login_next if owner else copy.login_intro }}</p>
   {% if error %}<p class="login-notice" role="alert">{{ error }}</p>{% endif %}

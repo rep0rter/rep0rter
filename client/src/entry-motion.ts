@@ -2,6 +2,14 @@
 (() => {
   const root = document.documentElement;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  // Large screens zoom the root; layout rects are reported in zoomed device
+  // pixels, while inline styles are applied before zoom. Convert back.
+  const zoom = () => Number.parseFloat(getComputedStyle(root).zoom) || 1;
+  const rect = (element: Element) => {
+    const box = element.getBoundingClientRect();
+    const factor = zoom();
+    return { left: box.left / factor, top: box.top / factor, width: box.width / factor, height: box.height / factor };
+  };
   let cancelEntry = () => {};
   const prepareEntry = () => {
     if (!root.hasAttribute('data-brand-entry') || reduced.matches) return;
@@ -50,7 +58,7 @@
           ? previousFocus : original || document.querySelector<HTMLElement>('.masthead .wordmark');
         target?.focus({ preventScroll: true });
       }
-      window.removeEventListener('resize', finish);
+      window.removeEventListener('resize', resize);
       window.removeEventListener('pagehide', finish);
       document.removeEventListener('keydown', escape);
       document.removeEventListener('rep0rter:before-language', beforeLanguage);
@@ -78,9 +86,22 @@
     const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') leave(); };
     const beforeLanguage = () => { if (layer) finish(); };
     const motionPreference = () => { if (reduced.matches) finish(); };
+    // The brand stays in the logo's own masthead slot, so a resize (a phone's
+    // viewport settling, a toolbar showing) re-anchors it rather than ending it.
+    const resize = () => {
+      if (!layer || !original?.isConnected) return;
+      const box = rect(original);
+      if (box.width <= 0 || box.height <= 0 || box.top < 0) { finish(); return; }
+      const typography = getComputedStyle(original);
+      layer.style.left = `${box.left}px`;
+      layer.style.top = `${box.top}px`;
+      layer.style.height = `${box.height}px`;
+      layer.style.fontSize = typography.fontSize;
+      layer.style.gap = typography.gap;
+    };
     let failsafe = setTimeout(finish, 4500);
     cancelEntry = finish;
-    window.addEventListener('resize', finish);
+    window.addEventListener('resize', resize);
     window.addEventListener('pagehide', finish);
     document.addEventListener('keydown', escape);
     document.addEventListener('rep0rter:before-language', beforeLanguage);
@@ -131,9 +152,11 @@
           document.body.append(controls);
           try { controls.showModal(); }
           catch { finish(); return; }
+          // Focus the dialog itself: Tab reaches Skip, without a focus ring over the page at rest.
+          controls.focus({ preventScroll: true });
           original = document.querySelector<HTMLElement>('.masthead .wordmark');
           if (!original) { finish(); return; }
-          const box = original.getBoundingClientRect();
+          const box = rect(original);
           if (box.width <= 0 || box.height <= 0 || box.top < 0) { finish(); return; }
           layer = original.cloneNode(true) as HTMLElement;
           layer.removeAttribute('href');
@@ -165,12 +188,12 @@
           original.setAttribute('data-brand-original', '');
           document.body.append(layer);
           root.dataset.brandEntering = 'active';
-          const visibleWidth = layer.getBoundingClientRect().width;
-          const noteHeight = introOnlyNote ? note!.getBoundingClientRect().height : 0;
+          const visibleWidth = rect(layer).width;
+          const noteHeight = introOnlyNote ? rect(note!).height : 0;
           // Include the optical surface's 18px gutters in the mobile safe area.
           const scale = Math.max(1, Math.min(3.6, (root.clientWidth - 48) / (visibleWidth + 36)));
           const x = (root.clientWidth - visibleWidth * scale) / 2 - box.left;
-          const y = (innerHeight - box.height * scale) / 2 - box.top;
+          const y = (innerHeight / zoom() - box.height * scale) / 2 - box.top;
           const paint = (value: number) => {
             if (!layer || !original?.isConnected) { finish(); return; }
             const remaining = Math.max(0, Math.min(1, 1 - value));
@@ -227,11 +250,11 @@
     let expanded = details.open;
     let motion: SpringHandle | null = null;
     let velocity = 0;
-    let height = details.getBoundingClientRect().height;
+    let height = rect(details).height;
     let target = height;
     let timeout = 0;
-    const naturalHeight = () => summary.getBoundingClientRect().height +
-      (expanded ? panel.getBoundingClientRect().height : 0) +
+    const naturalHeight = () => rect(summary).height +
+      (expanded ? rect(panel).height : 0) +
       parseFloat(getComputedStyle(details).borderTopWidth) + parseFloat(getComputedStyle(details).borderBottomWidth);
     const clearStyles = () => {
       details.style.removeProperty('height');
@@ -247,10 +270,10 @@
       details.open = expanded;
       clearStyles();
       summary.setAttribute('aria-expanded', String(expanded));
-      height = details.getBoundingClientRect().height;
+      height = rect(details).height;
       target = height;
     };
-    const animate = (open: boolean, from = details.getBoundingClientRect().height) => {
+    const animate = (open: boolean, from = rect(details).height) => {
       expanded = open;
       motion?.cancel();
       clearTimeout(timeout);
@@ -264,8 +287,8 @@
       target = naturalHeight();
       details.style.height = `${height}px`;
       timeout = setTimeout(settle, 1200);
-      const collapsed = summary.getBoundingClientRect().height + 2;
-      const full = panel.getBoundingClientRect().height;
+      const collapsed = rect(summary).height + 2;
+      const full = rect(panel).height;
       motion = window.Rep0rterMotion.spring({ from, to: target, velocity,
         onUpdate(value, speed) {
           height = value;

@@ -2,14 +2,16 @@
 .login-dialog { width: min(480px, calc(100% - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 0; overflow: auto; overscroll-behavior: contain; border: 1px solid var(--highlight); border-radius: var(--radius-card); background: var(--glass); color: var(--ink); box-shadow: var(--shadow-lift); backdrop-filter: blur(24px) saturate(1.15); -webkit-backdrop-filter: blur(24px) saturate(1.15); }
 .login-dialog::backdrop { background: rgb(9 18 30 / .35); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); }
 :root[data-login-open] { overflow: hidden; }
-.login-toolbar { display: flex; justify-content: flex-end; padding: 12px 12px 0; }
+/* The close button floats in the corner so the title starts at the top. */
+.login-toolbar { position: absolute; top: 12px; inset-inline-end: 12px; z-index: 1; display: flex; }
 .login-close { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--line); border-radius: 50%; color: var(--ink); background: var(--glass-clear); transition: transform var(--spring), background var(--motion); }
 .login-close:hover { background: var(--surface); }
+/* Account pages style bare buttons; the dialog's close button keeps its own look there. */
+.account-page .login-close, .account-page .login-close:hover { min-height: 44px; padding: 0; border: 1px solid var(--line); border-radius: 50%; color: var(--ink); background: var(--glass-clear); box-shadow: none; }
+.account-page .login-dialog button.button-secondary { padding: 14px 23px; border-color: var(--line); background: var(--glass); color: var(--ink); font-size: 14px; font-weight: 700; }
 .login-close:active, .login-google:active { transform: scale(.97); }
-.login-card { padding: 8px 32px 32px; text-align: start; }
-.login-mark { display: grid; place-items: center; width: 56px; height: 56px; margin-bottom: 24px; border: 1px solid var(--highlight); border-radius: 20px; background: var(--accent-soft); color: var(--accent); box-shadow: var(--shadow-button); }
-.login-mark .icon { width: 26px; height: 26px; }
-.login-card .eyebrow { margin-bottom: 12px; color: var(--muted); font-size: 12px; letter-spacing: .035em; }
+.login-card { padding: 32px; text-align: start; }
+.login-dialog .login-card h1 { padding-inline-end: 44px; }
 .login-card h1 { margin: 0; font-size: clamp(28px, 5vw, 36px); line-height: 1.25; letter-spacing: -.04em; text-wrap: balance; }
 .login-intro { margin-top: 16px; color: var(--muted); font-size: 16px; }
 .login-card form[data-login-form] { margin-top: 28px; }
@@ -21,7 +23,9 @@
 .login-read { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; margin-top: 20px; font-size: 14px; text-decoration: none; }
 .login-read:hover { text-decoration: underline; }
 .login-notice { margin-block: 20px; padding: 16px; border-radius: 20px; border: 1px solid var(--line); background: var(--accent-soft); }
-.login-status { padding: 28px 32px 40px; min-height: 180px; }
+.login-notice[role=alert], .login-status [role=alert] { border: 1px solid var(--danger-line); border-left-width: 5px; background: var(--danger-bg); color: var(--danger-text); font-weight: 600; }
+.login-status [role=alert] { padding: 14px 16px; border-radius: 16px; }
+.login-status { padding: 72px 32px 40px; min-height: 180px; }
 .login-status p { margin-bottom: 20px; }
 .login-status-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .login-identity { margin-top: 20px; color: var(--accent); font-weight: 600; }
@@ -31,8 +35,47 @@
 .login-logout { margin-top: 12px; }
 .account-page.login-page main { width: min(480px, calc(100% - 32px)); padding-block: clamp(24px, 8vh, 80px); }
 .account-page.login-page main > .login-card { padding: clamp(24px, 5vw, 40px); background: var(--glass); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); }
-.login-page > footer { max-width: 480px; text-align: center; }
 @media (max-width: 480px) { .login-card { padding-inline: 24px; } .login-dialog { border-radius: 28px; } }
 @media (prefers-reduced-motion: reduce) { .login-close, .login-google { transition: none; } .login-close:active, .login-google:active, .login-google:hover { transform: none; } }
 @media (prefers-reduced-transparency: reduce) { .login-dialog, .account-page.login-page main > .login-card { background: var(--surface); backdrop-filter: none; } }
-@media (forced-colors: active) { .login-dialog, .login-card .login-google, .login-close, .login-mark { border: 1px solid CanvasText; background: Canvas; color: CanvasText; box-shadow: none; } }
+@media (forced-colors: active) { .login-dialog, .login-card .login-google, .login-close { border: 1px solid CanvasText; background: Canvas; color: CanvasText; box-shadow: none; } }
+
+/* New interface (beta): solid sign-in surface and a filled primary action. */
+:root .login-dialog { border-color: var(--line); background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+:root .login-card .login-google { border-color: transparent; background: #315c8f; color: #fff; }
+:root .account-page.login-page main > .login-card { background: var(--surface); }
+/* New interface (beta), wide screens: the standalone card splits into intro and actions. */
+@media (min-width: 1100px) {
+  :root .account-page.login-page main { width: min(1120px, calc(100% - 64px)); padding-block: clamp(48px, 12vh, 140px); }
+  :root .account-page.login-page main > .login-card { columns: 2; column-gap: 96px; column-rule: 1px solid var(--line); padding: 64px 72px; }
+  :root .account-page.login-page main > .login-card > * { break-inside: avoid; }
+  :root .account-page.login-page main > .login-card h1 { font-size: 44px; }
+  :root .account-page.login-page main > .login-card > .login-intro { font-size: 17px; }
+  :root .account-page.login-page main > .login-card > .login-intro + * { break-before: column; margin-top: 0; }
+}
+
+/* 1440p and other large desktops: real widths and type, not page zoom. */
+@media (min-width: 1800px) {
+  .login-dialog { width: min(560px, calc(100% - 32px)); }
+  .login-dialog .login-card { padding: 44px 44px 40px; }
+  .login-dialog .login-card h1 { font-size: 40px; }
+  .login-intro { font-size: 18px; }
+  .login-card .login-google { min-height: 60px; font-size: 18px; }
+  .login-privacy, .login-read, .login-card .login-text-button { font-size: 16px; }
+  .login-status { padding-inline: 44px; }
+  :root .account-page.login-page main { width: min(1280px, calc(100% - 96px)); }
+  :root .account-page.login-page main > .login-card { column-gap: 120px; padding: 80px 88px; }
+  :root .account-page.login-page main > .login-card h1 { font-size: 56px; }
+  :root .account-page.login-page main > .login-card > .login-intro { font-size: 20px; }
+  :root .account-page.login-page main > .login-card .login-google { min-height: 64px; font-size: 19px; }
+  :root .account-page.login-page main > .login-card .login-privacy { font-size: 17px; }
+  .login-actions { gap: 16px; }
+  .login-actions .button { min-height: 60px; font-size: 17px; }
+  .login-identity { font-size: 19px; }
+  .login-notice { font-size: 17px; }
+}
+
+@media (min-width: 2200px) {
+  .login-privacy, .login-read, .login-card .login-text-button { font-size: 18px; }
+  .login-intro { font-size: 21px; }
+}
