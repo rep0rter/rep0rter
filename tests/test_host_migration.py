@@ -63,6 +63,9 @@ def test_host_health_reports_source_without_private_error_or_database_writes(tmp
     assert response.json['scheduled'] is False
     assert b'private-provider-response' not in response.data
     assert cfg.db_path.read_bytes() == before
+    with sqlite3.connect(cfg.db_path) as connection:
+        connection.execute("UPDATE runs SET error='degraded collection: see collector_health'")
+    assert client.get('/healthz').json['last_error'] == 'Collection incomplete'
     (tmp_path / 'reporting-enabled').touch()
     assert client.get('/healthz').json['scheduled'] is True
 

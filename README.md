@@ -66,19 +66,20 @@ sources are included in `.env.example`; historical archives remain available sep
 Archive publication dates describe archive entries, not necessarily project launches.
 See [collector limits](docs/collectors.md).
 
-The Compose stack runs a `worker` (hourly cycle),
+The optional local Compose stack runs a `worker` (hourly cycle),
 `maintenance` (backups, health checks), `accounts` (Google login and owner project
 news), and `web` (Caddy, static files on `127.0.0.1:18090`).
 
-Production uses native Cloudflare Workers: GitHub Actions runs the hourly Python and Chromium reporting job. Python Workers
-handle account features, a JavaScript Worker serves the generated site, and Durable
-Objects persist data and every reporting transaction. No Containers or Steam host
-are needed. See [Cloudflare deployment](docs/cloudflare.md) for migration,
-CI-gated deployment of `main`, configuration, and recovery.
+Production runs natively on sky-server: user systemd services serve the website
+and accounts, run hourly reporting and publication, and maintain verified SQLite
+backups. AI uses the existing gateway's `sky-fast` alias. Cloudflare supplies
+DNS, TLS and Tunnel; GitHub supplies source and CI. See
+[sky-server deployment](docs/sky-server.md) for the CI-gated deployment controller,
+configuration and recovery.
 
 The former Singa deployment is retained for recovery with its services and timer
 stopped. Its [controller instructions](docs/deployment.md) apply only to that
-host; do not restart its publisher after Cloudflare starts writing.
+host; do not restart its publisher against the newer production state.
 
 ## Docs
 

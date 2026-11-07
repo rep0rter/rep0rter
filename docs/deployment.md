@@ -1,8 +1,9 @@
-# Cloudflare migration
+# Retired Singa deployment
 
-The native Workers target and cutover procedure are documented in
-[cloudflare.md](cloudflare.md). The instructions below manage the existing Singa
-deployment and its recovery path.
+Current production runs on [sky-server](sky-server.md). The former Workers
+runtime is documented in [cloudflare.md](cloudflare.md). The instructions below
+manage the stopped Singa deployment and its recovery path; keep its services and
+deployment timer stopped.
 
 # Automatic deployment on Singa
 
