@@ -5,6 +5,7 @@ GitHub artifacts contain ciphertext only. Fetch/decrypt run on the destination;
 all configuration, identities, exclusions and delivery state remain private.
 """
 import argparse
+from contextlib import closing
 import hashlib
 import io
 import json
@@ -25,7 +26,10 @@ CONTEXT = b'rep0rter-sky-server-migration-v1'
 
 
 def inventory(database):
-    with sqlite3.connect(database) as c:
+    # Transfer snapshots contain the complete main database, never live WAL
+    # state. Inspect without creating transient WAL/SHM files that could vanish
+    # between manifest generation and archive creation.
+    with closing(sqlite3.connect(database.resolve().as_uri() + '?mode=ro&immutable=1', uri=True)) as c:
         if c.execute('PRAGMA integrity_check').fetchone()[0] != 'ok':
             raise ValueError('Snapshot database integrity check failed')
         return {name: c.execute('SELECT count(*) FROM "' + name.replace('"', '""') + '"').fetchone()[0]

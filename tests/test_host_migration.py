@@ -96,6 +96,19 @@ def test_snapshot_import_rejects_traversal_before_creating_destination(tmp_path)
     assert not (tmp_path / 'import').exists()
 
 
+def test_snapshot_inventory_does_not_create_wal_files_or_change_database(tmp_path):
+    snapshot = module('host_inventory', 'cloudflare-snapshot.py')
+    database = tmp_path / 'rep0rter.sqlite'
+    with sqlite3.connect(database) as connection:
+        connection.execute('PRAGMA journal_mode=WAL')
+        connection.execute('CREATE TABLE preserved(value TEXT)')
+        connection.execute("INSERT INTO preserved VALUES ('saved')")
+    connection.close()
+    before = {p.name: p.read_bytes() for p in tmp_path.iterdir()}
+    assert snapshot.inventory(database) == {'preserved': 1}
+    assert {p.name: p.read_bytes() for p in tmp_path.iterdir()} == before
+
+
 def test_parallel_snapshot_download_checks_each_asset_and_database(tmp_path, monkeypatch):
     import hashlib
     import sys
