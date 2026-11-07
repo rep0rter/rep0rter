@@ -42,7 +42,7 @@ def fetch(root, credentials, *, keep_lease=False):
         # Use the deployed source identity for this read-only snapshot operation;
         # never collect, checkpoint, render, publish or deliver through this tool.
         acquired = True
-        runtime.start(health['source_commit'], 'build')
+        runtime.start(health['source_commit'], 'build', asset_workers=8)
         counts = inventory(root / 'rep0rter.sqlite')
         manifest = {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest()
                     for p in root.rglob('*') if p.is_file()}

@@ -75,7 +75,9 @@ class RunnerRuntime:
                     raise RuntimeError(f'Worker {action} connection failed') from None
             time.sleep(2 ** attempt)
 
-    def start(self, revision, mode):
+    def start(self, revision, mode, *, asset_workers=1):
+        if type(asset_workers) is not int or not 1 <= asset_workers <= 8:
+            raise ValueError('Snapshot asset concurrency must be between one and eight')
         snapshot = json.loads(self.request('start', json.dumps({
             'lease': self.lease, 'source_commit': revision, 'mode': mode, 'protocol': 2}).encode()))
         if snapshot.get('protocol') != 2:
@@ -98,13 +100,22 @@ class RunnerRuntime:
         if digest.hexdigest() != snapshot.get('database_digest'):
             raise ValueError('Snapshot database does not match manifest')
         del data
-        for item in files:
+        def download(item):
             content = self.request('snapshot', json.dumps({'path': item['path']}).encode())
             if len(content) != item['size'] or hashlib.sha256(content).hexdigest() != item['digest']:
                 raise ValueError('Snapshot asset does not match manifest')
             destination = self.root / item['path']
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_bytes(content)
+        if asset_workers == 1:
+            for item in files:
+                download(item)
+        else:
+            # Read-only assets share one fenced source lease. Each request is
+            # still bounded and validated; ordinary reporting stays sequential.
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=asset_workers) as pool:
+                list(pool.map(download, files))
 
     @staticmethod
     def validate_manifest(files):

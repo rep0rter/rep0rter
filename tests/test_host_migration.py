@@ -94,3 +94,29 @@ def test_snapshot_import_rejects_traversal_before_creating_destination(tmp_path)
     with pytest.raises(ValueError, match='Invalid snapshot'):
         snapshot.unpack(data.getvalue(), tmp_path / 'import')
     assert not (tmp_path / 'import').exists()
+
+
+def test_parallel_snapshot_download_checks_each_asset_and_database(tmp_path, monkeypatch):
+    import hashlib
+    import sys
+    sys.path.insert(0, str(ROOT / 'cloudflare'))
+    from github_runner import RunnerRuntime
+    content = {'site/index.html': b'<html>reader</html>', 'site/feed.xml': b'<rss/>', 'exclusions.json': b'{}'}
+    database = b'x' * 4096
+    manifest = [{'path': k, 'size': len(v), 'digest': hashlib.sha256(v).hexdigest()} for k, v in content.items()]
+    runtime = RunnerRuntime('https://synthetic.test', 'synthetic-key', tmp_path, '0' * 32)
+
+    def request(action, body=b'', *args, **kwargs):
+        if action == 'start':
+            return json.dumps({'protocol': 2, 'database_size': len(database),
+                               'database_digest': hashlib.sha256(database).hexdigest(), 'files': manifest}).encode()
+        payload = json.loads(body)
+        return database if payload['path'] == 'rep0rter.sqlite' else content[payload['path']]
+
+    monkeypatch.setattr(runtime, 'request', request)
+    runtime.start('a' * 40, 'build', asset_workers=4)
+    assert (tmp_path / 'rep0rter.sqlite').read_bytes() == database
+    assert all((tmp_path / k).read_bytes() == v for k, v in content.items())
+    content['site/index.html'] = b'corrupted'
+    with pytest.raises(ValueError, match='does not match manifest'):
+        runtime.start('a' * 40, 'build', asset_workers=4)
