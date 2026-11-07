@@ -404,13 +404,14 @@ def create_app(cfg: Config | None = None) -> Flask:
                         collection = json.loads(value[0]) if value else {}
                 except (OSError, sqlite3.Error, ValueError):
                     ready = False
+            error = latest.get('error') if latest else None
             return {'ready': ready, 'runtime': 'sky-server',
                     'source_commit': os.environ.get('REP0RTER_SOURCE_COMMIT'),
                     'ai_model': cfg.ai_model, 'scheduler': 'systemd',
                     'scheduled': (Path(os.environ['REP0RTER_HOST_ROOT']) / 'reporting-enabled').is_file(),
                     'last_started': latest['started_at'] if latest else None,
                     'last_finished': latest['finished_at'] if latest else None,
-                    'last_error': 'Reporting failed' if latest and latest['error'] else '',
+                    'last_error': ('Collection incomplete' if error.startswith('degraded collection:') else 'Reporting failed') if error else '',
                     'collection_healthy': bool(collection.get('healthy')),
                     'google_login_enabled': cfg.google_login_enabled}, 200 if ready else 503
         return {'status': 'ok', 'google_login_enabled': cfg.google_login_enabled}

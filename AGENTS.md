@@ -1,18 +1,18 @@
 # Production deployment
 
-- The user has authorized migrating rep0rter to sky-server, with the existing AI
-  gateway engines retained. Follow `docs/sky-server.md` for this migration and
-  native host deployments. Until public cutover is verified, Cloudflare remains
-  authoritative. Never run reporting against a stale imported database or run
-  both schedulers. This migration supersedes the Cloudflare-only target below;
-  the former Singa services and deployment timer must still remain stopped.
-
-- Production runs on native Cloudflare Workers. Read `docs/cloudflare.md`.
-  Push to `main`, require passing GitHub **Offline tests** for that exact commit,
-  and run `python3 cloudflare/deploy.py --production` from its clean checkout.
-  The hourly reporting job runs in GitHub Actions; keep native Worker cron
-  publication disabled. Verify the public route, health record, and Actions cycle; green CI alone
-  is not deployment success. Never enable Containers for this deployment.
+- Production runs natively on sky-server. Read `docs/sky-server.md`. Website,
+  accounts, SQLite, publication, reporting and backups use `/srv/rep0rter` and
+  user systemd services. AI uses the existing gateway with `sky-fast`; its
+  engines stay on sky-mini / skyhong-blog. Never enable Containers.
+- Push through a pull request to `main`, require passing GitHub **Offline tests**
+  for that exact main commit, then use `scripts/host-deploy.py prepare` and
+  `activate` from a clean checkout on sky-server. Verify the public route, health
+  record and actual reporting cycle; green CI alone is not deployment success.
+- Keep legacy GitHub reporting disabled with `REP0RTER_REPORTING_HOST=sky-server`.
+  Keep the old Worker runner and cron disabled. Cloudflare durable data is a
+  retained pre-cutover recovery copy; never resume its writers or restore it over
+  newer host accounts, exclusions, posts or outboxes without reconciliation.
+  `docs/cloudflare.md` documents the retired runtime for recovery reference.
 - The former Singa services and deployment timer must remain stopped. Its
   recovery releases are managed by
   `~/.local/share/rep0rter-deploy/deploy.py`. Read `docs/deployment.md` before

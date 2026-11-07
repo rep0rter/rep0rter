@@ -1,11 +1,44 @@
 # Native sky-server deployment
 
-The migration target runs rep0rter as native user systemd services on sky-server.
+Production runs rep0rter as native user systemd services on sky-server.
 It uses the existing AI gateway ingress at `http://127.0.0.1:8317/v1`, with a
 dedicated `rep0rter` client and model alias `sky-fast`. The gateway engines stay
 on sky-mini and skyhong-blog. Cloudflare continues to provide DNS, TLS and Tunnel;
 application compute, SQLite, generated files, reporting and backups move to the
 host. GitHub still stores code and runs Offline tests.
+
+The public origin switched on 2026-11-07 to the existing sky-server Tunnel.
+The old public Worker route was removed; its runner and native scheduling are
+disabled, and its account configuration is retired. GitHub variable
+`REP0RTER_REPORTING_HOST=sky-server` keeps the legacy reporting workflow skipped.
+The old durable database remains a private recovery copy, with no active writer.
+Singa remains stopped.
+
+The complete source snapshot preserved 263 posts, four accounts, one session,
+the exclusion/tombstone ledgers, and both delivery outboxes. All file hashes,
+SQLite integrity and table inventories passed before import. Verification covered
+four language homepages and RSS feeds, permanent article pages, images and real
+Google OAuth initiation. Completing Google sign-in still requires the person's
+Google session. A real four-language translation and full native build passed;
+the generated site was about 139 MB, above the former public generation limit.
+Daily and weekly backups and a no-network restore rehearsal passed, preserving
+every table and producing zero replay candidates. No offsite backup destination
+is configured.
+
+The first native reporting cycle completed successfully: 236 collected source
+records, no new editorial posts, three repaired saved translations, and three
+previously prepared Telegram deliveries confirmed. The two ambiguous Telegram
+jobs and two ambiguous Threads jobs remained untouched. Collection remains
+degraded: 18 Slack channels exhausted their bounded historical scan and one
+returned duplicate pagination. Cursors remain preserved for later catch-up;
+this does not mean the website or reporting process failed. Follow
+`collector_health` in the private database for source progress. Translation
+backfill of older missing editions is a separate operation.
+
+The migrated Threads credential currently returns `token_invalid` (Graph code
+190), including on a refresh attempt. Threads deliveries remain blocked until
+the account is reauthorized; retain the existing prepared/ambiguous jobs rather
+than resetting their state. Telegram delivery is working.
 
 ## Host layout and deployment
 

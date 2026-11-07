@@ -1,5 +1,12 @@
 # Cloudflare hosting and GitHub reporting
 
+**Retired runtime, retained for recovery reference.** Production moved to
+[native sky-server services](sky-server.md) on 2026-11-07. The old Worker runner,
+native cron and GitHub reporting job remain disabled. Durable data is a
+pre-cutover copy; reconcile subsequent host writes before any recovery that
+would make this copy authoritative. The instructions below describe the former
+architecture and must not be used to reactivate a second publisher.
+
 Production uses native Cloudflare Workers, without Containers or a Steam host.
 GitHub Actions runs the hourly Python collector, model writer, Chromium card
 renderer, and publisher. Cloudflare serves the site, runs Google login and
