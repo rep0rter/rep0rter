@@ -3,6 +3,10 @@ from __future__ import annotations
 
 from datetime import timedelta
 import hashlib
+import json
+import os
+from pathlib import Path
+import sqlite3
 import re
 import secrets
 import time
@@ -386,6 +390,29 @@ def create_app(cfg: Config | None = None) -> Flask:
 
     @app.get('/healthz')
     def health():
+        if os.environ.get('REP0RTER_HOST_ROOT'):
+            ready = cfg.db_path.is_file() and (cfg.site_dir / 'index.html').is_file()
+            latest = None
+            collection = {}
+            if ready:
+                try:
+                    from .operations import readonly
+                    with readonly(cfg.db_path) as connection:
+                        row = connection.execute('SELECT started_at,finished_at,error FROM runs ORDER BY id DESC LIMIT 1').fetchone()
+                        latest = dict(row) if row else None
+                        value = connection.execute("SELECT value FROM kv WHERE key='collector_health'").fetchone()
+                        collection = json.loads(value[0]) if value else {}
+                except (OSError, sqlite3.Error, ValueError):
+                    ready = False
+            return {'ready': ready, 'runtime': 'sky-server',
+                    'source_commit': os.environ.get('REP0RTER_SOURCE_COMMIT'),
+                    'ai_model': cfg.ai_model, 'scheduler': 'systemd',
+                    'scheduled': (Path(os.environ['REP0RTER_HOST_ROOT']) / 'reporting-enabled').is_file(),
+                    'last_started': latest['started_at'] if latest else None,
+                    'last_finished': latest['finished_at'] if latest else None,
+                    'last_error': 'Reporting failed' if latest and latest['error'] else '',
+                    'collection_healthy': bool(collection.get('healthy')),
+                    'google_login_enabled': cfg.google_login_enabled}, 200 if ready else 503
         return {'status': 'ok', 'google_login_enabled': cfg.google_login_enabled}
 
     @app.route('/projects', methods=['GET', 'POST'])

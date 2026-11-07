@@ -1,5 +1,12 @@
 # Production deployment
 
+- The user has authorized migrating rep0rter to sky-server, with the existing AI
+  gateway engines retained. Follow `docs/sky-server.md` for this migration and
+  native host deployments. Until public cutover is verified, Cloudflare remains
+  authoritative. Never run reporting against a stale imported database or run
+  both schedulers. This migration supersedes the Cloudflare-only target below;
+  the former Singa services and deployment timer must still remain stopped.
+
 - Production runs on native Cloudflare Workers. Read `docs/cloudflare.md`.
   Push to `main`, require passing GitHub **Offline tests** for that exact commit,
   and run `python3 cloudflare/deploy.py --production` from its clean checkout.

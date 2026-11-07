@@ -1,0 +1,37 @@
+name: Encrypted host migration snapshot
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: production-reporting
+  cancel-in-progress: false
+jobs:
+  export:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'cryptography>=43,<47'
+      - name: Fetch a leased snapshot and encrypt for the destination
+        env:
+          REP0RTER_CONFIG: ${{ secrets.REP0RTER_CONFIG }}
+          REP0RTER_RUNNER_TOKEN: ${{ secrets.REP0RTER_RUNNER_TOKEN }}
+          REP0RTER_WORKER_URL: https://rep0rter-engine.sky-hong.workers.dev
+          RECEIVER_PUBLIC_KEY: ${{ vars.REP0RTER_MIGRATION_PUBLIC_KEY }}
+          THREADS_ACCESS_TOKEN: ${{ secrets.REP0RTER_THREADS_ACCESS_TOKEN }}
+          THREADS_ENABLED: ${{ vars.REP0RTER_THREADS_ENABLED || '0' }}
+          THREADS_USER_ID: ${{ vars.REP0RTER_THREADS_USER_ID }}
+          THREADS_BATCH_SIZE: ${{ vars.REP0RTER_THREADS_BATCH_SIZE || '10' }}
+        run: |
+          umask 077
+          printf '%s\n' "$RECEIVER_PUBLIC_KEY" > /tmp/rep0rter-receiver.pub
+          python scripts/cloudflare-snapshot.py export --public-key /tmp/rep0rter-receiver.pub --output /tmp/rep0rter-migration.sealed
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rep0rter-migration-encrypted
+          path: /tmp/rep0rter-migration.sealed
+          retention-days: 1
