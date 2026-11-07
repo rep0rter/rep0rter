@@ -34,7 +34,9 @@ def inventory(database):
 
 def fetch(root, credentials, *, keep_lease=False):
     root.mkdir(parents=True, exist_ok=False, mode=0o700)
-    with urllib.request.urlopen(credentials['url'] + '/healthz', timeout=20) as r:
+    request = urllib.request.Request(credentials['url'] + '/healthz',
+        headers={'Cache-Control': 'no-cache', 'User-Agent': 'rep0rter-github-runner/1.0'})
+    with urllib.request.urlopen(request, timeout=20) as r:
         health = json.load(r)
     runtime = RunnerRuntime(credentials['url'], credentials['token'], root, uuid.uuid4().hex)
     acquired = False

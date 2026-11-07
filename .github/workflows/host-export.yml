@@ -21,6 +21,7 @@ jobs:
           REP0RTER_CONFIG: ${{ secrets.REP0RTER_CONFIG }}
           REP0RTER_RUNNER_TOKEN: ${{ secrets.REP0RTER_RUNNER_TOKEN }}
           REP0RTER_WORKER_URL: https://rep0rter-engine.sky-hong.workers.dev
+          REPORT_ADDITIONAL_FEEDS: https://slack-archive-2fl.pages.dev/
           RECEIVER_PUBLIC_KEY: ${{ vars.REP0RTER_MIGRATION_PUBLIC_KEY }}
           THREADS_ACCESS_TOKEN: ${{ secrets.REP0RTER_THREADS_ACCESS_TOKEN }}
           THREADS_ENABLED: ${{ vars.REP0RTER_THREADS_ENABLED || '0' }}
