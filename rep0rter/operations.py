@@ -253,12 +253,20 @@ def check_health(db_path, *, backup_dir=None, now=None, stale_seconds=9000,
                 _issue(issues, 'collection_stale', 'No verified healthy collection within 2.5 hours')
             if health and not health.get('healthy', False):
                 _issue(issues, 'collection_degraded', 'Latest collection did not validate all source checks')
-            if len(runs) == 3 and all(r['error'] for r in runs):
+            if len(runs) == 3 and all(r['error'] and not r['error'].startswith('degraded collection:') for r in runs):
                 _issue(issues, 'consecutive_failures', 'Three consecutive runs failed')
-            running = conn.execute('SELECT started_at FROM runs WHERE finished_at IS NULL ORDER BY started_at DESC LIMIT 1').fetchone()
+            # A newer completed serial reporting cycle proves an earlier
+            # interrupted attempt is no longer the currently running job.
+            # Retain those historical rows intact for audit and recovery.
+            running = conn.execute('''SELECT started_at FROM runs WHERE finished_at IS NULL
+                AND id > coalesce((SELECT max(id) FROM runs WHERE finished_at IS NOT NULL),0)
+                ORDER BY id DESC LIMIT 1''').fetchone()
             if running and now - running[0] > stale_seconds:
                 _issue(issues, 'run_stuck', 'An unfinished run exceeds the freshness limit')
-            negative = conn.execute('SELECT count(*) FROM events WHERE first_seen < ts - 1').fetchone()[0]
+            details['historical_clock_skew_events'] = conn.execute(
+                'SELECT count(*) FROM events WHERE first_seen < ts - 1').fetchone()[0]
+            negative = conn.execute('SELECT count(*) FROM events WHERE first_seen < ts - 1 AND first_seen>=?',
+                                    (now-stale_seconds,)).fetchone()[0]
             if negative:
                 _issue(issues, 'clock_skew', f'{negative} event(s) have negative acquisition delay')
             latest_post = _latest_visible_post_at(conn)
