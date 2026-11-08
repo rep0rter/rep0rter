@@ -94,7 +94,7 @@ def test_health_failures_stale_backup_disk_and_clock(operational_db, tmp_path):
     with sqlite3.connect(operational_db) as conn:
         for i in range(3):
             conn.execute('INSERT INTO runs(started_at,finished_at,error) VALUES (?,?,?)', (200 + i, 210 + i, 'failed'))
-        conn.execute("UPDATE events SET first_seen=90 WHERE id='event'")
+        conn.execute("UPDATE events SET first_seen=999990,ts=1000000 WHERE id='event'")
         conn.execute('INSERT INTO runs(started_at) VALUES (200)')
     result = ops.check_health(operational_db, now=1000000, backup_dir=tmp_path / 'missing', min_free_bytes=10**30, require_offsite=True)
     assert {'collection_stale', 'backup_stale', 'offsite_backup_stale', 'disk_low', 'run_stuck', 'clock_skew'} <= result['issues'].keys()
@@ -117,6 +117,20 @@ def test_three_failed_runs_and_recovery_alert_dedup(operational_db):
     assert len(notices) == 1 and notices[0]['kind'] == 'recovery'
     notices, state = ops.alert_transitions({'issues': {}}, state, now=500)
     assert notices == []
+
+
+def test_current_health_preserves_historical_interruptions_and_clock_evidence(operational_db):
+    with sqlite3.connect(operational_db) as conn:
+        conn.execute('INSERT INTO runs(started_at) VALUES (100)')
+        for i in range(3):
+            conn.execute('INSERT INTO runs(started_at,finished_at,error) VALUES (?,?,?)',
+                         (150+i,160+i,'degraded collection: see collector_health'))
+        conn.execute("UPDATE events SET first_seen=90 WHERE id='event'")
+    report = ops.check_health(operational_db, now=1000000, min_free_bytes=0)
+    assert not {'run_stuck','consecutive_failures','clock_skew'} & report['issues'].keys()
+    assert report['historical_clock_skew_events'] == 1
+    with ops.readonly(operational_db) as conn:
+        assert conn.execute('SELECT count(*) FROM runs WHERE finished_at IS NULL').fetchone()[0] == 1
 
 
 def test_health_checks_feed_against_persisted_news_not_current_time(operational_db):
