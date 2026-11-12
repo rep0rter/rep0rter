@@ -8,7 +8,11 @@
   {% if saved_notice %}<p class="form-notice" role="status">{{ account_copy.saved }} {{ account_copy.auto_enabled if values.get('enabled') else account_copy.auto_paused }}</p>{% endif %}
   {% if projects %}<section aria-label="{{ account_copy.your_projects }}"><h2>{{ account_copy.your_projects }}</h2><ul class="project-list">
   {% for project in projects %}<li><a href="{{ url_for('managed_project', project_id=project.id, lang=account_language) }}">{{ project.title }}</a><span>{{ account_copy.auto_every.format(hours=project.interval_hours) if project.enabled else account_copy.paused }}</span>{% if project.last_error %}<p class="form-help">{{ project.last_error }}</p>{% endif %}</li>{% endfor %}
-  </ul></section>{% endif %}
+  </ul></section>
+  {% elif not project_id and not preview and not error %}
+  {# First visit: say there are no projects yet and point to the one next step. #}
+  <section class="projects-empty" aria-labelledby="projects-empty-title"><h2 id="projects-empty-title">{{ account_copy.your_projects }}</h2><p>{{ account_copy.no_projects }}</p><p class="form-help">{{ account_copy.news_intro }}</p><p class="projects-empty-action"><a class="button button-primary" href="#title">{{ ui.icon('arrow') }}<span>{{ account_copy.setup_news }}</span></a></p></section>
+  {% endif %}
   {% if preview %}<article><h2>{{ account_copy.template_preview }}</h2><h3>{{ preview.headline }}</h3><p class="project-preview">{{ preview.summary }}</p><p class="form-help">{{ account_copy.sample_notice }}</p></article>{% endif %}
   <article class="project-form">
     <h2>{{ account_copy.edit_news if project_id else account_copy.setup_news }}</h2>

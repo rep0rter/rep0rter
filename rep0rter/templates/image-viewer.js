@@ -25,6 +25,8 @@
         const stage = viewer.querySelector('[data-viewer-stage]');
         const card = viewer.querySelector('[data-viewer-card]');
         const status = viewer.querySelector('[data-viewer-status]');
+        // A superseded story's report card keeps its "previous report" mark when enlarged.
+        const note = viewer.querySelector('[data-viewer-note]');
         const root = document.documentElement;
         const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
         let opener = null;
@@ -148,6 +150,10 @@
             image.removeAttribute('src');
             image.alt = '';
             caption.textContent = '';
+            if (note) {
+                note.textContent = '';
+                note.hidden = true;
+            }
             if (status)
                 status.textContent = '';
             download.removeAttribute('href');
@@ -188,6 +194,10 @@
                 imageState('loading');
                 image.alt = thumbnail.alt;
                 caption.textContent = thumbnail.alt;
+                if (note) {
+                    note.textContent = button.dataset.imageNote ?? '';
+                    note.hidden = !button.dataset.imageNote;
+                }
                 download.href = button.dataset.imageSrc;
                 const full = viewer.querySelector('[data-viewer-full]');
                 if (full)

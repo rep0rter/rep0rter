@@ -69,7 +69,7 @@ STORIES = [
       "ko": ("시빅테크 포럼 2026 연사 모집",
              "코드포재팬이 11월 20일까지 시빅테크 포럼 2026 발표 제안을 받습니다.")}),
     ("slack", "air-quality", "Chen Mei-hua", 34,
-     "Sensor calibration notes are up. 18 new low-cost sensors joined the network in Tainan. #airquality",
+     "Sensor calibration notes are up. 18 new low-cost sensors joined the network in Tainan. #air-quality",
      {},
      {"en": ("Tainan air-quality network grows by 18 sensors",
              "Volunteers added 18 low-cost sensors in Tainan and published calibration notes so others can compare readings."),
@@ -185,13 +185,15 @@ def seed(data_dir: Path, *, port: int, empty: bool = False) -> None:
                             translations={lang: {"headline": h, "summary": s} for lang, (h, s) in editions.items()})
                 post.id = store.add_post(post)
             # A community story with a superseded first revision.
-            container = Container(id="community:stories", source="community", name="Community stories")
+            # Same source and container as stories published through /write, so the fixture
+            # story and a newly written one carry the same "Community submissions" label.
+            container = Container(id="project:owners", source="project", name="Owner-submitted projects")
             store.upsert_container(container)
             first = second = None
             # Each edition's fictional translation localises its own date.
             for revision, hours, date_text, local in ((1, 200, "November 14", {"zh-TW": "11 月 14 日", "ja": "11月14日", "ko": "11월 14일"}),
                                                       (2, 1.5, "November 21", {"zh-TW": "11 月 21 日", "ja": "11月21日", "ko": "11월 21일"})):
-                event = Event(id=f"community:story:{revision}", source="community", kind="message",
+                event = Event(id=f"project:story:{revision}", source="project", kind="story",
                               container_id=container.id, ts=NOW - hours * HOUR, author_id="author-Kuo",
                               author_name="Kuo Ya-chen", text=f"Disability-friendly venue guide sprint, {date_text}.",
                               url="https://example.org/venue-guide",
@@ -218,7 +220,7 @@ def seed(data_dir: Path, *, port: int, empty: bool = False) -> None:
                 else:
                     second = post.id
             with store.conn:
-                store.conn.execute("INSERT INTO stories VALUES (?, ?, ?)", ("venue", NOW, "community:story:1"))
+                store.conn.execute("INSERT INTO stories VALUES (?, ?, ?)", ("venue", NOW, "project:story:1"))
                 for revision, post_id in ((1, first), (2, second)):
                     store.conn.execute("INSERT INTO story_posts VALUES (?, ?, ?, ?, ?, ?)",
                                        ("venue", revision, post_id, f"fp{revision}", "[]", NOW))
