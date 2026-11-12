@@ -79,3 +79,14 @@
   .login-privacy, .login-read, .login-card .login-text-button { font-size: 18px; }
   .login-intro { font-size: 21px; }
 }
+
+/* 1440p and wider: the sign-in card grows with the canvas and sits in the middle of
+   the screen rather than leaving its lower half empty. */
+@media (min-width: 2200px) {
+  :root .account-page.login-page main { width: min(1640px, calc(100% - 192px)); min-height: calc(100svh - 140px); display: grid; align-content: center; padding-block: 48px 140px; }
+  :root .account-page.login-page main > .login-card { column-gap: 160px; padding: 104px 120px; }
+  :root .account-page.login-page main > .login-card h1 { font-size: 68px; }
+  :root .account-page.login-page main > .login-card > .login-intro { font-size: 23px; }
+  :root .account-page.login-page main > .login-card .login-google { min-height: 72px; font-size: 21px; }
+  :root .account-page.login-page main > .login-card .login-privacy, :root .account-page.login-page main > .login-card .login-read { font-size: 19px; }
+}

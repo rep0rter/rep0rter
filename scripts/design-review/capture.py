@@ -21,6 +21,8 @@ from playwright.sync_api import sync_playwright
 SIZES = {"desktop": dict(viewport={"width": 2560, "height": 1440}, device_scale_factor=1),
          "mobile": dict(viewport={"width": 390, "height": 844}, device_scale_factor=2,
                         is_mobile=True, has_touch=True)}
+# Optional extra size for before/after comparisons; blind review sets keep SIZES.
+EXTRA_SIZES = {"laptop": dict(viewport={"width": 1440, "height": 900}, device_scale_factor=1)}
 
 STORY = {"title": "Neighbourhood repair café publishes its first parts inventory",
          "description": "Volunteers at the Daan repair café catalogued 230 spare parts and published the list as a shared spreadsheet so other repair groups can trade components.",
@@ -238,7 +240,7 @@ STATES = [
 ]
 
 
-def capture(servers, out: Path, only=None):
+def capture(servers, out: Path, only=None, sizes=SIZES):
     out.mkdir(parents=True, exist_ok=True)
     failures = []
     with sync_playwright() as playwright:
@@ -246,7 +248,7 @@ def capture(servers, out: Path, only=None):
         for state, server, path, setup, options in STATES:
             if only and state not in only:
                 continue
-            for size, size_options in SIZES.items():
+            for size, size_options in sizes.items():
                 context = browser.new_context(**size_options, color_scheme=options.get("color_scheme", "light"),
                                               locale="en-US", timezone_id="Asia/Taipei")
                 if not options.get("entrance"):
@@ -292,12 +294,14 @@ def main():
     parser.add_argument("--disabled", required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--only", nargs="*")
+    parser.add_argument("--laptop", action="store_true", help="also capture 1440x900 (not part of blind review sets)")
     args = parser.parse_args()
     servers = {"base": args.base.rstrip("/"), "empty": args.empty.rstrip("/"), "disabled": args.disabled.rstrip("/")}
     for url in servers.values():
         if urlsplit(url).hostname not in ("127.0.0.1", "localhost", "::1"):
             parser.error("Capture local previews only; never production.")
-    failures = capture(servers, args.out, args.only)
+    sizes = {**SIZES, **EXTRA_SIZES} if args.laptop else SIZES
+    failures = capture(servers, args.out, args.only, sizes)
     print("\n".join(failures) or "all states captured")
     return 1 if failures else 0
 

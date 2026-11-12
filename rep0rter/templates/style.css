@@ -928,3 +928,98 @@ blockquote { margin: 14px 0; padding: 18px; white-space: pre-wrap; background: v
     :root[data-search-active="true"] .reading-layout:not(.reading-layout--detail) .story-grid > .story-card .story-content { grid-template-columns: minmax(0, 1fr) minmax(260px, 30%); }
   }
 }
+
+/* ===== Residual fixes after the UI hill climb. ===== */
+
+/* Phones: the viewer is a bottom sheet sized to the landscape card, so no empty
+   bands sit above and below the image; the dimmed page shows above it and the
+   actions stay within thumb reach. */
+@media (max-width: 480px) {
+  :root .image-viewer { width: 100%; height: fit-content; max-height: calc(100dvh - 24px); margin: auto 0 0; border: 1px solid var(--line); border-bottom: 0; border-radius: 28px 28px 0 0; }
+  :root .image-viewer-panel { min-height: 0; padding-top: 16px; }
+  :root .image-viewer-stage { flex: 0 0 auto; }
+  :root .image-viewer-footer { margin-top: 16px; }
+}
+
+/* Laptop widths: metadata, chips and counts keep a 14px floor (13px for compact controls). */
+@media (min-width: 1100px) and (max-width: 1699px) {
+  :root .meta, :root .meta a, :root .byline, :root .channel, :root .day-heading, :root .day-count, :root figcaption,
+  :root .reading-layout--detail .story-card .report-figure figcaption, :root .eyebrow, :root .hashtag, :root .hashtag span,
+  :root .story-badge, :root .filter-count, :root .filter-panel label, :root .timeline-count, :root .original-tag,
+  :root .footer-status, :root .site-footer, :root .links a, :root .translation-note, :root .revision-notice,
+  :root .search-filters > summary, :root .filter-bottom .button { font-size: 14px; }
+  :root .preference-trigger { font-size: 13px; }
+}
+/* Wide screens: metadata and chips sit one step closer to the body size. */
+@media (min-width: 1700px) {
+  :root .meta, :root .meta a, :root .byline, :root .channel, :root .day-heading, :root .day-count,
+  :root :is(.story-badge, .hashtag), :root .hashtag span, :root .filter-count { font-size: 17px; }
+}
+@media (min-width: 2200px) {
+  :root .meta, :root .meta a, :root .byline, :root .channel, :root .day-heading, :root .day-count,
+  :root :is(.story-badge, .hashtag), :root .hashtag span, :root .filter-count { font-size: 19px; }
+}
+
+/* Phones: the date-range error sits directly under the two dates it describes. */
+@media (max-width: 640px) {
+  .filter-panel > .filter-fields > label:first-child { order: 1; }
+  .filter-panel > .filter-dates { order: 2; }
+  .filter-panel > .filter-error { order: 3; margin: 0; }
+  .filter-panel > .filter-fields > label:not(:first-child) { order: 4; }
+}
+
+/* Account: the empty project list explains itself and points to the form. */
+.account-page .projects-empty p { max-width: 68ch; }
+.account-page .projects-empty .form-help { color: var(--muted); }
+.account-page .projects-empty-action { margin-top: 20px; }
+.account-page .projects-empty-action .button { display: inline-flex; align-items: center; gap: 8px; min-height: 48px; }
+
+/* Search and filter results fill the feed width like the day dividers and filter bar
+   above them, so a sparse day never leaves the right part of its row empty. Wide
+   result cards use the lead card's 40% image column. */
+@media (min-width: 900px) {
+  :root[data-search-active="true"] .reading-layout:not(.reading-layout--detail) .story-grid > .story-card,
+  :root[data-search-active="true"] .reading-layout:not(.reading-layout--detail) .story-grid[data-visible="1"] > .story-card { max-width: none; }
+}
+@media (min-width: 1100px) {
+  @container story-card (min-width: 1400px) {
+    :root[data-search-active="true"] .reading-layout:not(.reading-layout--detail) .story-grid > .story-card .story-content,
+    :root[data-search-active="true"] .reading-layout:not(.reading-layout--detail) .story-grid[data-visible="1"] > .story-card .story-content { grid-template-columns: minmax(0, 1fr) minmax(260px, 40%); gap: 56px; }
+  }
+}
+
+/* 1440p and wider: story pages use the whole content width. The copy keeps its
+   reading measure on the left and the report card sits beside it on the right,
+   instead of one 1320px column centred in an empty canvas. */
+@media (min-width: 2200px) {
+  :root { --story-width: 100%; }
+  :root .reading-layout--detail .story-card .story-content { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 46%); align-items: start; gap: 72px; }
+  :root .reading-layout--detail .story-card .report-figure { margin-top: 8px; }
+}
+
+/* 1440p and wider: account forms get a sticky left rail (title and page links) and
+   the form column beside it (the sign-in card's wide layout is in login.css). */
+@media (min-width: 2200px) {
+  .account-page:not(.login-page) > main { width: var(--shell); display: grid; grid-template-columns: minmax(420px, 1fr) minmax(0, 1360px); column-gap: 96px; row-gap: 0; align-items: start; }
+  .account-page:not(.login-page) > main > .account-intro { grid-column: 1; grid-row: 1 / span 30; position: sticky; top: 152px; padding-top: 48px; }
+  .account-page:not(.login-page) > main > .account-intro h1 { font-size: 72px; line-height: 1.08; }
+  .account-page:not(.login-page) .account-navigation { flex-direction: column; align-items: flex-start; gap: 4px; margin-top: 28px; }
+  .account-page:not(.login-page) > main > :not(.account-intro) { grid-column: 2; }
+  .account-page:not(.login-page) > main > .account-intro + * { margin-top: 48px; }
+}
+
+/* Superseded report cards: a full-width band directly above the image, inline and in
+   the viewer, so the obsolete card never reads as the current report. The band joins
+   the image's frame instead of covering any of it. */
+:root .report-figure--superseded .figure-superseded,
+:root .image-viewer-note { position: static; display: flex; align-items: center; gap: 10px; margin: 0; padding: 10px 20px; border: 1px solid color-mix(in srgb, var(--warning-text) 35%, transparent); border-bottom: 0; border-radius: 20px 20px 0 0; background: var(--warning-bg); color: var(--warning-text); font-size: 15px; font-weight: 700; line-height: 1.4; box-shadow: none; }
+:root .report-figure--superseded .figure-superseded::before, :root .image-viewer-note::before { content: "!"; display: inline-grid; place-items: center; flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid currentColor; font-size: 13px; }
+:root .report-figure--superseded .image-link { border-top-left-radius: 0; border-top-right-radius: 0; }
+:root .report-figure--superseded .source-card { opacity: .6; filter: grayscale(.6); }
+:root .image-viewer-note { margin: 0 0 10px; border-radius: 16px; border-bottom: 1px solid color-mix(in srgb, var(--warning-text) 35%, transparent); }
+:root .image-viewer-note[hidden] { display: none; }
+@media (min-width: 1700px) { :root .report-figure--superseded .figure-superseded, :root .image-viewer-note { padding: 14px 24px; font-size: 18px; } }
+@media (min-width: 2200px) { :root .report-figure--superseded .figure-superseded, :root .image-viewer-note { font-size: 20px; } }
+@media (min-width: 2200px) {
+  .account-page .projects-empty-action .button { min-height: 60px; padding: 14px 28px; font-size: 19px; }
+}

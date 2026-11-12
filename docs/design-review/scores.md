@@ -139,3 +139,17 @@ v2 round 8 (cap) consensus and divergences:
 - Sol only: #air-quality and #airquality shown as separate topics (fixture data, not UI); localised editions keep English participation instructions under an "original, untranslated" label (editorial policy).
 - Opus only: projects-empty lacks a "no projects yet" line; write-success category vs source label mismatch (fixture); back link under header on story-revision-latest scroll position.
 - Pass rule (every criterion ≥9 from every reviewer) not met at the 8-round cap. Stopped per rule.
+
+## Residual fixes check (2026-11-12, brief v2, one blind reviewer)
+
+Before/after sheets at 2560, 1440 and 390: `residual-fixes/`. Blind letters: new = B, baseline (main) = C, reference = A.
+
+| Reviewer | Set | Hier | Typo | Col | Space | Cons | Dens | Nav | States | Resp | Copy | A11y | Motion | Min |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Opus 5.5 (high) | New (B) | 8 | 7 | 8 | 7 | 8 | 7 | 8 | 9 | 8 | 8 | 7 | 6 | 6 |
+| Opus 5.5 (high) | Baseline (C) | 8 | 7 | 8 | 6 | 7 | 6 | 7 | 8 | 7 | 7 | 7 | 6 | 6 |
+| Opus 5.5 (high) | Reference (A) | 7 | 7 | 7 | 5 | 4 | 6 | 7 | 4 | 7 | 7 | 5 | 4 | 4 |
+
+- No criterion regressed; Spacing, Consistency, Density, Navigation, States, Responsive and Copy rose by one.
+- The reviewer's baseline problems were the fixed items: half-canvas forms/story, projects-empty without guidance, phone viewer bands, "Community stories"/"Community submissions".
+- Remaining on new: report card repeats the headline (owner keeps it), entrance frame indistinguishable, sign-in/withdrawn cards in a large canvas, small header labels.
